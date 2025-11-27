@@ -2,8 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
+import { formatRupiah } from '@/lib/formatters';
 import { SubscriptionPlan } from '@/types';
 import { Plus, Loader2, Package, Edit2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function SubscriptionPlansPage() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -100,77 +114,216 @@ export default function SubscriptionPlansPage() {
     setIsModalOpen(true);
   };
 
+  const openCreate = () => {
+    setEditingPlan(null);
+    resetForm();
+    setIsModalOpen(true);
+  };
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
         <div className="text-center">
-          <Loader2 size={40} className="animate-spin text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-600">Memuat data paket...</p>
+          <Loader2 size={36} className="animate-spin text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-600 text-sm">Memuat data paket...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="pb-10">
+    <div className="pb-6 sm:pb-10 px-4 sm:px-0">
       
       {/* HEADER */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Paket Langganan</h1>
-          <p className="text-gray-600 mt-2 text-base">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Paket Langganan</h1>
+          <p className="text-gray-600 mt-2 text-sm sm:text-base">
             Kelola paket yang akan ditawarkan ke mitra
           </p>
         </div>
-        <button 
-          onClick={() => { 
-            setEditingPlan(null); 
-            resetForm(); 
-            setIsModalOpen(true); 
-          }}
-          className="bg-gradient-to-r from-gray-100 to-gray-100 text-gray-800 px-6 py-3 rounded-xl hover:from-gray-200 hover:to-gray-200  border border-gray-400 transition font-semibold flex items-center gap-2 justify-center"
-        >
-          <Plus size={20} />
-          Buat Paket Baru
-        </button>
+        
+        {/* Dialog Buat Paket Baru */}
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogTrigger asChild>
+            <Button 
+              onClick={openCreate}
+              variant="outline"
+              className="bg-gradient-to-r from-gray-100 to-gray-100 text-gray-800 hover:from-gray-200 hover:to-gray-200 border-gray-400 font-semibold w-full sm:w-auto text-sm"
+              size="sm"
+            >
+              <Plus size={18} className="mr-2" />
+              Buat Paket Baru
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto mx-4">
+            <form onSubmit={handleSubmit}>
+              <DialogHeader>
+                <DialogTitle className="text-lg sm:text-xl">
+                  {editingPlan ? "Edit Paket" : "Buat Paket Baru"}
+                </DialogTitle>
+                <DialogDescription className="text-sm">
+                  {editingPlan 
+                    ? "Perbarui informasi paket langganan di bawah ini." 
+                    : "Isi formulir untuk membuat paket langganan baru."}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="plan_name" className="text-sm">
+                    Nama Paket <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="plan_name"
+                    name="plan_name"
+                    type="text"
+                    required
+                    value={formData.plan_name}
+                    onChange={handleChange}
+                    placeholder="Contoh: Paket Premium"
+                    className="text-sm"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="price" className="text-sm">
+                    Harga (Rp) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="price"
+                    name="price"
+                    type="number"
+                    required
+                    min="0"
+                    value={formData.price}
+                    onChange={handleChange}
+                    placeholder="1500000"
+                    className="text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="branch_limit" className="text-xs sm:text-sm">
+                      Limit Cabang <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="branch_limit"
+                      name="branch_limit"
+                      type="number"
+                      required
+                      min="1"
+                      value={formData.branch_limit}
+                      onChange={handleChange}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="device_limit" className="text-xs sm:text-sm">
+                      Limit Device <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="device_limit"
+                      name="device_limit"
+                      type="number"
+                      required
+                      min="1"
+                      value={formData.device_limit}
+                      onChange={handleChange}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="duration_months" className="text-sm">
+                    Durasi (Bulan) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="duration_months"
+                    name="duration_months"
+                    type="number"
+                    required
+                    min="1"
+                    max="60"
+                    value={formData.duration_months}
+                    onChange={handleChange}
+                    placeholder="Masukkan durasi dalam bulan (contoh: 12)"
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Masukkan durasi dalam bulan (minimal 1 bulan, maksimal 60 bulan)
+                  </p>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="description" className="text-sm">
+                    Deskripsi
+                  </Label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    rows={3}
+                    placeholder="Deskripsi singkat paket (opsional)"
+                    className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <DialogClose asChild>
+                  <Button type="button" variant="outline" className="w-full sm:w-auto text-sm">
+                    Batal
+                  </Button>
+                </DialogClose>
+                <Button type="submit" className="w-full sm:w-auto text-sm">
+                  {editingPlan ? 'Update Paket' : 'Buat Paket'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {plans.length === 0 ? (
-        <div className="bg-white p-12 rounded-2xl shadow-sm border border-gray-200 text-center">
-          <Package size={60} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="text-xl font-semibold text-gray-800 mb-2">Belum Ada Paket Langganan</h3>
-          <p className="text-gray-500 mb-6">Buat paket langganan pertama untuk mitra Anda</p>
-          <button
-            onClick={() => { resetForm(); setIsModalOpen(true); }}
-            className="bg-gray-100 text-gray-800 px-6 py-3 rounded-xl hover:bg-gray-400 hover:text-white border border-gray-300 transition inline-flex items-center gap-2"
+        <div className="bg-white p-8 sm:p-12 rounded-2xl shadow-sm border border-gray-200 text-center">
+          <Package size={48} className="sm:w-16 sm:h-16 mx-auto text-gray-300 mb-4" />
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">Belum Ada Paket Langganan</h3>
+          <p className="text-gray-500 mb-6 text-sm sm:text-base">Buat paket langganan pertama untuk mitra Anda</p>
+          <Button
+            onClick={openCreate}
+            variant="outline"
+            className="bg-gray-100 text-gray-800 hover:bg-gray-400 hover:text-white border-gray-300 text-sm"
+            size="sm"
           >
-            <Plus size={20} />
+            <Plus size={18} className="mr-2" />
             Buat Paket Sekarang
-          </button>
+          </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           {plans.map((plan) => (
             <div 
               key={plan.plan_id} 
-              className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all flex flex-col h-full"
+              className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 hover:border-gray-400 hover:shadow-md transition-all flex flex-col h-full"
             >
               {/* Content wrapper - flex-1 to push button to bottom */}
               <div className="flex-1 flex flex-col">
                 {/* Header Card */}
-                <div className="flex justify-between items-start mb-4">
+                <div className="flex justify-between items-start mb-3 sm:mb-4">
                   <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 mb-1">{plan.plan_name}</h3>
-                    <span className="inline-block bg-gray-100 text-gray-700 text-xs font-bold px-3 py-1 rounded-full">
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1 break-words">{plan.plan_name}</h3>
+                    <span className="inline-block bg-gray-100 text-gray-700 text-xs font-bold px-2.5 sm:px-3 py-1 rounded-full">
                       {plan.duration_months} Bulan
                     </span>
                   </div>
                 </div>
                 
                 {/* Price */}
-                <div className="mb-4 pb-4 border-b border-gray-200">
-                  <p className="text-3xl font-bold text-gray-800">
-                    Rp {plan.price.toLocaleString('id-ID')}
+                <div className="mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-gray-200">
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-800 break-words">
+                    {formatRupiah(plan.price)}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">per {plan.duration_months} bulan</p>
                 </div>
@@ -187,7 +340,7 @@ export default function SubscriptionPlansPage() {
                       <span><strong>{plan.device_limit}</strong> Perangkat/Cabang</span>
                     </li>
                     {plan.description && (
-                      <li className="text-xs text-gray-500 italic pt-2 border-t border-gray-100 mt-2">
+                      <li className="text-xs text-gray-500 italic pt-2 border-t border-gray-100 mt-2 break-words">
                         {plan.description}
                       </li>
                     )}
@@ -196,148 +349,17 @@ export default function SubscriptionPlansPage() {
               </div>
 
               {/* Edit Button - always at bottom */}
-              <button 
+              <Button
                 onClick={() => openEdit(plan)}
-                className="w-full px-4 py-2 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition font-semibold text-sm flex items-center justify-center gap-2 border border-gray-200 mt-4"
+                variant="outline"
+                className="w-full bg-gray-50 text-gray-700 hover:bg-gray-100 border-gray-200 font-semibold text-sm mt-4"
+                size="sm"
               >
-                <Edit2 size={16} />
+                <Edit2 size={14} className="mr-2" />
                 Edit Paket
-              </button>
+              </Button>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Modal Form */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b px-8 py-6 flex justify-between items-center rounded-t-2xl">
-              <h2 className="text-2xl font-bold text-gray-800">
-                {editingPlan ? "Edit Paket" : "Buat Paket Baru"}
-              </h2>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition text-3xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-8 space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Nama Paket <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  required 
-                  name="plan_name" 
-                  value={formData.plan_name} 
-                  onChange={handleChange} 
-                  className="w-full border border-gray-300 p-4 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent transition"
-                  placeholder="Contoh: Paket Premium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Harga (Rp) <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="number" 
-                  required 
-                  name="price" 
-                  value={formData.price} 
-                  onChange={handleChange} 
-                  className="w-full border border-gray-300 p-4 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent transition"
-                  placeholder="1500000"
-                  min="0"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Limit Cabang <span className="text-red-500">*</span>
-                  </label>
-                  <input 
-                    type="number" 
-                    required 
-                    name="branch_limit" 
-                    value={formData.branch_limit} 
-                    onChange={handleChange} 
-                    className="w-full border border-gray-300 p-4 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent transition"
-                    min="1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">
-                    Limit Device <span className="text-red-500">*</span>
-                  </label>
-                  <input 
-                    type="number" 
-                    required 
-                    name="device_limit" 
-                    value={formData.device_limit} 
-                    onChange={handleChange} 
-                    className="w-full border border-gray-300 p-4 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent transition"
-                    min="1"
-                  />
-                </div>
-              </div>
-
-              <div>
-  <label className="block text-sm font-bold text-gray-700 mb-2">
-    Durasi (Bulan) <span className="text-red-500">*</span>
-  </label>
-  <input 
-    type="number" 
-    required 
-    name="duration_months" 
-    value={formData.duration_months} 
-    onChange={handleChange} 
-    className="w-full border border-gray-300 p-4 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-    placeholder="Masukkan durasi dalam bulan (contoh: 12)"
-    min="1"
-    max="60"
-  />
-  <p className="text-xs text-gray-500 mt-1">
-    Masukkan durasi dalam bulan (minimal 1 bulan, maksimal 60 bulan)
-  </p>
-</div>
-
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Deskripsi
-                </label>
-                <textarea 
-                  name="description" 
-                  value={formData.description} 
-                  onChange={handleChange} 
-                  className="w-full border border-gray-300 p-4 rounded-xl focus:ring-2 focus:ring-gray-500 focus:border-transparent transition"
-                  rows={3}
-                  placeholder="Deskripsi singkat paket (opsional)"
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-5">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold border border-gray-400"
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 px-6 py-4 bg-gradient-to-r from-gray-100 to-gray-100 text-gray-700 rounded-xl hover:from-gray-300 hover:to-gray-300 transition font-bold border border-gray-400 "
-                >
-                  {editingPlan ? 'Update Paket' : 'Buat Paket'}
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
     </div>

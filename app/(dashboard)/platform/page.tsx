@@ -115,7 +115,7 @@ export default function PlatformDashboard() {
       {/* HEADER */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div>
-          <p className="text-gray-600 text-base py-2 bg-white border border-gray-200 shadow-sm font-small  rounded-xl px-57">
+          <p className="text-gray-600 text-base py-2 bg-white border border-gray-200 shadow-sm font-small  rounded-xl px-5">
             Selamat Datang, <span className="font-bold text-gray-900">Admin Platform</span>! Semangat Bekerja.
           </p>
         </div>
