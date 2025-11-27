@@ -4,23 +4,8 @@ import { useState, useEffect } from 'react';
 import { fetchWithAuth } from '@/lib/api';
 import Link from 'next/link';
 import { 
-  DollarSign, Loader2, AlertCircle, Calendar, TrendingUp
+  Users, Package, CheckCircle, Smartphone, Loader2, AlertCircle, Calendar, TrendingUp, Award
 } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from '@/components/ui/chart';
 
 interface DashboardStats {
   totalPartners: number;
@@ -88,8 +73,8 @@ export default function PlatformDashboard() {
         ? (Array.isArray(plansData.value) ? plansData.value : [])
         : [];
 
-      const activePartners = partners.filter((p: any) => p.status === 'Aktif').length;
-      const suspendedPartners = partners.filter((p: any) => p.status === 'Ditangguhkan').length;
+      const activePartners = partners.filter((p: any) => p.status === 'Active').length;
+      const suspendedPartners = partners.filter((p: any) => p.status === 'Suspended').length;
 
       let allLicenses: any[] = [];
       try {
@@ -102,7 +87,7 @@ export default function PlatformDashboard() {
         console.error('Error fetching licenses:', err);
       }
 
-      const activeLicenses = allLicenses.filter((l: any) => l.license_status === 'Aktif').length;
+      const activeLicenses = allLicenses.filter((l: any) => l.license_status === 'Active').length;
 
       setStats({
         totalPartners: partners.length,
@@ -118,64 +103,24 @@ export default function PlatformDashboard() {
 
     } catch (err) {
       console.error('Dashboard error:', err);
-      setError('Failed to load dashboard data.');
+      setError('Gagal memuat data dashboard.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const formatRp = (val: number) => 
-    'Rp ' + parseInt(val.toString() || '0').toLocaleString('id-ID');
-
-  // Chart Data
-  const chartData = [
-    { 
-      category: "Total Mitra", 
-      value: stats.totalPartners,
-      fill: "hsl(217, 91%, 60%)" // Blue
-    },
-    { 
-        category: "Total Paket Langganan",        // DIUBAH dari "Total Langganan"
-        value: stats.totalPlans,        // DIUBAH dari stats.totalSubscriptions
-        fill: "hsl(45, 93%, 47%)"       // Tetap orange/amber
-    },
-
-    { 
-      category: "Langganan Aktif", 
-      value: stats.activeSubscriptions,
-      fill: "hsl(142, 71%, 45%)" // Green
-    },
-    { 
-      category: "Lisensi Aktif", 
-      value: stats.activeLicenses,
-      fill: "hsl(262, 83%, 58%)" // Purple
-    },
-    { 
-      category: "Total Lisensi", 
-      value: stats.totalLicenses,
-      fill: "hsl(0, 65%, 60%)" // Pink
-    },
-  ];
-
-  const chartConfig = {
-    value: {
-      label: "Total",
-      color: "hsl(var(--chart-1))",
-    },
-  } satisfies ChartConfig;
-
   return (
-    <div className="pb-10">
+    <div className="pb-0 gap-0">
       
-      {/* HEADER - Padding konsisten */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* HEADER */}
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-8">
         <div>
-          <p className="text-gray-600 text-base">
-            Selamat Datang, <span className="font-bold text-gray-900">{username}</span>! Selamat dan Semangat Bekerja.
+          <p className="text-gray-600 text-base py-2 bg-white border border-gray-200 shadow-sm font-small  rounded-xl px-57">
+            Selamat Datang, <span className="font-bold text-gray-900">Admin Platform</span>! Semangat Bekerja.
           </p>
         </div>
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm text-sm font-medium text-gray-600">
-          <Calendar size={18} className="text-gray-600"/>
+        <div className="flex items-center gap-8 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm text-sm font-medium text-gray-600">
+          <Calendar size={20} className="text-gray-600 "/>
           {new Date().toLocaleDateString('id-ID', { 
             weekday: 'long', 
             year: 'numeric', 
@@ -189,7 +134,7 @@ export default function PlatformDashboard() {
       {isLoading ? (
         <div className="flex flex-col items-center justify-center h-64 bg-white rounded-2xl border border-gray-200">
           <Loader2 size={40} className="animate-spin text-blue-600 mb-3" />
-          <p className="text-gray-500">Loading dashboard metrics...</p>
+          <p className="text-gray-500">Memuat data dashboard...</p>
         </div>
       ) : (
         <>
@@ -200,76 +145,75 @@ export default function PlatformDashboard() {
             </div>
           )}
 
-          {/* BAR CHART - Platform Statistics dengan padding konsisten */}
-          <Card className="border-2 shadow-sm">
-            {/* Header dengan padding konsisten: p-6 */}
-            <CardHeader className="p-6 pt-0 pb-0">
-              <CardTitle className="text-2xl font-bold text-gray-900">Statistik Platform</CardTitle>
-              {/* <CardDescription className="text-base text-gray-600 mt-2">
-                Gambaran dari partners, subscriptions, dan licenses
-              </CardDescription> */}
-            </CardHeader>
+          {/* STATS CARDS GRID */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-8 ">
             
-            {/* Content dengan padding konsisten: p-6 */}
-            <CardContent className="p-6 pt-0">
-              <ChartContainer config={chartConfig} className="h-[335px] w-full">
-                <BarChart
-                  accessibilityLayer
-                  data={chartData}
-                  margin={{
-                    top: 10,
-                    right: 30,
-                    left: 20,
-                    bottom: 20,
-                  }}
-                >
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="category"
-                    tickLine={false}
-                    tickMargin={15}
-                    axisLine={false}
-                    angle={0}
-                    textAnchor="middle"
-                    height={20}
-                    tick={{ fontSize: 13, fontWeight: 500 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <ChartTooltip
-                    cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
-                    content={<ChartTooltipContent hideLabel />}
-                  />
-                  <Bar 
-                    dataKey="value" 
-                    radius={[12, 12, 0, 0]}
-                  >
-                    <LabelList
-                      position="top"
-                      offset={12}
-                      className="fill-foreground"
-                      fontSize={14}
-                      fontWeight={700}
-                    />
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-            
-            {/* Footer dengan padding konsisten: p-6 */}
-            <CardFooter className="p-6 pb-0 border-t flex-col items-start gap-3">
-              {/* <div className="flex gap-2 items-center leading-none font-bold text-base text-green-600">
-                <TrendingUp className="h-5 w-5" />
-                Platform berkembang dengan stabil
-              </div> */}
-              <div className="text-gray-600 leading-relaxed text-sm">
-                Data Real-time yang menunjukkan total Mitra, langganan aktif, dan perangkat lisensi di seluruh platform.
+            {/* Card 1: Total Mitra */}
+            <div className=" bg-gradient-to-br from-white to-white p-6 rounded-2xl border border-gray-300 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gray-100 rounded-xl">
+                  <Users size={24} className="text-blue-600" />
+                </div>
               </div>
-            </CardFooter>
-          </Card>
+              <h3 className="text-3xl font-bold text-gray-900 mb-1">
+                {stats.totalPartners}
+              </h3>
+              <p className="text-sm text-gray-600 font-medium">Total Mitra</p>
+            </div>
+
+            {/* Card 2: Total Paket */}
+            <div className="bg-gradient-to-br from-white to-white p-6 rounded-2xl border border-gray-300 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gray-100 rounded-xl">
+                  <Package size={24} className="text-purple-600" />
+                </div>
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-1">
+                {stats.totalPlans}
+              </h3>
+              <p className="text-sm text-gray-600 font-medium">Total Paket</p>
+            </div>
+
+            {/* Card 3: Langganan Aktif */}
+            <div className="bg-gradient-to-br from-white to-white p-6 rounded-2xl border border-gray-300 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gray-100 rounded-xl">
+                  <CheckCircle size={24} className="text-green-600" />
+                </div>
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-1">
+                {stats.activeSubscriptions}
+              </h3>
+              <p className="text-sm text-gray-600 font-medium">Langganan Aktif</p>
+            </div>
+
+            {/* Card 4: Lisensi Aktif */}
+            <div className=" bg-gradient-to-br from-white to-white p-6 rounded-2xl border border-gray-300 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gray-100 rounded-xl">
+                  <Award size={24} className="text-orange-600" />
+                </div>
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-1">
+                {stats.activeLicenses}
+              </h3>
+              <p className="text-sm text-gray-600 font-medium">Lisensi Aktif</p>
+            </div>
+
+            {/* Card 5: Total Lisensi */}
+            <div className="bg-gradient-to-br from-white to-white p-6 rounded-2xl border border-gray-300 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-3 bg-gray-100 rounded-xl">
+                  <Smartphone size={24} className="text-gray-600" />
+                </div>
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-1">
+                {stats.totalLicenses}
+              </h3>
+              <p className="text-sm text-gray-600 font-medium">Total Lisensi</p>
+            </div>
+
+          </div>
 
         </>
       )}

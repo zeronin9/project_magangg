@@ -35,6 +35,8 @@ export interface SubscriptionPlan {
   plan_id: string;
   plan_name: string;
   price: number;
+   max_branches: number;        // ✅ Tambahkan ini
+  max_devices: number; 
   branch_limit: number;
   device_limit: number;
   duration_months: number;

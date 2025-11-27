@@ -67,12 +67,12 @@ export default function PlatformLayout({
     { 
       href: '/platform/subscription-plans', 
       name: 'Paket Langganan', 
-      iconSrc: '/images/icons/branch.png' // Ganti dengan path gambar Anda
+      iconSrc: '/images/icons/branchProduk.png' // Ganti dengan path gambar Anda
     },
     { 
       href: '/platform/subscriptions', 
       name: 'Langganan Mitra', 
-      iconSrc: '/images/icons/catalog.png' // Ganti dengan path gambar Anda
+      iconSrc: '/images/icons/Branch.png' // Ganti dengan path gambar Anda
     },
     { 
       href: '/platform/licenses', 

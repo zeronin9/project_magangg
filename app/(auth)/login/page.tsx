@@ -86,14 +86,14 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-xl border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-700 placeholder-gray-400 font-medium"
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-xl border border-gray-300 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-700 placeholder-gray-400 font-medium"
                 placeholder="Username"
               />
             </div>
 
             {/* Password Input */}
             <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 ">
                 <Lock size={20} />
               </div>
               <input 
@@ -101,7 +101,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-xl border-transparent focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-700 placeholder-gray-400 font-medium"
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-700 placeholder-gray-400 font-medium border border-gray-300 "
                 placeholder="Password"
               />
             </div>
@@ -110,7 +110,7 @@ export default function LoginPage() {
             <button 
               type="submit" 
               disabled={isLoading}
-              className="w-full bg-[#1a3b8f] hover:bg-[#153075] text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 transition-transform active:scale-[0.98] mt-4 uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-[#1a3b8f] hover:bg-[#153075] text-white font-bold py-4 rounded-xl shadow-md shadow-blue-900/20 transition-transform active:scale-[0.98] mt-4 uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2">

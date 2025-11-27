@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/api';
 import { Partner, PartnerSubscription, License, SubscriptionPlan } from '@/types';
 import { Edit2 } from 'lucide-react';
+import { ShoppingBag, Plus, Search, Loader2, DollarSign, Users, Calendar, CheckCircle, Clock } from 'lucide-react';
 
 export default function PartnerDetailPage() {
   const params = useParams();
@@ -357,22 +358,23 @@ export default function PartnerDetailPage() {
                           year: 'numeric'
                         })}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      <td className="px-6 py-5 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold ${
                           sub.payment_status === 'Paid' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-yellow-100 text-yellow-700'
                         }`}>
-                          {sub.payment_status === 'Paid' ? 'Lunas' : 'Menunggu'}
+                          {sub.payment_status === 'Paid' ? <CheckCircle size={14} /> : <Clock size={14} />}
+                          {sub.payment_status === 'Paid' ? 'Lunas' : 'Upgraded'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          sub.status === 'Active' 
-                            ? 'bg-blue-100 text-blue-800' 
+                      <td className="px-6 py-5 whitespace-nowrap">
+                        <span className={`px-4 py-2 rounded-full text-xs font-bold ${
+                          sub.payment_status === 'Paid' 
+                            ? 'bg-green-100 text-green-700' 
                             : 'bg-gray-100 text-gray-600'
                         }`}>
-                          {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
+                          {sub.payment_status === 'Paid' ? 'Aktif' : 'Tidak Aktif'}
                         </span>
                       </td>
                     </tr>

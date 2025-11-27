@@ -58,7 +58,8 @@ export default function PartnerListPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  // ✅ Handle Delete/Suspend
+  const handleSuspend = async (id: string) => {
     if (!confirm('Apakah Anda yakin ingin menonaktifkan mitra ini?')) return;
     try {
       await fetchWithAuth(`/partner/${id}`, {
@@ -68,6 +69,28 @@ export default function PartnerListPage() {
       fetchPartners();
     } catch (error: any) {
       alert('Gagal menonaktifkan mitra');
+    }
+  };
+
+  // ✅ NEW: Handle Activate (Reactivate suspended account)
+  const handleActivate = async (id: string, partnerData: Partner) => {
+    if (!confirm('Apakah Anda yakin ingin mengaktifkan kembali mitra ini?')) return;
+    try {
+      // Update status menjadi Active
+      await fetchWithAuth(`/partner/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          business_name: partnerData.business_name,
+          business_email: partnerData.business_email,
+          business_phone: partnerData.business_phone,
+          status: 'Active'  // Set status ke Active
+        }),
+      });
+      alert('Mitra berhasil diaktifkan kembali!');
+      fetchPartners();
+    } catch (error: any) {
+      alert(error.message || 'Gagal mengaktifkan mitra');
+      console.error('Activation error:', error);
     }
   };
 
@@ -167,9 +190,7 @@ export default function PartnerListPage() {
                   <tr key={partner.partner_id} className="hover:bg-gray-50 transition group">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center text-white font-bold">
-                          {partner.business_name.charAt(0)}
-                        </div>
+                        
                         <span className="font-semibold text-gray-900">{partner.business_name}</span>
                       </div>
                     </td>
@@ -213,12 +234,21 @@ export default function PartnerListPage() {
                           Lihat Detail
                         </Link>
                         <span className="text-gray-300">|</span>
-                        {partner.status === 'Active' && (
+                        
+                        {/* ✅ Conditional buttons based on status */}
+                        {partner.status === 'Active' ? (
                           <button 
-                            onClick={() => handleDelete(partner.partner_id)} 
+                            onClick={() => handleSuspend(partner.partner_id)} 
                             className="text-red-600 hover:text-red-800 font-semibold transition"
                           >
                             Nonaktifkan
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => handleActivate(partner.partner_id, partner)} 
+                            className="text-green-600 hover:text-green-800 font-semibold transition"
+                          >
+                            Aktifkan Kembali
                           </button>
                         )}
                       </div>
@@ -289,9 +319,6 @@ export default function PartnerListPage() {
               </div>
 
               <div className="border-t pt-5 mt-5">
-                <p className="text-sm font-bold text-gray-700 mb-4 bg-blue-50 p-3 rounded-lg">
-                  🔐 Akun Admin Mitra Pertama
-                </p>
                 
                 <div className="space-y-5">
                   <div>
@@ -329,13 +356,13 @@ export default function PartnerListPage() {
                 <button 
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold"
+                  className="flex-1 px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold border border-gray-300"
                 >
                   Batal
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition font-bold shadow-lg shadow-blue-200"
+                  className="flex-1 px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold border border-gray-300"
                 >
                   Daftarkan Mitra
                 </button>
