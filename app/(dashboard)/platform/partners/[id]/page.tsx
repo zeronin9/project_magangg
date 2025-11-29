@@ -3,10 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/api';
-import { formatRupiah } from '@/lib/formatters';
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
 import { Partner, PartnerSubscription, License, SubscriptionPlan } from '@/types';
-import { Edit2, Plus, CheckCircle, Clock } from 'lucide-react';
-import { Button } from "@/components/ui/button";
+import { Edit2, Plus, ArrowLeft, CheckCircle, Clock, Calendar, DollarSign, Key, Smartphone, Building2 } from 'lucide-react';
 import {
   Dialog,
   DialogClose,
@@ -17,15 +16,42 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+// Format Rupiah function
+const formatRupiah = (amount: number): string => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
 
 export default function PartnerDetailPage() {
   const params = useParams();
   const router = useRouter();
   const partnerId = params.id as string;
 
-  // State Data
   const [partner, setPartner] = useState<Partner | null>(null);
   const [subscriptions, setSubscriptions] = useState<PartnerSubscription[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
@@ -33,7 +59,6 @@ export default function PartnerDetailPage() {
   const [allPlans, setAllPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // State Modal Subscription
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
   const [subForm, setSubForm] = useState({
     plan_id: '',
@@ -41,7 +66,6 @@ export default function PartnerDetailPage() {
     payment_status: 'Paid'
   });
 
-  // State Modal Edit Partner
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     business_name: '',
@@ -49,16 +73,12 @@ export default function PartnerDetailPage() {
     business_phone: ''
   });
 
-  // Helper function untuk mendapatkan nama plan
   const getPlanName = (subscription: PartnerSubscription) => {
     if (subscription.plan_snapshot?.plan_name) {
       return subscription.plan_snapshot.plan_name;
     }
     const plan = allPlans.find(p => p.plan_id === subscription.plan_id);
-    if (plan) {
-      return plan.plan_name;
-    }
-    return 'Paket tidak tersedia';
+    return plan?.plan_name || 'Paket tidak tersedia';
   };
 
   const getPlanDetails = (subscription: PartnerSubscription) => {
@@ -78,7 +98,6 @@ export default function PartnerDetailPage() {
     return { price: 0, duration: 0 };
   };
 
-  // Fetch Data Awal
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -125,44 +144,35 @@ export default function PartnerDetailPage() {
     if (partnerId) fetchData();
   }, [partnerId, router]);
 
-  // Handle Submit Subscription Baru
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = {
-        partner_id: partnerId,
-        plan_id: subForm.plan_id,
-        start_date: new Date(subForm.start_date).toISOString(),
-        payment_status: subForm.payment_status
-      };
-
       await fetchWithAuth('/partner-subscription', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          partner_id: partnerId,
+          plan_id: subForm.plan_id,
+          start_date: new Date(subForm.start_date).toISOString(),
+          payment_status: subForm.payment_status
+        }),
       });
       
       alert('Paket langganan berhasil ditambahkan!');
       setIsSubModalOpen(false);
       
-      try {
-        const subsData = await fetchWithAuth(`/partner-subscription/partner/${partnerId}`);
-        setSubscriptions(Array.isArray(subsData) ? subsData : []);
-      } catch (error) {
-        setSubscriptions([]);
-      }
+      const subsData = await fetchWithAuth(`/partner-subscription/partner/${partnerId}`);
+      setSubscriptions(Array.isArray(subsData) ? subsData : []);
 
       setSubForm({
         plan_id: '',
         start_date: new Date().toISOString().split('T')[0],
         payment_status: 'Paid'
       });
-      
     } catch (error: any) {
       alert(error.message || 'Gagal menambahkan langganan');
     }
   };
 
-  // Handle Open Edit Modal
   const handleOpenEdit = () => {
     if (partner) {
       setEditForm({
@@ -174,190 +184,145 @@ export default function PartnerDetailPage() {
     }
   };
 
-  // Handle Submit Edit Partner
   const handleEditPartner = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = {
-        business_name: editForm.business_name,
-        business_email: editForm.business_email,
-        business_phone: editForm.business_phone
-      };
-
       await fetchWithAuth(`/partner/${partnerId}`, {
         method: 'PUT',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(editForm),
       });
 
       alert('Data mitra berhasil diperbarui!');
       setIsEditModalOpen(false);
 
-      // Refresh partner data
       const allPartnersData = await fetchWithAuth('/partner');
       const allPartners = Array.isArray(allPartnersData) ? allPartnersData : [];
       const updatedPartner = allPartners.find((p: Partner) => p.partner_id === partnerId);
       if (updatedPartner) {
         setPartner(updatedPartner);
       }
-
     } catch (error: any) {
       alert(error.message || 'Gagal memperbarui data mitra');
     }
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="text-center">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 text-sm sm:text-base">Memuat data mitra...</p>
-        </div>
-      </div>
-    );
+    return <DetailSkeleton />; // ✅ Use skeleton
   }
 
   if (!partner) {
     return (
-      <div className="p-4 sm:p-6">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          Mitra tidak ditemukan
-        </div>
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-destructive">Mitra tidak ditemukan</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-6 sm:pb-10 px-4 sm:px-0">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Back Button */}
-      <button
+      <Button
+        variant="ghost"
         onClick={() => router.push('/platform/partners')}
-        className="text-indigo-600 hover:text-indigo-800 font-medium flex items-center space-x-2 text-sm sm:text-base"
+        className="mb-4"
       >
-        <span>←</span>
-        <span>Kembali ke Daftar Mitra</span>
-      </button>
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        <span className="hidden @sm:inline">Kembali ke Daftar Mitra</span>
+        <span className="@sm:hidden">Kembali</span>
+      </Button>
 
-      {/* Header Detail */}
-      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2 break-words">{partner.business_name}</h1>
-            <div className="flex items-center space-x-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                partner.status === 'Active' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                {partner.status === 'Active' ? 'Aktif' : 'Ditangguhkan'}
-              </span>
+      {/* Partner Info Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+            <div>
+              <CardTitle className="text-2xl @md:text-3xl">{partner.business_name}</CardTitle>
+              <CardDescription className="mt-2">
+                <Badge variant={partner.status === 'Active' ? 'default' : 'destructive'}>
+                  {partner.status === 'Active' ? 'Aktif' : 'Ditangguhkan'}
+                </Badge>
+              </CardDescription>
             </div>
+            
+            <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" onClick={handleOpenEdit} className="w-full @md:w-auto">
+                  <Edit2 className="mr-2 h-4 w-4" />
+                  <span className="hidden @sm:inline">Edit Data Mitra</span>
+                  <span className="@sm:hidden">Edit</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <form onSubmit={handleEditPartner}>
+                  <DialogHeader>
+                    <DialogTitle>Edit Data Mitra</DialogTitle>
+                    <DialogDescription>
+                      Perubahan data akan langsung diterapkan setelah disimpan.
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="business_name">Nama Bisnis <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="business_name"
+                        required
+                        value={editForm.business_name}
+                        onChange={(e) => setEditForm({...editForm, business_name: e.target.value})}
+                      />
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="business_email">Email Bisnis <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="business_email"
+                        type="email"
+                        required
+                        value={editForm.business_email}
+                        onChange={(e) => setEditForm({...editForm, business_email: e.target.value})}
+                      />
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="business_phone">Nomor Telepon <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="business_phone"
+                        required
+                        value={editForm.business_phone}
+                        onChange={(e) => setEditForm({...editForm, business_phone: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline">Batal</Button>
+                    </DialogClose>
+                    <Button type="submit">Simpan Perubahan</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
-          
-          {/* Edit Button with Dialog */}
-          <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                onClick={handleOpenEdit}
-                className="bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-400 font-semibold w-full sm:w-auto text-sm"
-                size="sm"
-              >
-                <Edit2 size={14} className="mr-2" />
-                Edit Data Mitra
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto mx-4">
-              <form onSubmit={handleEditPartner}>
-                <DialogHeader>
-                  <DialogTitle className="text-lg sm:text-xl">Edit Data Mitra</DialogTitle>
-                  <DialogDescription className="text-sm">
-                    Perbarui informasi data mitra. Klik simpan untuk menyimpan perubahan.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-business-name" className="text-sm">
-                      Nama Bisnis <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="edit-business-name"
-                      type="text"
-                      required
-                      value={editForm.business_name}
-                      onChange={(e) => setEditForm({...editForm, business_name: e.target.value})}
-                      placeholder="Nama bisnis mitra"
-                      className="text-sm"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-business-email" className="text-sm">
-                      Email Bisnis <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="edit-business-email"
-                      type="email"
-                      required
-                      value={editForm.business_email}
-                      onChange={(e) => setEditForm({...editForm, business_email: e.target.value})}
-                      placeholder="email@bisnis.com"
-                      className="text-sm"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-business-phone" className="text-sm">
-                      Nomor Telepon <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="edit-business-phone"
-                      type="text"
-                      required
-                      value={editForm.business_phone}
-                      onChange={(e) => setEditForm({...editForm, business_phone: e.target.value})}
-                      placeholder="08123456789"
-                      className="text-sm"
-                    />
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                    <p className="text-xs sm:text-sm text-blue-800">
-                      <strong>Catatan:</strong> Perubahan data akan langsung diterapkan setelah disimpan.
-                    </p>
-                  </div>
-                </div>
-                <DialogFooter className="flex-col sm:flex-row gap-2">
-                  <DialogClose asChild>
-                    <Button type="button" variant="outline" className="w-full sm:w-auto text-sm">
-                      Batal
-                    </Button>
-                  </DialogClose>
-                  <Button type="submit" className="w-full sm:w-auto text-sm">Simpan Perubahan</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          <div className="flex items-center space-x-3 min-w-0">
-            <span className="text-xl sm:text-2xl flex-shrink-0">📧</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500">Email</p>
-              <p className="font-medium text-gray-800 text-sm truncate" title={partner.business_email}>
-                {partner.business_email}
-              </p>
+        </CardHeader>
+
+        <CardContent>
+          <div className="grid gap-4 grid-cols-1 @md:grid-cols-3">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Email</p>
+              <p className="font-medium text-sm @md:text-base break-all">{partner.business_email}</p>
             </div>
-          </div>
-          <div className="flex items-center space-x-3 min-w-0">
-            <span className="text-xl sm:text-2xl flex-shrink-0">📞</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500">Telepon</p>
-              <p className="font-medium text-gray-800 text-sm">{partner.business_phone}</p>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Telepon</p>
+              <p className="font-medium text-sm @md:text-base">{partner.business_phone}</p>
             </div>
-          </div>
-          <div className="flex items-center space-x-3 min-w-0 sm:col-span-2 lg:col-span-1">
-            <span className="text-xl sm:text-2xl flex-shrink-0">📅</span>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500">Bergabung</p>
-              <p className="font-medium text-gray-800 text-sm">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Bergabung</p>
+              <p className="font-medium text-sm @md:text-base">
                 {new Date(partner.joined_date).toLocaleDateString('id-ID', {
                   day: 'numeric',
                   month: 'long',
@@ -366,329 +331,327 @@ export default function PartnerDetailPage() {
               </p>
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Section Langganan */}
-      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4 sm:mb-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Riwayat Langganan</h2>
-          
-          {/* Add Subscription Dialog */}
-          <Dialog open={isSubModalOpen} onOpenChange={setIsSubModalOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="bg-gray-100 text-gray-800 hover:bg-gray-200 border-gray-400 font-semibold w-full sm:w-auto text-sm"
-                size="sm"
-              >
-                <Plus size={14} className="mr-2" />
-                Tetapkan Paket Baru
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto mx-4">
-              <form onSubmit={handleAddSubscription}>
-                <DialogHeader>
-                  <DialogTitle className="text-lg sm:text-xl">Tetapkan Paket Langganan</DialogTitle>
-                  <DialogDescription className="text-sm">
-                    Pilih paket langganan untuk mitra ini. Tanggal selesai akan dihitung otomatis.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="plan-select" className="text-sm">
-                      Pilih Paket <span className="text-red-500">*</span>
-                    </Label>
-                    <select
-                      id="plan-select"
-                      required
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={subForm.plan_id}
-                      onChange={(e) => setSubForm({...subForm, plan_id: e.target.value})}
-                    >
-                      <option value="">-- Pilih Paket --</option>
-                      {availablePlans.map(plan => (
-                        <option key={plan.plan_id} value={plan.plan_id}>
-                          {plan.plan_name} - {formatRupiah(plan.price)} ({plan.duration_months} bulan)
-                        </option>
-                      ))}
-                    </select>
+      {/* Subscriptions Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+            <div>
+              <CardTitle>Riwayat Langganan</CardTitle>
+              <CardDescription>
+                Daftar paket langganan yang pernah atau sedang aktif
+              </CardDescription>
+            </div>
+            
+            <Dialog open={isSubModalOpen} onOpenChange={setIsSubModalOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="w-full @md:w-auto">
+                  <Plus className="mr-2 h-4 w-4" />
+                  <span className="hidden @sm:inline">Tetapkan Paket Baru</span>
+                  <span className="@sm:hidden">Tambah Paket</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <form onSubmit={handleAddSubscription}>
+                  <DialogHeader>
+                    <DialogTitle>Tetapkan Paket Langganan</DialogTitle>
+                    <DialogDescription>
+                      Tanggal selesai akan dihitung otomatis berdasarkan durasi paket.
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="plan_id">Pilih Paket <span className="text-destructive">*</span></Label>
+                      <select
+                        id="plan_id"
+                        required
+                        value={subForm.plan_id}
+                        onChange={(e) => setSubForm({...subForm, plan_id: e.target.value})}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">-- Pilih Paket --</option>
+                        {availablePlans.map(plan => (
+                          <option key={plan.plan_id} value={plan.plan_id}>
+                            {plan.plan_name} - {formatRupiah(plan.price)} ({plan.duration_months} bulan)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="start_date">Tanggal Mulai <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="start_date"
+                        type="date"
+                        required
+                        value={subForm.start_date}
+                        onChange={(e) => setSubForm({...subForm, start_date: e.target.value})}
+                      />
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="payment_status">Status Pembayaran <span className="text-destructive">*</span></Label>
+                      <select
+                        id="payment_status"
+                        value={subForm.payment_status}
+                        onChange={(e) => setSubForm({...subForm, payment_status: e.target.value})}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="Paid">Lunas</option>
+                        <option value="Pending">Menunggu</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="start-date" className="text-sm">
-                      Tanggal Mulai <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="start-date"
-                      type="date"
-                      required
-                      value={subForm.start_date}
-                      onChange={(e) => setSubForm({...subForm, start_date: e.target.value})}
-                      className="text-sm"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="payment-status" className="text-sm">
-                      Status Pembayaran <span className="text-red-500">*</span>
-                    </Label>
-                    <select
-                      id="payment-status"
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={subForm.payment_status}
-                      onChange={(e) => setSubForm({...subForm, payment_status: e.target.value})}
-                    >
-                      <option value="Paid">Lunas</option>
-                      <option value="Pending">Menunggu</option>
-                    </select>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                    <p className="text-xs sm:text-sm text-blue-800">
-                      <strong>Catatan:</strong> Tanggal selesai akan dihitung otomatis berdasarkan durasi paket yang dipilih.
-                    </p>
-                  </div>
-                </div>
-                <DialogFooter className="flex-col sm:flex-row gap-2">
-                  <DialogClose asChild>
-                    <Button type="button" variant="outline" className="w-full sm:w-auto text-sm">
-                      Batal
-                    </Button>
-                  </DialogClose>
-                  <Button type="submit" className="w-full sm:w-auto text-sm">Simpan Transaksi</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        
-        <div className="overflow-x-auto -mx-4 sm:mx-0">
-          <div className="inline-block min-w-full align-middle">
-            <div className="overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Nama Paket
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Harga & Durasi
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider hidden md:table-cell">
-                      Tanggal Mulai
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider hidden md:table-cell">
-                      Tanggal Selesai
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Pembayaran
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider hidden lg:table-cell">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {subscriptions.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-3 sm:px-6 py-8 text-center text-gray-500 text-sm">
-                        Belum ada riwayat langganan
-                      </td>
-                    </tr>
-                  ) : (
-                    subscriptions.map((sub) => {
+                  
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline">Batal</Button>
+                    </DialogClose>
+                    <Button type="submit">Simpan Transaksi</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {subscriptions.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Belum ada riwayat langganan
+            </div>
+          ) : (
+            <div className="@container/subs">
+              {/* Desktop Table */}
+              <div className="hidden @lg/subs:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nama Paket</TableHead>
+                      <TableHead>Harga & Durasi</TableHead>
+                      <TableHead>Tanggal Mulai</TableHead>
+                      <TableHead>Tanggal Selesai</TableHead>
+                      <TableHead>Pembayaran</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {subscriptions.map((sub) => {
                       const planDetails = getPlanDetails(sub);
                       return (
-                        <tr key={sub.subscription_id} className="hover:bg-gray-50 transition">
-                          <td className="px-3 sm:px-6 py-4">
-                            <div className="font-bold text-gray-900 text-sm break-words">
-                              {getPlanName(sub)}
-                            </div>
-                            {/* Mobile: Show dates */}
-                            <div className="md:hidden mt-2 space-y-1">
-                              <div className="text-xs text-gray-500">
-                                Mulai: {new Date(sub.start_date).toLocaleDateString('id-ID', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric'
-                                })}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Selesai: {new Date(sub.end_date).toLocaleDateString('id-ID', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric'
-                                })}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4">
-                            <div className="text-sm">
-                              <div className="font-semibold text-gray-900 text-xs sm:text-sm break-words">
+                        <TableRow key={sub.subscription_id}>
+                          <TableCell className="font-medium">
+                            {getPlanName(sub)}
+                          </TableCell>
+                          <TableCell>
+                            <div>
+                              <div className="font-semibold flex items-center gap-1">
                                 {formatRupiah(planDetails.price)}
                               </div>
-                              <div className="text-xs text-gray-500">
+                              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
                                 {planDetails.duration} bulan
                               </div>
                             </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 text-sm text-gray-600 hidden md:table-cell">
+                          </TableCell>
+                          <TableCell className="text-sm">
                             {new Date(sub.start_date).toLocaleDateString('id-ID', {
                               day: 'numeric',
                               month: 'short',
                               year: 'numeric'
                             })}
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 text-sm text-gray-600 hidden md:table-cell">
+                          </TableCell>
+                          <TableCell className="text-sm">
                             {new Date(sub.end_date).toLocaleDateString('id-ID', {
                               day: 'numeric',
                               month: 'short',
                               year: 'numeric'
                             })}
-                          </td>
-                          <td className="px-3 sm:px-6 py-4">
-                            <div className="flex flex-col gap-2">
-                              <span className={`inline-flex items-center justify-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-full text-xs font-bold ${
-                                sub.payment_status === 'Paid' 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {sub.payment_status === 'Paid' ? <CheckCircle size={12} /> : <Clock size={12} />}
-                                <span>{sub.payment_status === 'Paid' ? 'Lunas' : 'Pending'}</span>
-                              </span>
-                              {/* Mobile: Show status badge */}
-                              <span className={`lg:hidden inline-flex items-center justify-center px-2 py-1 rounded-full text-xs font-bold ${
-                                sub.payment_status === 'Paid' 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {sub.payment_status === 'Paid' ? 'Aktif' : 'Tidak Aktif'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 hidden lg:table-cell">
-                            <span className={`inline-flex px-4 py-2 rounded-full text-xs font-bold ${
-                              sub.payment_status === 'Paid' 
-                                ? 'bg-green-100 text-green-700' 
-                                : 'bg-gray-100 text-gray-600'
-                            }`}>
-                              {sub.payment_status === 'Paid' ? 'Aktif' : 'Tidak Aktif'}
-                            </span>
-                          </td>
-                        </tr>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}>
+                              {sub.payment_status === 'Paid' ? (
+                                <><CheckCircle className="mr-1 h-3 w-3" /> Lunas</>
+                              ) : (
+                                <><Clock className="mr-1 h-3 w-3" /> Menunggu</>
+                              )}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={sub.status === 'Active' ? 'default' : 'outline'}>
+                              {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
                       );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
 
-      {/* Section Lisensi */}
-      <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4 sm:mb-6">Pemantauan Lisensi Perangkat</h2>
-        
-        <div className="overflow-x-auto -mx-4 sm:mx-0">
-          <div className="inline-block min-w-full align-middle">
-            <div className="overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Kode Aktivasi
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider hidden md:table-cell">
-                      ID Perangkat
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Nama Perangkat
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider hidden lg:table-cell">
-                      Cabang
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {licenses.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 sm:px-6 py-8 text-center text-gray-500 text-sm">
-                        Belum ada lisensi perangkat
-                      </td>
-                    </tr>
-                  ) : (
-                    licenses.map((lic) => {
-                      // Helper function untuk menentukan status lisensi berdasarkan kondisi
-                      const getLicenseStatus = () => {
-                        const hasBranchName = lic.branch?.branch_name && lic.branch.branch_name !== '-';
-                        const hasDeviceId = lic.device_id && lic.device_id !== '-';
-                        const hasDeviceName = lic.device_name && lic.device_name !== '-';
-                        
-                        if (hasDeviceId && hasDeviceName) {
-                          return {
-                            status: 'Active',
-                            label: 'Aktif',
-                            className: 'bg-green-100 text-green-800'
-                          };
-                        }
-                        
-                        if (hasBranchName && !hasDeviceId && !hasDeviceName) {
-                          return {
-                            status: 'Assigned',
-                            label: 'Dialokasikan',
-                            className: 'bg-blue-100 text-blue-800'
-                          };
-                        }
-                        
-                        return {
-                          status: 'Pending',
-                          label: 'Menunggu',
-                          className: 'bg-yellow-100 text-yellow-800'
-                        };
-                      };
-                      
-                      const licenseStatus = getLicenseStatus();
-                      
-                      return (
-                        <tr key={lic.license_id} className="hover:bg-gray-50 transition">
-                          <td className="px-3 sm:px-6 py-4">
-                            <span className="font-mono text-xs sm:text-sm font-semibold text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-1 rounded-lg break-all inline-block">
-                              {lic.activation_code}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-gray-600 hidden md:table-cell">
-                            {lic.device_id || '-'}
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm font-medium text-gray-900">
-                            <div className="break-words">{lic.device_name || '-'}</div>
-                            {/* Mobile: Show additional info */}
-                            <div className="md:hidden mt-1 text-xs text-gray-500">
-                              ID: {lic.device_id || '-'}
-                            </div>
-                            <div className="lg:hidden mt-1 text-xs text-gray-500 break-words">
-                              Cabang: {lic.branch?.branch_name || '-'}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 text-xs sm:text-sm text-gray-600 hidden lg:table-cell">
-                            <div className="break-words">{lic.branch?.branch_name || '-'}</div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4">
-                            <span className={`inline-flex px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${licenseStatus.className}`}>
-                              {licenseStatus.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+              {/* Mobile Card List */}
+              <div className="@lg/subs:hidden space-y-4">
+                {subscriptions.map((sub) => {
+                  const planDetails = getPlanDetails(sub);
+                  return (
+                    <Card key={sub.subscription_id}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <CardTitle className="text-base">{getPlanName(sub)}</CardTitle>
+                          <Badge variant={sub.status === 'Active' ? 'default' : 'outline'}>
+                            {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Harga:</span>
+                          <span className="font-semibold">{formatRupiah(planDetails.price)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Durasi:</span>
+                          <span className="font-medium">{planDetails.duration} bulan</span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Mulai:</span>
+                          <span>{new Date(sub.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Selesai:</span>
+                          <span>{new Date(sub.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        </div>
+                        <Separator />
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Pembayaran:</span>
+                          <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}>
+                            {sub.payment_status === 'Paid' ? 'Lunas' : 'Menunggu'}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Licenses Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Pemantauan Lisensi Perangkat</CardTitle>
+          <CardDescription>
+            Daftar perangkat yang terdaftar untuk mitra ini
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent>
+          {licenses.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Belum ada lisensi perangkat
+            </div>
+          ) : (
+            <div className="@container/license">
+              {/* Desktop Table */}
+              <div className="hidden @lg/license:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kode Aktivasi</TableHead>
+                      <TableHead>ID Perangkat</TableHead>
+                      <TableHead>Nama Perangkat</TableHead>
+                      <TableHead>Cabang</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {licenses.map((lic) => (
+                      <TableRow key={lic.license_id}>
+                        <TableCell>
+                          <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
+                            {lic.activation_code}
+                          </code>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {lic.device_id || '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {lic.device_name || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {lic.branch?.branch_name || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={
+                              lic.license_status === 'Active' ? 'default' :
+                              lic.license_status === 'Assigned' ? 'secondary' : 'outline'
+                            }
+                          >
+                            {lic.license_status === 'Active' ? 'Aktif' : 
+                             lic.license_status === 'Assigned' ? 'Dialokasikan' : 'Menunggu'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card List */}
+              <div className="@lg/license:hidden space-y-4">
+                {licenses.map((lic) => (
+                  <Card key={lic.license_id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <code className="text-xs font-mono font-semibold bg-muted px-2 py-1 rounded">
+                              {lic.activation_code}
+                            </code>
+                          </div>
+                        </div>
+                        <Badge 
+                          variant={
+                            lic.license_status === 'Active' ? 'default' :
+                            lic.license_status === 'Assigned' ? 'secondary' : 'outline'
+                          }
+                        >
+                          {lic.license_status === 'Active' ? 'Aktif' : 
+                           lic.license_status === 'Assigned' ? 'Dialokasikan' : 'Menunggu'}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Device ID:</span>
+                        <span className="font-medium">{lic.device_id || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Nama:</span>
+                        <span className="font-medium">{lic.device_name || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-muted-foreground">Cabang:</span>
+                        <span className="font-medium">{lic.branch?.branch_name || '-'}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

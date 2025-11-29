@@ -2,314 +2,409 @@
 
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
-import { Partner, License } from '@/types';
-import { Smartphone, Search, AlertCircle, Loader2, CheckCircle, Clock, Key } from 'lucide-react';
+import { License, Partner } from '@/types';
+import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
+import { Award, Search, Key, Smartphone, Building2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface ExtendedLicense extends License {
+  partner?: Partner;
+}
 
 export default function LicensesPage() {
+  const [licenses, setLicenses] = useState<ExtendedLicense[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
-  const [licenses, setLicenses] = useState<License[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
   useEffect(() => {
-    loadPartners();
+    fetchData();
   }, []);
 
-  const loadPartners = async () => {
-    try {
-      const data = await fetchWithAuth('/partner');
-      setPartners(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Error loading partners:', error);
-    }
-  };
-
-  const loadLicenses = async (partnerId: string) => {
+  const fetchData = async () => {
     try {
       setIsLoading(true);
-      const data = await fetchWithAuth(`/license/partner/${partnerId}`);
-      setLicenses(Array.isArray(data) ? data : []);
+      
+      const partnersData = await fetchWithAuth('/partner');
+      const partnersList = Array.isArray(partnersData) ? partnersData : [];
+      setPartners(partnersList);
+
+      const licensePromises = partnersList.map((partner: Partner) => 
+        fetchWithAuth(`/license/partner/${partner.partner_id}`)
+          .then(data => {
+            const licensesArray = Array.isArray(data) ? data : [];
+            return licensesArray.map((license: License) => ({
+              ...license,
+              partner: partner
+            }));
+          })
+          .catch(() => [])
+      );
+
+      const licenseResults = await Promise.all(licensePromises);
+      const allLicenses = licenseResults.flat();
+      setLicenses(allLicenses);
+
     } catch (error) {
-      console.error('Error loading licenses:', error);
-      setLicenses([]);
+      console.error('Error fetching licenses:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handlePartnerChange = (partnerId: string) => {
-    setSelectedPartnerId(partnerId);
-    if (partnerId) {
-      loadLicenses(partnerId);
-    } else {
-      setLicenses([]);
+  const getPartnerName = (license: ExtendedLicense): string => {
+    if (license.partner) {
+      return license.partner.business_name;
     }
+    const partner = partners.find(p => p.partner_id === license.partner_id);
+    return partner?.business_name || 'Unknown';
   };
 
-  const determineStatus = (license: License): 'Active' | 'Assigned' | 'Pending' => {
-    if (license.device_id && license.device_id.trim() !== '') {
-      return 'Active';
-    }
-    if (license.branch_id && license.branch_id.trim() !== '') {
-      return 'Assigned';
-    }
-    return 'Pending';
+  const filteredLicenses = licenses.filter(license => {
+    const matchesSearch = 
+      license.activation_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (license.device_id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (license.device_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      getPartnerName(license).toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = 
+      statusFilter === 'all' || 
+      license.license_status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const stats = {
+    total: licenses.length,
+    active: licenses.filter(l => l.license_status === 'Active').length,
+    assigned: licenses.filter(l => l.license_status === 'Assigned').length,
+    pending: licenses.filter(l => l.license_status === 'Pending').length,
   };
 
-  const getStatusConfig = (status: string) => {
-    const configs = {
-      Active: { 
-        color: 'text-green-600', 
-        bg: 'bg-green-50', 
-        border: 'border-green-200',
-        icon: CheckCircle, 
-        label: 'Aktif' 
-      },
-      Assigned: { 
-        color: 'text-blue-600', 
-        bg: 'bg-blue-50', 
-        border: 'border-blue-200',
-        icon: Clock, 
-        label: 'Dialokasikan' 
-      },
-      Pending: { 
-        color: 'text-yellow-600', 
-        bg: 'bg-yellow-50', 
-        border: 'border-yellow-200',
-        icon: Key, 
-        label: 'Pending' 
-      },
-    };
-    return configs[status as keyof typeof configs] || configs.Pending;
-  };
-
-  const activeCount = licenses.filter(l => determineStatus(l) === 'Active').length;
-  const assignedCount = licenses.filter(l => determineStatus(l) === 'Assigned').length;
-  const pendingCount = licenses.filter(l => determineStatus(l) === 'Pending').length;
-
-  const filteredLicenses = licenses.filter(license =>
-    license.activation_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    license.device_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    license.branch?.branch_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  if (isLoading) {
+    return <TableSkeleton rows={12} showSearch showButton />; // ✅ Use skeleton
+  }
 
   return (
-    <div className="pb-6 sm:pb-10 px-4 sm:px-0">
-      
-      {/* HEADER */}
-      <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Pemantauan Lisensi</h1>
-        <p className="text-gray-600 mt-2 text-sm sm:text-base">
-          Lacak dan kelola lisensi perangkat di semua mitra
-        </p>
-      </div>
-
-      {/* PARTNER SELECTOR */}
-      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 shadow-sm mb-6 sm:mb-8">
-        <label className="block text-sm font-bold text-gray-700 mb-3">
-          Pilih Mitra untuk Melihat Lisensi
-        </label>
-        <div className="relative">
-          <select
-            value={selectedPartnerId}
-            onChange={(e) => handlePartnerChange(e.target.value)}
-            className="w-full border border-gray-300 p-3 sm:p-4 rounded-xl bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none font-medium text-gray-700 text-sm sm:text-base"
-          >
-            <option value="">-- Pilih Mitra --</option>
-            {partners.map(partner => (
-              <option key={partner.partner_id} value={partner.partner_id}>
-                {partner.business_name} ({partner.status === 'Active' ? 'Aktif' : 'Ditangguhkan'})
-              </option>
-            ))}
-          </select>
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+      {/* Header - Responsive */}
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight @md:text-3xl">Lisensi Perangkat</h2>
+          <p className="text-sm text-muted-foreground @md:text-base">
+            Monitor dan kelola semua lisensi perangkat mitra
+          </p>
         </div>
       </div>
 
-      {selectedPartnerId && (
-        <>
-          {/* LEGEND */}
-          <div className="mb-6 sm:mb-8 bg-gradient-to-r from-gray-100 to-gray-100 border border-gray-200 p-4 sm:p-6 rounded-2xl">
-            <h3 className="font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2 text-sm sm:text-base">
-              <AlertCircle size={18} className="flex-shrink-0" />
-              <span>Informasi Status Lisensi</span>
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 text-sm">
-              
-              {/* Card 1 */}
-              <div className="flex items-start gap-3 bg-white p-3 sm:p-4 rounded-xl border border-green-200">
-                <div className="p-2 bg-green-100 rounded-lg flex-shrink-0">
-                  <CheckCircle size={16} className="text-green-600" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-gray-900 mb-1 text-sm">Aktif</p>
-                  <p className="text-gray-600 text-xs leading-relaxed">
-                    Cabang sudah dialokasikan dan perangkat sudah diaktifkan (Device ID tersedia)
-                  </p>
-                </div>
+      {/* Stats Cards - Responsive */}
+      <div className="grid gap-4 grid-cols-2 @lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium @md:text-sm">
+              Total Lisensi
+            </CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold @md:text-2xl">+{stats.total}</div>
+            <p className="text-xs text-muted-foreground hidden @sm:block">
+              Semua perangkat terdaftar
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium @md:text-sm">
+              Lisensi Aktif
+            </CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold @md:text-2xl">+{stats.active}</div>
+            <p className="text-xs text-muted-foreground hidden @sm:block">
+              Perangkat aktif dan terverifikasi
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium @md:text-sm">
+              Dialokasikan
+            </CardTitle>
+            <Smartphone className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold @md:text-2xl">+{stats.assigned}</div>
+            <p className="text-xs text-muted-foreground hidden @sm:block">
+              Sudah ditempatkan ke cabang
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs font-medium @md:text-sm">
+              Menunggu
+            </CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold @md:text-2xl">+{stats.pending}</div>
+            <p className="text-xs text-muted-foreground hidden @sm:block">
+              Belum diaktivasi
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+            <div className="space-y-1">
+              <CardTitle>Daftar Lisensi</CardTitle>
+              <CardDescription>
+                Semua lisensi perangkat dari seluruh mitra
+              </CardDescription>
+            </div>
+            
+            <div className="flex flex-col gap-2 @md:flex-row @md:items-center">
+              {/* Search */}
+              <div className="relative w-full @md:w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari lisensi..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
               </div>
-              
-              {/* Card 2 */}
-              <div className="flex items-start gap-3 bg-white p-3 sm:p-4 rounded-xl border border-blue-200">
-                <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
-                  <Clock size={16} className="text-blue-600" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-gray-900 mb-1 text-sm">Dialokasikan</p>
-                  <p className="text-gray-600 text-xs leading-relaxed">
-                    Sudah ditugaskan ke cabang tapi perangkat belum diaktifkan
-                  </p>
-                </div>
-              </div>
-              
-              {/* Card 3 */}
-              <div className="flex items-start gap-3 bg-white p-3 sm:p-4 rounded-xl border border-yellow-200">
-                <div className="p-2 bg-yellow-100 rounded-lg flex-shrink-0">
-                  <Key size={16} className="text-yellow-600" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-gray-900 mb-1 text-sm">Pending</p>
-                  <p className="text-gray-600 text-xs leading-relaxed">
-                    Belum dialokasikan ke cabang manapun, tersedia untuk ditugaskan
-                  </p>
-                </div>
-              </div>
+
+              {/* Status Filter */}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full @md:w-[180px]">
+                  <SelectValue placeholder="Filter Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Status</SelectItem>
+                  <SelectItem value="Active">Aktif</SelectItem>
+                  <SelectItem value="Assigned">Dialokasikan</SelectItem>
+                  <SelectItem value="Pending">Menunggu</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
+        </CardHeader>
 
-          {/* LICENSES TABLE */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            
-            {/* Table Header Section */}
-            <div className="p-4 sm:p-6 border-b border-gray-200">
-              <div className="flex flex-col gap-3 sm:gap-4">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Detail Lisensi</h2>
-                
-                {/* Search Bar */}
-                <div className="relative w-full">
-                  <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input
-                    type="text"
-                    placeholder="Cari berdasarkan kode, perangkat, atau cabang..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 text-sm sm:text-base bg-gray-50 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                </div>
-              </div>
+        <CardContent>
+          {filteredLicenses.length === 0 ? (
+            <div className="text-center py-12">
+              <Award className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-semibold">
+                {searchTerm || statusFilter !== 'all' ? 'Tidak ada hasil' : 'Belum ada lisensi'}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {searchTerm || statusFilter !== 'all' 
+                  ? 'Coba ubah filter atau kata kunci pencarian' 
+                  : 'Lisensi akan muncul setelah mitra mengaktivasi perangkat'}
+              </p>
             </div>
-            
-            {/* Table Body */}
-            {isLoading ? (
-              <div className="flex items-center justify-center py-16 sm:py-20">
-                <div className="text-center">
-                  <Loader2 size={36} className="animate-spin text-blue-600 mx-auto mb-4" />
-                  <p className="text-gray-500 text-sm">Memuat lisensi...</p>
-                </div>
-              </div>
-            ) : filteredLicenses.length === 0 ? (
-              <div className="text-center py-16 sm:py-20 px-4">
-                <Smartphone size={48} className="sm:w-16 sm:h-16 mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500 text-base sm:text-lg">
-                  {searchTerm ? 'Tidak ada lisensi yang cocok dengan pencarian' : 'Tidak ada lisensi tersedia untuk mitra ini'}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  
-                  {/* Table Header */}
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                        Kode Aktivasi
-                      </th>
-                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                        Cabang
-                      </th>
-                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider hidden md:table-cell">
-                        Informasi Perangkat
-                      </th>
-                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  
-                  {/* Table Body */}
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredLicenses.map((license) => {
-                      const actualStatus = determineStatus(license);
-                      const statusConfig = getStatusConfig(actualStatus);
-                      const StatusIcon = statusConfig.icon;
-                      
-                      return (
-                        <tr key={license.license_id} className="hover:bg-gray-50 transition">
-                          <td className="px-3 sm:px-6 py-4 sm:py-5">
-                            <span className="font-mono text-xs sm:text-sm font-semibold text-indigo-600 bg-indigo-50 px-2 sm:px-3 py-1 sm:py-2 rounded-3xl border border-indigo-200 break-all inline-block">
+          ) : (
+            <div className="@container/licenses">
+              {/* Desktop Table */}
+              <div className="hidden @2xl/licenses:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Kode Aktivasi</TableHead>
+                      <TableHead>Mitra</TableHead>
+                      <TableHead>ID Perangkat</TableHead>
+                      <TableHead>Nama Perangkat</TableHead>
+                      <TableHead>Cabang</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Diaktivasi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLicenses.map((license) => (
+                      <TableRow key={license.license_id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground" />
+                            <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
                               {license.activation_code}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 sm:py-5">
-                            <div className="text-sm">
-                              {license.branch?.branch_name ? (
-                                <div className="font-semibold text-gray-900 flex items-center gap-2 break-words">
-                                  <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                                  <span>{license.branch.branch_name}</span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400 text-xs sm:text-sm">Belum Dialokasikan</span>
-                              )}
-                            </div>
-                            {/* Mobile: Show device info */}
-                            <div className="md:hidden mt-2">
-                              {license.device_id && license.device_id.trim() !== '' ? (
-                                <div className="text-xs">
-                                  <div className="font-semibold text-gray-900 break-words">
-                                    {license.device_name || 'Nama tidak tersedia'}
-                                  </div>
-                                  <div className="text-gray-500 font-mono mt-1 break-all">
-                                    ID: {license.device_id}
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400 text-xs">Belum Diaktifkan</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 sm:py-5 hidden md:table-cell">
-                            <div className="text-sm">
-                              {license.device_id && license.device_id.trim() !== '' ? (
-                                <>
-                                  <div className="font-semibold text-gray-900 break-words">
-                                    {license.device_name || 'Nama tidak tersedia'}
-                                  </div>
-                                  <div className="text-gray-500 text-xs mt-1 font-mono break-all">
-                                    ID: {license.device_id}
-                                  </div>
-                                </>
-                              ) : (
-                                <span className="text-gray-400">Belum Diaktifkan</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-4 sm:py-5">
-                            <span className={`inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-bold border ${statusConfig.bg} ${statusConfig.color} ${statusConfig.border}`}>
-                              <StatusIcon size={14} className="flex-shrink-0" />
-                              <span>{statusConfig.label}</span>
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </code>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                            {getPartnerName(license)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {license.device_id || '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {license.device_name || '-'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {license.branch?.branch_name || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={
+                              license.license_status === 'Active' ? 'default' :
+                              license.license_status === 'Assigned' ? 'secondary' : 'outline'
+                            }
+                          >
+                            {license.license_status === 'Active' && (
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                            )}
+                            {license.license_status === 'Assigned' && (
+                              <Smartphone className="mr-1 h-3 w-3" />
+                            )}
+                            {license.license_status === 'Pending' && (
+                              <Clock className="mr-1 h-3 w-3" />
+                            )}
+                            {license.license_status === 'Active' ? 'Aktif' : 
+                             license.license_status === 'Assigned' ? 'Dialokasikan' : 'Menunggu'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {license.activated_at 
+                            ? new Date(license.activated_at).toLocaleDateString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric'
+                              })
+                            : '-'
+                          }
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-            )}
-          </div>
 
-        </>
-      )}
+              {/* Mobile/Tablet Card List */}
+              <div className="@2xl/licenses:hidden space-y-4">
+                {filteredLicenses.map((license) => (
+                  <Card key={license.license_id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-1 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Key className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <code className="text-xs font-mono font-semibold bg-muted px-2 py-1 rounded truncate">
+                              {license.activation_code}
+                            </code>
+                          </div>
+                          <CardTitle className="text-sm truncate">{getPartnerName(license)}</CardTitle>
+                        </div>
+                        <Badge 
+                          variant={
+                            license.license_status === 'Active' ? 'default' :
+                            license.license_status === 'Assigned' ? 'secondary' : 'outline'
+                          }
+                          className="flex-shrink-0"
+                        >
+                          {license.license_status === 'Active' ? 'Aktif' : 
+                           license.license_status === 'Assigned' ? 'Dialokasikan' : 'Menunggu'}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Device ID:</span>
+                        <span className="font-medium truncate ml-2">{license.device_id || '-'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Nama Perangkat:</span>
+                        <span className="font-medium truncate ml-2">{license.device_name || '-'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Cabang:</span>
+                        <span className="font-medium truncate ml-2">{license.branch?.branch_name || '-'}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Diaktivasi:</span>
+                        <span className="text-xs">
+                          {license.activated_at 
+                            ? new Date(license.activated_at).toLocaleDateString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric'
+                              })
+                            : '-'
+                          }
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Info Card - Responsive */}
+      <Card className="bg-muted/50">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base @md:text-lg">Informasi Lisensi</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2 text-xs @md:text-sm text-muted-foreground">
+          <div className="flex items-start gap-2">
+            <CheckCircle className="h-4 w-4 mt-0.5 text-green-600 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-foreground">Aktif:</span> Perangkat telah diaktivasi dan terverifikasi
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Smartphone className="h-4 w-4 mt-0.5 text-blue-600 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-foreground">Dialokasikan:</span> Lisensi telah ditempatkan ke cabang tertentu
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 mt-0.5 text-yellow-600 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-foreground">Menunggu:</span> Belum diaktivasi oleh mitra
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

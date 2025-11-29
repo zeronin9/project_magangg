@@ -70,9 +70,11 @@ export interface License {
   device_id: string | null;
   device_name: string | null;
   license_status: string;
+  activated_at?: string | null;
   branch?: {
     branch_name: string;
   };
+  partner?: Partner;
 }
 
 export interface Category {

@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
-import { formatRupiah } from '@/lib/formatters';
-import { Partner, SubscriptionPlan } from '@/types';
-import { ShoppingBag, Plus, Search, Loader2, Calendar, CheckCircle, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Partner, PartnerSubscription, SubscriptionPlan } from '@/types';
+import { ShoppingBag, Plus, Edit2, Trash2, Calendar, DollarSign, CheckCircle, Clock, User, MoreHorizontal, Search } from 'lucide-react';
 import {
   Dialog,
   DialogClose,
@@ -15,39 +13,55 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
-interface SubscriptionData {
-  subscription_id: string;
-  partner_id: string;
-  plan_id: string;
-  start_date: string;
-  end_date: string;
-  payment_status: string;
-  status: string;
-  partner?: {
-    business_name: string;
-  };
-  plan_snapshot?: {
-    plan_name: string;
-    price: number;
-    duration_months: number;
-  };
-}
+// ✅ Format Rupiah Helper
+const formatRupiah = (amount: number): string => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
 
 export default function SubscriptionsPage() {
-  const [subscriptions, setSubscriptions] = useState<SubscriptionData[]>([]);
+  const [subscriptions, setSubscriptions] = useState<PartnerSubscription[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
-  const [summary, setSummary] = useState({
-    total_subscriptions_record: 0,
-    currently_active_partners: 0,
-    total_revenue: '0'
-  });
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingSubscription, setEditingSubscription] = useState<PartnerSubscription | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [formData, setFormData] = useState({
@@ -57,74 +71,40 @@ export default function SubscriptionsPage() {
     payment_status: 'Paid'
   });
 
-  // Helper function untuk mendapatkan plan details
-  const getPlanDetails = (subscription: SubscriptionData) => {
-    if (subscription.plan_snapshot?.plan_name && subscription.plan_snapshot?.price) {
-      return {
-        plan_name: subscription.plan_snapshot.plan_name,
-        price: subscription.plan_snapshot.price,
-        duration_months: subscription.plan_snapshot.duration_months
-      };
-    }
-    
-    const plan = plans.find(p => p.plan_id === subscription.plan_id);
-    if (plan) {
-      return {
-        plan_name: plan.plan_name,
-        price: plan.price,
-        duration_months: plan.duration_months
-      };
-    }
-    
-    return {
-      plan_name: 'N/A',
-      price: 0,
-      duration_months: 0
-    };
-  };
+  const [editFormData, setEditFormData] = useState({
+    start_date: '',
+    payment_status: 'Paid'
+  });
 
   useEffect(() => {
-    loadData();
+    fetchData();
   }, []);
 
-  const loadData = async () => {
+  const fetchData = async () => {
     try {
       setIsLoading(true);
       
-      const plansData = await fetchWithAuth('/subscription-plan');
-      const allPlans = Array.isArray(plansData) ? plansData : [];
-      setPlans(allPlans);
-      
-      const [subsData, partnersData] = await Promise.all([
+      const [subsData, partnersData, plansData] = await Promise.allSettled([
         fetchWithAuth('/partner-subscription'),
         fetchWithAuth('/partner'),
+        fetchWithAuth('/subscription-plan')
       ]);
 
-      if (subsData && typeof subsData === 'object') {
-        const subscriptionsArray = Array.isArray(subsData.data) ? subsData.data : [];
-        
-        if (subscriptionsArray.length > 0) {
-          console.log('📊 Sample Subscription Data:', subscriptionsArray[0]);
-          console.log('📦 Available Plans:', allPlans);
-        }
-        
-        setSubscriptions(subscriptionsArray);
-        setSummary(subsData.summary || { 
-          total_subscriptions_record: 0, 
-          currently_active_partners: 0, 
-          total_revenue: '0' 
-        });
-      } else {
-        setSubscriptions([]);
+      if (subsData.status === 'fulfilled') {
+        const subs = subsData.value?.data || [];
+        setSubscriptions(Array.isArray(subs) ? subs : []);
       }
 
-      setPartners(Array.isArray(partnersData) ? partnersData : []);
-      
+      if (partnersData.status === 'fulfilled') {
+        setPartners(Array.isArray(partnersData.value) ? partnersData.value : []);
+      }
+
+      if (plansData.status === 'fulfilled') {
+        setPlans(Array.isArray(plansData.value) ? plansData.value : []);
+      }
+
     } catch (error) {
-      console.error('Error loading subscriptions:', error);
-      setSubscriptions([]);
-      setPartners([]);
-      setPlans([]);
+      console.error('Error fetching data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -132,328 +112,527 @@ export default function SubscriptionsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     try {
-      const payload = {
-        partner_id: formData.partner_id,
-        plan_id: formData.plan_id,
-        start_date: new Date(formData.start_date).toISOString(),
-        payment_status: formData.payment_status
-      };
-
-      if (!payload.partner_id || !payload.plan_id || !payload.start_date) {
-        alert('Partner ID, Plan ID, dan tanggal mulai wajib diisi');
-        return;
-      }
-
-      const response = await fetchWithAuth('/partner-subscription', {
+      await fetchWithAuth('/partner-subscription', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...formData,
+          start_date: new Date(formData.start_date).toISOString()
+        }),
       });
-
-      if (response) {
-        alert('Langganan berhasil ditambahkan!');
-        setIsModalOpen(false);
-        loadData();
-        resetForm();
-      }
-      
+      alert('Langganan berhasil ditambahkan!');
+      setIsModalOpen(false);
+      fetchData();
+      setFormData({
+        partner_id: '',
+        plan_id: '',
+        start_date: new Date().toISOString().split('T')[0],
+        payment_status: 'Paid'
+      });
     } catch (error: any) {
-      if (error.message) {
-        alert(error.message);
-      } else {
-        alert('Gagal menambahkan langganan. Pastikan semua data terisi dengan benar.');
-      }
-      console.error('Subscription error:', error);
+      alert(error.message || 'Gagal menambahkan langganan');
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      partner_id: '',
-      plan_id: '',
-      start_date: new Date().toISOString().split('T')[0],
-      payment_status: 'Paid'
+  const handleOpenEdit = (subscription: PartnerSubscription) => {
+    setEditingSubscription(subscription);
+    setEditFormData({
+      start_date: subscription.start_date ? new Date(subscription.start_date).toISOString().split('T')[0] : '',
+      payment_status: subscription.payment_status || 'Paid'
     });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSubscription) return;
+
+    try {
+      await fetchWithAuth(`/partner-subscription/${editingSubscription.subscription_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          start_date: new Date(editFormData.start_date).toISOString(),
+          payment_status: editFormData.payment_status
+        }),
+      });
+      alert('Langganan berhasil diperbarui!');
+      setIsEditModalOpen(false);
+      fetchData();
+      setEditingSubscription(null);
+    } catch (error: any) {
+      alert(error.message || 'Gagal memperbarui langganan');
+    }
+  };
+
+  const handleDeleteSubscription = async (id: string) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus langganan ini?')) return;
+    
+    try {
+      await fetchWithAuth(`/partner-subscription/${id}`, {
+        method: 'DELETE',
+      });
+      alert('Langganan berhasil dihapus!');
+      fetchData();
+    } catch (error: any) {
+      alert(error.message || 'Gagal menghapus langganan');
+    }
+  };
+
+  const getPartnerName = (partnerId: string) => {
+    const partner = partners.find(p => p.partner_id === partnerId);
+    return partner?.business_name || 'Unknown';
+  };
+
+  const getPlanName = (sub: PartnerSubscription) => {
+    if (sub.plan_snapshot?.plan_name) {
+      return sub.plan_snapshot.plan_name;
+    }
+    const plan = plans.find(p => p.plan_id === sub.plan_id);
+    return plan?.plan_name || 'Unknown Plan';
+  };
+
+  const getPlanDetails = (sub: PartnerSubscription) => {
+    if (sub.plan_snapshot) {
+      return {
+        price: sub.plan_snapshot.price,
+        duration: sub.plan_snapshot.duration_months
+      };
+    }
+    const plan = plans.find(p => p.plan_id === sub.plan_id);
+    return {
+      price: plan?.price || 0,
+      duration: plan?.duration_months || 0
+    };
   };
 
   const filteredSubscriptions = subscriptions.filter(sub => {
-    const planDetails = getPlanDetails(sub);
-    return (
-      sub.partner?.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      planDetails.plan_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const partnerName = getPartnerName(sub.partner_id).toLowerCase();
+    const planName = getPlanName(sub).toLowerCase();
+    const search = searchTerm.toLowerCase();
+    return partnerName.includes(search) || planName.includes(search);
   });
 
+  if (isLoading) {
+    return <TableSkeleton rows={10} showSearch showButton />;
+  }
+
   return (
-    <div className="pb-6 sm:pb-10 px-4 sm:px-0">
-      
-      {/* HEADER */}
-      <div className="mb-6 sm:mb-8 flex flex-col gap-4">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+      {/* Header - Responsive */}
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Langganan Mitra</h1>
-          <p className="text-gray-600 mt-2 text-sm sm:text-base">
-            Kelola penugasan langganan dan lacak pendapatan
+          <h2 className="text-2xl font-bold tracking-tight @md:text-3xl">Langganan Mitra</h2>
+          <p className="text-sm text-muted-foreground @md:text-base">
+            Kelola dan pantau semua langganan mitra
           </p>
         </div>
       </div>
 
-      
-      {/* SUBSCRIPTIONS TABLE */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-6 border-b border-gray-200">
-          <div className="flex flex-col gap-3 sm:gap-4">
-            
-            {/* Search Bar */}
-            <div className="relative w-full">
-              <Search className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                placeholder="Cari berdasarkan mitra atau paket..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 text-sm sm:text-base bg-gray-50 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-              />
+      {/* Main Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+            <div className="space-y-1 flex-1">
+              <CardTitle>Riwayat Langganan</CardTitle>
+              <CardDescription>
+                Daftar semua langganan yang pernah atau sedang aktif
+              </CardDescription>
             </div>
             
-            {/* Dialog Tetapkan Langganan Baru */}
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-              <DialogTrigger asChild>
-                <Button 
-                  variant="outline"
-                  className="bg-gradient-to-r from-gray-100 to-gray-100 text-gray-800 hover:from-gray-200 hover:to-gray-200 border-gray-400 font-semibold w-full sm:w-auto text-sm"
-                  size="sm"
-                >
-                  <Plus size={18} className="mr-2" />
-                  Tetapkan Langganan Baru
+            <div className="flex flex-col gap-2 @md:flex-row @md:items-center">
+              {/* Search */}
+              <div className="relative w-full @md:w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari langganan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+
+              {/* Add Subscription Dialog */}
+              <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+                <DialogTrigger asChild>
+                  <Button className="w-full @md:w-auto">
+                    <Plus className="mr-2 h-4 w-4" />
+                    <span className="hidden @sm:inline">Tetapkan Langganan Baru</span>
+                    <span className="@sm:hidden">Tambah</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <form onSubmit={handleSubmit}>
+                    <DialogHeader>
+                      <DialogTitle>Tetapkan Langganan Baru</DialogTitle>
+                      <DialogDescription>
+                        Pilih mitra dan paket langganan yang akan ditetapkan
+                      </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="partner_id">Pilih Mitra <span className="text-destructive">*</span></Label>
+                        <select
+                          id="partner_id"
+                          required
+                          value={formData.partner_id}
+                          onChange={(e) => setFormData({...formData, partner_id: e.target.value})}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="">-- Pilih Mitra --</option>
+                          {partners
+                            .filter(p => p.status === 'Active')
+                            .map(partner => (
+                              <option key={partner.partner_id} value={partner.partner_id}>
+                                {partner.business_name}
+                              </option>
+                            ))
+                          }
+                        </select>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="plan_id">Pilih Paket <span className="text-destructive">*</span></Label>
+                        <select
+                          id="plan_id"
+                          required
+                          value={formData.plan_id}
+                          onChange={(e) => setFormData({...formData, plan_id: e.target.value})}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="">-- Pilih Paket --</option>
+                          {plans.map(plan => (
+                            <option key={plan.plan_id} value={plan.plan_id}>
+                              {plan.plan_name} - {formatRupiah(plan.price)} ({plan.duration_months} bulan)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="start_date">Tanggal Mulai <span className="text-destructive">*</span></Label>
+                        <Input
+                          id="start_date"
+                          type="date"
+                          required
+                          value={formData.start_date}
+                          onChange={(e) => setFormData({...formData, start_date: e.target.value})}
+                        />
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label htmlFor="payment_status">Status Pembayaran <span className="text-destructive">*</span></Label>
+                        <select
+                          id="payment_status"
+                          value={formData.payment_status}
+                          onChange={(e) => setFormData({...formData, payment_status: e.target.value})}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="Paid">Lunas</option>
+                          <option value="Pending">Menunggu</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <DialogFooter>
+                      <DialogClose asChild>
+                        <Button variant="outline">Batal</Button>
+                      </DialogClose>
+                      <Button type="submit">Simpan Langganan</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {filteredSubscriptions.length === 0 ? (
+            <div className="text-center py-12">
+              <ShoppingBag className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-semibold">
+                {searchTerm ? 'Tidak ada hasil' : 'Belum ada langganan'}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {searchTerm 
+                  ? 'Coba ubah kata kunci pencarian' 
+                  : 'Mulai dengan menetapkan langganan pertama untuk mitra'}
+              </p>
+              {!searchTerm && (
+                <Button className="mt-4" onClick={() => setIsModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Tetapkan Langganan Pertama
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto mx-4">
-                <form onSubmit={handleSubmit}>
-                  <DialogHeader>
-                    <DialogTitle className="text-lg sm:text-xl">Tetapkan Langganan Baru</DialogTitle>
-                    <DialogDescription className="text-sm">
-                      Pilih mitra dan paket langganan. Tanggal selesai akan dihitung otomatis.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="partner-select" className="text-sm">
-                        Pilih Mitra <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        id="partner-select"
-                        required
-                        value={formData.partner_id}
-                        onChange={(e) => setFormData({...formData, partner_id: e.target.value})}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="">-- Pilih Mitra --</option>
-                        {partners.filter(p => p.status === 'Active').map(partner => (
-                          <option key={partner.partner_id} value={partner.partner_id}>
-                            {partner.business_name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="plan-select-sub" className="text-sm">
-                        Pilih Paket <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        id="plan-select-sub"
-                        required
-                        value={formData.plan_id}
-                        onChange={(e) => setFormData({...formData, plan_id: e.target.value})}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="">-- Pilih Paket --</option>
-                        {plans.map(plan => (
-                          <option key={plan.plan_id} value={plan.plan_id}>
-                            {plan.plan_name} - {formatRupiah(plan.price)} ({plan.duration_months} bulan)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="start-date-sub" className="text-sm">
-                        Tanggal Mulai <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="start-date-sub"
-                        type="date"
-                        required
-                        value={formData.start_date}
-                        onChange={(e) => setFormData({...formData, start_date: e.target.value})}
-                        className="text-sm"
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="payment-status-sub" className="text-sm">
-                        Status Pembayaran <span className="text-red-500">*</span>
-                      </Label>
-                      <select
-                        id="payment-status-sub"
-                        value={formData.payment_status}
-                        onChange={(e) => setFormData({...formData, payment_status: e.target.value})}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="Paid">Lunas</option>
-                        <option value="Pending">Menunggu</option>
-                      </select>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-                      <p className="text-xs sm:text-sm text-blue-800">
-                        <strong>Catatan:</strong> Tanggal selesai akan dihitung otomatis berdasarkan durasi paket yang dipilih.
-                      </p>
-                    </div>
-                  </div>
-                  <DialogFooter className="flex-col sm:flex-row gap-2">
-                    <DialogClose asChild>
-                      <Button type="button" variant="outline" className="w-full sm:w-auto text-sm">
-                        Batal
-                      </Button>
-                    </DialogClose>
-                    <Button type="submit" className="w-full sm:w-auto text-sm">Tetapkan Langganan</Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-        
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16 sm:py-20">
-            <div className="text-center">
-              <Loader2 size={36} className="animate-spin text-blue-600 mx-auto mb-4" />
-              <p className="text-gray-500 text-sm">Memuat langganan...</p>
+              )}
             </div>
-          </div>
-        ) : filteredSubscriptions.length === 0 ? (
-          <div className="text-center py-16 sm:py-20 px-4">
-            <ShoppingBag size={48} className="sm:w-16 sm:h-16 mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-base sm:text-lg mb-4">
-              {searchTerm ? 'Tidak ada langganan yang ditemukan' : 'Belum ada transaksi langganan'}
-            </p>
-            {!searchTerm && (
-              <Button
-                onClick={() => setIsModalOpen(true)}
-                variant="outline"
-                className="bg-gray-100 text-gray-800 hover:bg-gray-400 hover:text-white border-gray-300 text-sm"
-                size="sm"
-              >
-                <Plus size={18} className="mr-2" />
-                Buat Langganan Pertama
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase">Mitra</th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase">Paket</th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase hidden md:table-cell">Harga</th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase hidden lg:table-cell">Periode</th>
-                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-bold text-gray-600 uppercase">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+          ) : (
+            <div className="@container/subs">
+              {/* Desktop Table - ✅ Rupiah Format */}
+              <div className="hidden @2xl/subs:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mitra</TableHead>
+                      <TableHead>Paket Langganan</TableHead>
+                      <TableHead>Harga</TableHead>
+                      <TableHead>Durasi</TableHead>
+                      <TableHead>Periode</TableHead>
+                      <TableHead>Pembayaran</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredSubscriptions.map((sub) => {
+                      const planDetails = getPlanDetails(sub);
+                      return (
+                        <TableRow key={sub.subscription_id}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">
+                                {getPartnerName(sub.partner_id)}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {getPlanName(sub)}
+                          </TableCell>
+                          <TableCell className="font-semibold text-primary">
+                            {formatRupiah(planDetails.price)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {planDetails.duration} bulan
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <div>
+                                {sub.start_date && new Date(sub.start_date).toLocaleDateString('id-ID', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">s/d</div>
+                              <div>
+                                {sub.end_date && new Date(sub.end_date).toLocaleDateString('id-ID', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}>
+                              {sub.payment_status === 'Paid' ? (
+                                <><CheckCircle className="mr-1 h-3 w-3" /> Lunas</>
+                              ) : (
+                                <><Clock className="mr-1 h-3 w-3" /> Menunggu</>
+                              )}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={sub.status === 'Active' ? 'default' : 'outline'}>
+                              {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                  <span className="sr-only">Open menu</span>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => handleOpenEdit(sub)}>
+                                  <Edit2 className="mr-2 h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => handleDeleteSubscription(sub.subscription_id)}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Hapus
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile/Tablet Card List - ✅ Rupiah Format */}
+              <div className="@2xl/subs:hidden space-y-4">
                 {filteredSubscriptions.map((sub) => {
                   const planDetails = getPlanDetails(sub);
-                  
                   return (
-                    <tr key={sub.subscription_id} className="hover:bg-gray-50 transition">
-                      <td className="px-3 sm:px-6 py-4 sm:py-5 font-semibold text-gray-900 text-sm break-words">
-                        {sub.partner?.business_name || 'N/A'}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 sm:py-5">
-                        <div>
-                          <div className="font-semibold text-gray-900 text-sm break-words">
-                            {planDetails.plan_name}
+                    <Card key={sub.subscription_id}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <CardTitle className="text-base truncate">{getPartnerName(sub.partner_id)}</CardTitle>
+                            <p className="text-sm text-muted-foreground truncate">{getPlanName(sub)}</p>
                           </div>
-                          <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                            <Calendar size={12} />
-                            {planDetails.duration_months} bulan
-                          </div>
-                          {/* Mobile: Show price */}
-                          <div className="md:hidden text-xs font-bold text-gray-900 mt-1">
-                            {formatRupiah(planDetails.price)}
-                          </div>
-                          {/* Mobile/Tablet: Show dates */}
-                          <div className="lg:hidden mt-2 space-y-1">
-                            <div className="text-xs text-gray-500">
-                              Mulai: {new Date(sub.start_date).toLocaleDateString('id-ID', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              Selesai: {new Date(sub.end_date).toLocaleDateString('id-ID', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleOpenEdit(sub)}>
+                                <Edit2 className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteSubscription(sub.subscription_id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Hapus
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3 text-sm">
+                        {/* ✅ Rupiah Price dengan Icon */}
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-muted-foreground">Harga:</span>
+                          <div className="flex items-baseline gap-1 font-semibold">
+                            <DollarSign className="h-4 w-4 text-green-600" />
+                            <span>{formatRupiah(planDetails.price)}</span>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 sm:py-5 font-bold text-gray-900 text-sm hidden md:table-cell">
-                        {formatRupiah(planDetails.price)}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 sm:py-5 hidden lg:table-cell">
-                        <div className="text-sm">
-                          <div className="text-gray-900 font-medium">
-                            {new Date(sub.start_date).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            s/d {new Date(sub.end_date).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
-                          </div>
+                        
+                        <Separator />
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Durasi:</span>
+                          <Badge variant="outline" className="h-6 text-xs">
+                            {planDetails.duration} bulan
+                          </Badge>
                         </div>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 sm:py-5">
-                        <div className="space-y-2">
-                          <span className={`inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1 sm:py-2 rounded-full text-xs font-bold ${
-                            sub.payment_status === 'Paid' 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {sub.payment_status === 'Paid' ? <CheckCircle size={12} /> : <Clock size={12} />}
-                            <span className="hidden sm:inline">{sub.payment_status === 'Paid' ? 'Lunas' : 'Upgraded'}</span>
+                        
+                        <Separator />
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Periode:</span>
+                          <span className="text-xs">
+                            {sub.start_date && new Date(sub.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {' - '}
+                            {sub.end_date && new Date(sub.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </span>
-                          <div>
-                            <span className={`inline-flex px-2 sm:px-4 py-1 sm:py-2 rounded-full text-xs font-bold ${
-                              sub.payment_status === 'Paid' 
-                                ? 'bg-green-100 text-green-700' 
-                                : 'bg-gray-100 text-gray-600'
-                            }`}>
-                              {sub.payment_status === 'Paid' ? 'Aktif' : 'Tidak Aktif'}
-                            </span>
-                          </div>
                         </div>
-                      </td>
-                    </tr>
+                        
+                        <Separator />
+                        
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-muted-foreground">Pembayaran:</span>
+                          <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'} className="h-6 text-xs">
+                            {sub.payment_status === 'Paid' ? 'Lunas' : 'Menunggu'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-muted-foreground">Status:</span>
+                          <Badge variant={sub.status === 'Active' ? 'default' : 'outline'} className="h-6 text-xs">
+                            {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleUpdateSubscription}>
+            <DialogHeader>
+              <DialogTitle>Edit Langganan</DialogTitle>
+              <DialogDescription>
+                Perbarui detail langganan mitra
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
+              <div className="bg-muted p-4 rounded-lg space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Mitra:</span>
+                  <span className="font-semibold">
+                    {editingSubscription && getPartnerName(editingSubscription.partner_id)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Paket:</span>
+                  <span className="font-semibold">
+                    {editingSubscription && getPlanName(editingSubscription)}
+                  </span>
+                </div>
+                {editingSubscription && (
+                  <div className="flex justify-between text-sm pt-2 border-t">
+                    <span className="text-muted-foreground">Harga:</span>
+                    <span className="font-bold text-primary">
+                      {formatRupiah(getPlanDetails(editingSubscription).price)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit_start_date">Tanggal Mulai <span className="text-destructive">*</span></Label>
+                <Input
+                  id="edit_start_date"
+                  type="date"
+                  required
+                  value={editFormData.start_date}
+                  onChange={(e) => setEditFormData({...editFormData, start_date: e.target.value})}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit_payment_status">Status Pembayaran <span className="text-destructive">*</span></Label>
+                <select
+                  id="edit_payment_status"
+                  value={editFormData.payment_status}
+                  onChange={(e) => setEditFormData({...editFormData, payment_status: e.target.value})}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="Paid">Lunas</option>
+                  <option value="Pending">Menunggu</option>
+                </select>
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" onClick={() => setEditingSubscription(null)}>Batal</Button>
+              </DialogClose>
+              <Button type="submit">Simpan Perubahan</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
