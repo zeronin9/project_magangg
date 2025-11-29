@@ -1,348 +1,272 @@
-'use client';
+// app/admin/mitra/branch/page.tsx
+"use client"
+import { useState, useEffect } from "react"
+import { BranchPlus, Edit, Trash2, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { useToast } from "@/components/ui/use-toast"
 
-import { useState, useEffect } from 'react';
-import { branchAPI } from '@/lib/api';
-import { Branch } from '@/types/mitra';
-import TableSkeleton from '@/components/skeletons/TableSkeleton';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Loader2, 
-  AlertCircle,
-  Building2,
-  Phone,
-  MapPin,
-  X
-} from 'lucide-react';
-
-export default function BranchesPage() {
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
-  const [formData, setFormData] = useState({
-    branch_name: '',
-    address: '',
-    phone_number: '',
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    loadBranches();
-  }, []);
-
-  const loadBranches = async () => {
-    try {
-      setIsLoading(true);
-      const data = await branchAPI.getAll();
-      setBranches(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      setError(err.message || 'Gagal memuat data cabang');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleOpenModal = (branch?: Branch) => {
-    if (branch) {
-      setSelectedBranch(branch);
-      setFormData({
-        branch_name: branch.branch_name,
-        address: branch.address,
-        phone_number: branch.phone_number,
-      });
-    } else {
-      setSelectedBranch(null);
-      setFormData({
-        branch_name: '',
-        address: '',
-        phone_number: '',
-      });
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedBranch(null);
-    setFormData({
-      branch_name: '',
-      address: '',
-      phone_number: '',
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      if (selectedBranch) {
-        await branchAPI.update(selectedBranch.branch_id, formData);
-      } else {
-        await branchAPI.create(formData);
-      }
-      await loadBranches();
-      handleCloseModal();
-    } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan cabang');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selectedBranch) return;
-    
-    setIsSubmitting(true);
-    try {
-      await branchAPI.delete(selectedBranch.branch_id);
-      await loadBranches();
-      setIsDeleteModalOpen(false);
-      setSelectedBranch(null);
-    } catch (err: any) {
-      alert(err.message || 'Gagal menghapus cabang');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const openDeleteModal = (branch: Branch) => {
-    setSelectedBranch(branch);
-    setIsDeleteModalOpen(true);
-  };
-
-  if (isLoading) {
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <div className="h-9 w-64 bg-gray-200 rounded animate-pulse mb-2"></div>
-          <div className="h-5 w-80 bg-gray-200 rounded animate-pulse"></div>
-        </div>
-        <div className="h-12 w-40 bg-gray-200 rounded-xl animate-pulse"></div>
-      </div>
-      <TableSkeleton rows={5} columns={4} />
-    </div>
-  );
+interface Branch {
+  branch_id: string
+  branch_name: string
+  address: string
+  phone_number: string
 }
 
+export default function BranchPage() {
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState("")
+  const [showDialog, setShowDialog] = useState(false)
+  const [editingBranch, setEditingBranch] = useState<Branch | null>(null)
+  const { toast } = useToast()
+
+  const filteredBranches = branches.filter((branch) =>
+    branch.branch_name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  useEffect(() => {
+    fetchBranches()
+  }, [])
+
+  const fetchBranches = async () => {
+    try {
+      // TODO: Replace with real API call
+      setBranches([
+        {
+          branch_id: "1",
+          branch_name: "Cabang Jakarta Pusat",
+          address: "Jl. MH Thamrin No. 1",
+          phone_number: "021-1234567",
+        },
+        {
+          branch_id: "2",
+          branch_name: "Cabang Bandung",
+          address: "Jl. Asia Afrika No. 123",
+          phone_number: "022-9876543",
+        },
+      ])
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Gagal memuat data cabang",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateBranch = async (formData: FormData) => {
+    try {
+      // TODO: POST /api/branch
+      toast({
+        title: "Sukses",
+        description: "Cabang berhasil dibuat",
+      })
+      setShowDialog(false)
+      fetchBranches()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Gagal membuat cabang",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditBranch = async (formData: FormData) => {
+    try {
+      // TODO: PUT /api/branch/:id
+      toast({
+        title: "Sukses",
+        description: "Cabang berhasil diupdate",
+      })
+      setShowDialog(false)
+      fetchBranches()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Gagal update cabang",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteBranch = async (id: string) => {
+    if (!confirm("Yakin hapus cabang ini?")) return
+    try {
+      // TODO: DELETE /api/branch/:id
+      toast({
+        title: "Sukses",
+        description: "Cabang berhasil dihapus",
+      })
+      fetchBranches()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Gagal hapus cabang",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Manajemen Cabang</h1>
-          <p className="text-gray-600 mt-1">Kelola semua cabang mitra Anda</p>
+          <h2 className="text-3xl font-bold tracking-tight">Cabang</h2>
+          <p className="text-muted-foreground">
+            Kelola semua cabang bisnis Anda
+          </p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-xl hover:bg-green-700 transition-colors font-medium shadow-sm"
-        >
-          <Plus size={20} />
-          Tambah Cabang
-        </button>
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-2">
-          <AlertCircle size={20} />
-          {error}
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
-                  Nama Cabang
-                </th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
-                  Alamat
-                </th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
-                  Telepon
-                </th>
-                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700">
-                  Aksi
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {branches.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-12 text-gray-500">
-                    <Building2 size={48} className="mx-auto mb-3 text-gray-300" />
-                    <p className="font-medium">Belum ada cabang</p>
-                    <p className="text-sm">Tambahkan cabang pertama Anda</p>
-                  </td>
-                </tr>
-              ) : (
-                branches.map((branch) => (
-                  <tr key={branch.branch_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                          <Building2 size={20} className="text-green-600" />
-                        </div>
-                        <span className="font-medium text-gray-900">{branch.branch_name}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <MapPin size={16} />
-                        <span className="text-sm">{branch.address}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <Phone size={16} />
-                        <span className="text-sm">{branch.phone_number}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleOpenModal(branch)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Edit size={18} />
-                        </button>
-                        <button
-                          onClick={() => openDeleteModal(branch)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Hapus"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal Form */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">
-                {selectedBranch ? 'Edit Cabang' : 'Tambah Cabang'}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+          <DialogTrigger asChild>
+            <Button>
+              <BranchPlus className="mr-2 h-4 w-4" />
+              Tambah Cabang
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <div>
+              <h3 className="text-lg font-semibold">
+                {editingBranch ? "Edit Cabang" : "Tambah Cabang"}
+              </h3>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const formData = new FormData(e.currentTarget)
+                  if (editingBranch) {
+                    handleEditBranch(formData)
+                  } else {
+                    handleCreateBranch(formData)
+                  }
+                }}
+                className="space-y-4 mt-4"
               >
-                <X size={20} />
-              </button>
+                <div className="space-y-2">
+                  <Label htmlFor="branch_name">Nama Cabang</Label>
+                  <Input
+                    id="branch_name"
+                    name="branch_name"
+                    defaultValue={editingBranch?.branch_name || ""}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Alamat</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    defaultValue={editingBranch?.address || ""}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone_number">No Telepon</Label>
+                  <Input
+                    id="phone_number"
+                    name="phone_number"
+                    defaultValue={editingBranch?.phone_number || ""}
+                    required
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
+                    Batal
+                  </Button>
+                  <Button type="submit">
+                    {editingBranch ? "Update" : "Buat"}
+                  </Button>
+                </div>
+              </form>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nama Cabang *
-                </label>
-                <input
-                  type="text"
-                  value={formData.branch_name}
-                  onChange={(e) => setFormData({ ...formData, branch_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Alamat *
-                </label>
-                <textarea
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  rows={3}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nomor Telepon *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone_number}
-                  onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  required
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting && <Loader2 size={16} className="animate-spin" />}
-                  {selectedBranch ? 'Update' : 'Simpan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          </DialogContent>
+        </Dialog>
+      </div>
 
-      {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && selectedBranch && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertCircle size={32} className="text-red-600" />
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Hapus Cabang?</h2>
-              <p className="text-gray-600 mb-6">
-                Apakah Anda yakin ingin menghapus cabang <strong>{selectedBranch.branch_name}</strong>? 
-                Tindakan ini tidak dapat dibatalkan.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setIsDeleteModalOpen(false);
-                    setSelectedBranch(null);
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting && <Loader2 size={16} className="animate-spin" />}
-                  Hapus
-                </button>
-              </div>
-            </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-4">
+          <CardTitle>Daftar Cabang</CardTitle>
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari cabang..."
+              className="w-64 pl-10"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        </div>
-      )}
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg">
+                  <div className="h-12 w-12 bg-muted animate-pulse rounded-md" />
+                  <div className="space-y-2">
+                    <div className="h-4 bg-muted animate-pulse rounded w-48" />
+                    <div className="h-3 bg-muted animate-pulse rounded w-32" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nama</TableHead>
+                  <TableHead>Alamat</TableHead>
+                  <TableHead>Telepon</TableHead>
+                  <TableHead className="w-24">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredBranches.map((branch) => (
+                  <TableRow key={branch.branch_id}>
+                    <TableCell className="font-medium">{branch.branch_name}</TableCell>
+                    <TableCell>{branch.address}</TableCell>
+                    <TableCell>{branch.phone_number}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingBranch(branch)
+                            setShowDialog(true)
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteBranch(branch.branch_id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }
