@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { fetchWithAuth } from '@/lib/api';
+import { formatRupiah } from '@/lib/utils';
 import { Partner } from '@/types';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
 import { Users, Plus, Search, Mail, Phone, Calendar, MoreHorizontal, Eye } from 'lucide-react';

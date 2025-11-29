@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
+
 import { Partner, PartnerSubscription, SubscriptionPlan } from '@/types';
 import { ShoppingBag, Plus, Edit2, Trash2, Calendar, DollarSign, CheckCircle, Clock, User, MoreHorizontal, Search } from 'lucide-react';
 import {
@@ -432,13 +433,13 @@ export default function SubscriptionsPage() {
                               {sub.payment_status === 'Paid' ? (
                                 <><CheckCircle className="mr-1 h-3 w-3" /> Lunas</>
                               ) : (
-                                <><Clock className="mr-1 h-3 w-3" /> Menunggu</>
+                                <><Clock className="mr-1 h-3 w-3" /> Upgrade</>
                               )}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Badge variant={sub.status === 'Active' ? 'default' : 'outline'}>
-                              {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
+                            <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'outline'}>
+                              {sub.payment_status === 'Paid' ? 'Aktif' : 'Tidak Aktif'}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">

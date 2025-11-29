@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
+import { formatRupiah } from '@/lib/utils';
 import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
 import { 
   Users, Package, CheckCircle, Smartphone, Award, TrendingUp, Activity, ArrowUpRight, Calendar

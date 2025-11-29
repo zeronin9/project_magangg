@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+
 import { useParams, useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/api';
 import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';

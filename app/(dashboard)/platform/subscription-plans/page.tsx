@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
 import { SubscriptionPlan } from '@/types';
-import { Package, Plus, Edit2, Trash2, Calendar, Building2, Smartphone } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, MoreHorizontal, Search, Archive, RotateCcw, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogClose,
@@ -17,26 +17,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CardGridSkeleton } from '@/components/skeletons/CardGridSkeleton';
+import { TableSkeleton } from "@/components/skeletons/TableSkeleton";
 
-// ✅ Format Rupiah Helper
 const formatRupiah = (amount: number): string => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -46,21 +52,107 @@ const formatRupiah = (amount: number): string => {
   }).format(amount);
 };
 
+const StatusBadge = ({ isActive }: { isActive: boolean }) => {
+  return isActive ? (
+    <Badge variant="default">Aktif</Badge>
+  ) : (
+    <Badge variant="secondary">Arsip</Badge>
+  );
+};
+
+// Custom Alert Dialog Component menggunakan Dialog biasa
+const CustomAlertDialog = ({ 
+  open, 
+  onOpenChange, 
+  title, 
+  description, 
+  onConfirm, 
+  confirmText = "Lanjutkan",
+  cancelText = "Batal",
+  variant = "default"
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: React.ReactNode;
+  onConfirm: () => void;
+  confirmText?: string;
+  cancelText?: string;
+  variant?: "default" | "destructive" | "warning";
+}) => {
+  const getVariantStyles = () => {
+    switch (variant) {
+      case "destructive":
+        return "bg-destructive text-destructive-foreground hover:bg-destructive/90";
+      case "warning":
+        return "bg-orange-600 text-white hover:bg-orange-700";
+      default:
+        return "bg-primary text-primary-foreground hover:bg-primary/90";
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {variant === "destructive" && <AlertTriangle className="h-5 w-5 text-destructive" />}
+            {variant === "warning" && <AlertTriangle className="h-5 w-5 text-orange-600" />}
+            {title}
+          </DialogTitle>
+          <DialogDescription className="text-left">
+            {description}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
+          <DialogClose asChild>
+            <Button variant="outline" className="w-full sm:w-auto">
+              {cancelText}
+            </Button>
+          </DialogClose>
+          <Button 
+            onClick={onConfirm}
+            className={`w-full sm:w-auto ${getVariantStyles()}`}
+          >
+            {confirmText}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export default function SubscriptionPlansPage() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   
-  const [formData, setFormData] = useState({
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
     plan_name: '',
-    description: '',
     price: '',
     duration_months: '',
-    max_branches: '',
-    max_devices: ''
+    device_limit: '',
+    branch_limit: '',
+    description: ''
   });
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
+  const [editForm, setEditForm] = useState({
+    plan_name: '',
+    price: '',
+    duration_months: '',
+    device_limit: '',
+    branch_limit: '',
+    description: '',
+  });
+
+  // Alert Dialog States
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false);
+  const [reactivateDialogOpen, setReactivateDialogOpen] = useState(false);
+  const [hardDeleteDialogOpen, setHardDeleteDialogOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
 
   useEffect(() => {
     fetchPlans();
@@ -73,102 +165,168 @@ export default function SubscriptionPlansPage() {
       setPlans(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching plans:', error);
+      setPlans([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleAddPlan = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await fetchWithAuth('/subscription-plan', {
         method: 'POST',
         body: JSON.stringify({
-          ...formData,
-          price: parseFloat(formData.price),
-          duration_months: parseInt(formData.duration_months),
-          max_branches: parseInt(formData.max_branches),
-          max_devices: parseInt(formData.max_devices)
+          plan_name: addForm.plan_name,
+          price: parseFloat(addForm.price),
+          duration_months: parseInt(addForm.duration_months),
+          device_limit: parseInt(addForm.device_limit),
+          branch_limit: parseInt(addForm.branch_limit),
+          description: addForm.description
         }),
       });
-      alert('Paket langganan berhasil dibuat!');
-      setIsCreateModalOpen(false);
+      
+      alert('Paket berhasil ditambahkan!');
+      setIsAddModalOpen(false);
       fetchPlans();
-      resetForm();
+      setAddForm({
+        plan_name: '',
+        price: '',
+        duration_months: '',
+        device_limit: '',
+        branch_limit: '',
+        description: ''
+      });
     } catch (error: any) {
-      alert(error.message || 'Gagal membuat paket langganan');
+      alert(error.message || 'Gagal menambahkan paket');
     }
   };
 
   const handleOpenEdit = (plan: SubscriptionPlan) => {
     setEditingPlan(plan);
-    setFormData({
+    setEditForm({
       plan_name: plan.plan_name,
-      description: plan.description || '',
       price: plan.price.toString(),
       duration_months: plan.duration_months.toString(),
-      max_branches: plan.max_branches.toString(),
-      max_devices: plan.max_devices.toString()
+      device_limit: plan.device_limit.toString(),
+      branch_limit: plan.branch_limit?.toString() || '',
+      description: plan.description || '',
     });
     setIsEditModalOpen(true);
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
+  const handleEditPlan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPlan) return;
-    
+
     try {
       await fetchWithAuth(`/subscription-plan/${editingPlan.plan_id}`, {
         method: 'PUT',
         body: JSON.stringify({
-          ...formData,
-          price: parseFloat(formData.price),
-          duration_months: parseInt(formData.duration_months),
-          max_branches: parseInt(formData.max_branches),
-          max_devices: parseInt(formData.max_devices)
+          plan_name: editForm.plan_name,
+          price: parseFloat(editForm.price),
+          duration_months: parseInt(editForm.duration_months),
+          device_limit: parseInt(editForm.device_limit),
+          branch_limit: parseInt(editForm.branch_limit),
+          description: editForm.description,
         }),
       });
-      alert('Paket langganan berhasil diperbarui!');
+      
+      alert('Paket berhasil diperbarui!');
       setIsEditModalOpen(false);
+      setEditingPlan(null);
       fetchPlans();
-      resetForm();
     } catch (error: any) {
-      alert(error.message || 'Gagal memperbarui paket langganan');
+      alert(error.message || 'Gagal memperbarui paket');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus paket ini?')) return;
+  // Alert Dialog Handlers
+  const handleOpenDeactivate = (plan: SubscriptionPlan) => {
+    setSelectedPlan(plan);
+    setDeactivateDialogOpen(true);
+  };
+
+  const handleDeactivatePlan = async () => {
+    if (!selectedPlan) return;
+    
     try {
-      await fetchWithAuth(`/subscription-plan/${id}`, {
+      const response = await fetchWithAuth(`/subscription-plan/${selectedPlan.plan_id}`, {
         method: 'DELETE',
       });
-      alert('Paket langganan berhasil dihapus!');
+      alert(response?.message || 'Paket berhasil dinonaktifkan!');
+      setDeactivateDialogOpen(false);
+      setSelectedPlan(null);
       fetchPlans();
     } catch (error: any) {
-      alert(error.message || 'Gagal menghapus paket langganan');
+      console.error('Deactivate error:', error);
+      alert(error.message || 'Gagal menonaktifkan paket');
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      plan_name: '',
-      description: '',
-      price: '',
-      duration_months: '',
-      max_branches: '',
-      max_devices: ''
-    });
-    setEditingPlan(null);
+  const handleOpenReactivate = (plan: SubscriptionPlan) => {
+    setSelectedPlan(plan);
+    setReactivateDialogOpen(true);
   };
 
+  const handleReactivatePlan = async () => {
+    if (!selectedPlan) return;
+    
+    try {
+      await fetchWithAuth(`/subscription-plan/${selectedPlan.plan_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          is_active: true
+        }),
+      });
+      
+      alert('Paket berhasil diaktifkan kembali!');
+      setReactivateDialogOpen(false);
+      setSelectedPlan(null);
+      fetchPlans();
+    } catch (error: any) {
+      console.error('Reactivate error:', error);
+      alert(error.message || 'Gagal mengaktifkan paket');
+    }
+  };
+
+  const handleOpenHardDelete = (plan: SubscriptionPlan) => {
+    setSelectedPlan(plan);
+    setHardDeleteDialogOpen(true);
+  };
+
+  const handleHardDelete = async () => {
+    if (!selectedPlan) return;
+    
+    try {
+      const response = await fetchWithAuth(`/subscription-plan/permanent/${selectedPlan.plan_id}`, {
+        method: 'DELETE',
+      });
+      alert(response?.message || 'Paket berhasil dihapus permanen!');
+      setHardDeleteDialogOpen(false);
+      setSelectedPlan(null);
+      fetchPlans();
+    } catch (error: any) {
+      console.error('Hard delete error:', error);
+      if (error.message?.includes('Mitra') || error.message?.includes('digunakan')) {
+        alert(`❌ ${error.message}`);
+      } else {
+        alert(error.message || 'Gagal menghapus paket permanen');
+      }
+    }
+  };
+
+  const filteredPlans = plans.filter(plan => 
+    plan.plan_name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (isLoading) {
-    return <CardGridSkeleton cards={6} />;
+    return <TableSkeleton rows={5} showSearch showButton />;
   }
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-      {/* Header - Responsive */}
+      {/* Header */}
       <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight @md:text-3xl">Paket Langganan</h2>
@@ -176,341 +334,407 @@ export default function SubscriptionPlansPage() {
             Kelola paket langganan yang tersedia untuk mitra
           </p>
         </div>
-        
-        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full @md:w-auto">
-              <Plus className="mr-2 h-4 w-4" />
-              <span className="hidden @sm:inline">Buat Paket Baru</span>
-              <span className="@sm:hidden">Tambah Paket</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
-            <form onSubmit={handleCreate}>
-              <DialogHeader>
-                <DialogTitle>Buat Paket Langganan Baru</DialogTitle>
-                <DialogDescription>
-                  Tentukan detail paket langganan yang akan ditawarkan
-                </DialogDescription>
-              </DialogHeader>
-              
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="plan_name">Nama Paket <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="plan_name"
-                    required
-                    value={formData.plan_name}
-                    onChange={(e) => setFormData({...formData, plan_name: e.target.value})}
-                    placeholder="Contoh: Paket Basic"
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Deskripsi</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    placeholder="Deskripsi paket (opsional)"
-                    rows={3}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="price">Harga (Rp) <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="price"
-                      type="number"
-                      required
-                      value={formData.price}
-                      onChange={(e) => setFormData({...formData, price: e.target.value})}
-                      placeholder="500000"
-                      min="0"
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="duration_months">Durasi (Bulan) <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="duration_months"
-                      type="number"
-                      required
-                      value={formData.duration_months}
-                      onChange={(e) => setFormData({...formData, duration_months: e.target.value})}
-                      placeholder="12"
-                      min="1"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="max_branches">Maks. Cabang <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="max_branches"
-                      type="number"
-                      required
-                      value={formData.max_branches}
-                      onChange={(e) => setFormData({...formData, max_branches: e.target.value})}
-                      placeholder="5"
-                      min="1"
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="max_devices">Maks. Perangkat <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="max_devices"
-                      type="number"
-                      required
-                      value={formData.max_devices}
-                      onChange={(e) => setFormData({...formData, max_devices: e.target.value})}
-                      placeholder="10"
-                      min="1"
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline" onClick={resetForm}>Batal</Button>
-                </DialogClose>
-                <Button type="submit">Buat Paket</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      {/* Plans Grid - Responsive & Compact */}
-      {plans.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+            <div className="space-y-1 flex-1">
+              <CardTitle>Daftar Paket</CardTitle>
+              <CardDescription>Kelola harga, durasi, dan limit perangkat</CardDescription>
+            </div>
+            <div className="flex flex-col gap-2 @md:flex-row @md:items-center">
+              <div className="relative w-full @md:w-64">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Cari paket..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+                <DialogTrigger asChild>
+                  <Button className="w-full @md:w-auto">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Tambah Paket
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px]">
+                  <form onSubmit={handleAddPlan}>
+                    <DialogHeader>
+                      <DialogTitle>Tambah Paket Baru</DialogTitle>
+                      <DialogDescription>Buat paket langganan baru</DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="add_plan_name">Nama Paket <span className="text-destructive">*</span></Label>
+                        <Input 
+                          id="add_plan_name" 
+                          required 
+                          placeholder="Basic, Pro, Enterprise"
+                          value={addForm.plan_name} 
+                          onChange={(e) => setAddForm({...addForm, plan_name: e.target.value})} 
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="add_price">Harga (Rp) <span className="text-destructive">*</span></Label>
+                        <Input 
+                          id="add_price" 
+                          type="number" 
+                          required 
+                          min="0" 
+                          step="1000" 
+                          placeholder="500000"
+                          value={addForm.price} 
+                          onChange={(e) => setAddForm({...addForm, price: e.target.value})} 
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="add_duration">Durasi (Bulan) <span className="text-destructive">*</span></Label>
+                          <Input 
+                            id="add_duration" 
+                            type="number" 
+                            required 
+                            min="1" 
+                            placeholder="12"
+                            value={addForm.duration_months} 
+                            onChange={(e) => setAddForm({...addForm, duration_months: e.target.value})} 
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="add_device_limit">Limit Perangkat <span className="text-destructive">*</span></Label>
+                          <Input 
+                            id="add_device_limit" 
+                            type="number" 
+                            required 
+                            min="1" 
+                            placeholder="5"
+                            value={addForm.device_limit} 
+                            onChange={(e) => setAddForm({...addForm, device_limit: e.target.value})} 
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="add_branch_limit">Limit Cabang</Label>
+                        <Input 
+                          id="add_branch_limit" 
+                          type="number" 
+                          min="0" 
+                          placeholder="3"
+                          value={addForm.branch_limit} 
+                          onChange={(e) => setAddForm({...addForm, branch_limit: e.target.value})} 
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="add_description">Deskripsi</Label>
+                        <Input 
+                          id="add_description" 
+                          placeholder="Fitur dan benefit paket"
+                          value={addForm.description} 
+                          onChange={(e) => setAddForm({...addForm, description: e.target.value})} 
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <DialogClose asChild><Button variant="outline">Batal</Button></DialogClose>
+                      <Button type="submit">Simpan Paket</Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          {filteredPlans.length === 0 ? (
             <div className="text-center py-12">
               <Package className="mx-auto h-12 w-12 text-muted-foreground" />
-              <h3 className="mt-4 text-lg font-semibold">Belum ada paket langganan</h3>
-              <p className="text-sm text-muted-foreground">
-                Mulai dengan membuat paket langganan pertama
+              <h3 className="mt-4 text-lg font-semibold">{searchTerm ? 'Tidak ada hasil' : 'Belum ada paket'}</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                {searchTerm ? 'Coba ubah kata kunci pencarian' : 'Mulai dengan menambahkan paket pertama'}
               </p>
-              <Button className="mt-4" onClick={() => setIsCreateModalOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Buat Paket Pertama
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-3 grid-cols-1 @sm:grid-cols-2 @xl:grid-cols-3 @3xl:grid-cols-4">
-          {plans.map((plan) => (
-            <Card key={plan.plan_id} className="relative overflow-hidden hover:shadow-md transition-shadow">
-              {/* ✅ Compact Header */}
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="space-y-1 flex-1 min-w-0">
-                    <CardTitle className="text-base font-bold truncate">{plan.plan_name}</CardTitle>
-                    {plan.description && (
-                      <CardDescription className="line-clamp-1 text-xs">
-                        {plan.description}
-                      </CardDescription>
-                    )}
-                  </div>
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0">
-                        <Package className="h-3.5 w-3.5" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleOpenEdit(plan)}>
-                        <Edit2 className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        onClick={() => handleDelete(plan.plan_id)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Hapus
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-
-              {/* ✅ Compact Content */}
-              <CardContent className="space-y-3 pb-3">
-                {/* ✅ Price with Rupiah Format */}
-                <div className="flex items-baseline gap-1">
-                  <span className="text-xl font-bold text-primary">
-                    {formatRupiah(plan.price)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    / {plan.duration_months} bln
-                  </span>
-                </div>
-
-                {/* ✅ Compact Features */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Building2 className="h-3.5 w-3.5" />
-                      <span>Cabang</span>
-                    </div>
-                    <Badge variant="secondary" className="text-xs h-5">
-                      {plan.max_branches}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Smartphone className="h-3.5 w-3.5" />
-                      <span>Perangkat</span>
-                    </div>
-                    <Badge variant="secondary" className="text-xs h-5">
-                      {plan.max_devices}
-                    </Badge>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>Durasi</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs h-5">
-                      {plan.duration_months} bulan
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-
-              {/* ✅ Compact Footer */}
-              <CardFooter className="pt-3 pb-3">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="w-full h-8 text-xs"
-                  onClick={() => handleOpenEdit(plan)}
-                >
-                  <Edit2 className="mr-1.5 h-3 w-3" />
-                  Edit Paket
+              {!searchTerm && (
+                <Button className="mt-4" onClick={() => setIsAddModalOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />Tambah Paket
                 </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      )}
+              )}
+            </div>
+          ) : (
+            <>
+              {/* DESKTOP TABLE */}
+              <div className="hidden @lg:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Nama Paket</TableHead>
+                      <TableHead>Harga</TableHead>
+                      <TableHead>Durasi</TableHead>
+                      <TableHead>Limit Perangkat</TableHead>
+                      <TableHead>Limit Cabang</TableHead>
+                      <TableHead>Deskripsi</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPlans.map((plan) => (
+                      <TableRow key={plan.plan_id}>
+                        <TableCell><StatusBadge isActive={plan.is_active} /></TableCell>
+                        <TableCell className="font-medium">{plan.plan_name}</TableCell>
+                        <TableCell><span className="font-semibold text-primary">{formatRupiah(plan.price)}</span></TableCell>
+                        <TableCell><Badge variant="secondary">{plan.duration_months} bulan</Badge></TableCell>
+                        <TableCell><Badge variant="outline">{plan.device_limit} perangkat</Badge></TableCell>
+                        <TableCell><Badge variant="outline">{plan.branch_limit || 0} cabang</Badge></TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{plan.description || '-'}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleOpenEdit(plan)}>
+                                <Edit2 className="mr-2 h-4 w-4" />Edit
+                              </DropdownMenuItem>
+                              {plan.is_active ? (
+                                <DropdownMenuItem onClick={() => handleOpenDeactivate(plan)} className="text-orange-600">
+                                  <Archive className="mr-2 h-4 w-4" />Non-aktifkan
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onClick={() => handleOpenReactivate(plan)} className="text-green-600">
+                                  <RotateCcw className="mr-2 h-4 w-4" />Aktifkan Kembali
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleOpenHardDelete(plan)} className="text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" />Hapus Permanen
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-      {/* Edit Plan Dialog */}
+              {/* MOBILE CARDS */}
+              <div className="@lg:hidden space-y-4">
+                {filteredPlans.map((plan) => (
+                  <Card key={plan.plan_id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <CardTitle className="text-base truncate">{plan.plan_name}</CardTitle>
+                            <StatusBadge isActive={plan.is_active} />
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">{plan.description || 'Tidak ada deskripsi'}</p>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => handleOpenEdit(plan)}>
+                              <Edit2 className="mr-2 h-4 w-4" />Edit
+                            </DropdownMenuItem>
+                            {plan.is_active ? (
+                              <DropdownMenuItem onClick={() => handleOpenDeactivate(plan)} className="text-orange-600">
+                                <Archive className="mr-2 h-4 w-4" />Non-aktifkan
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => handleOpenReactivate(plan)} className="text-green-600">
+                                <RotateCcw className="mr-2 h-4 w-4" />Aktifkan Kembali
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleOpenHardDelete(plan)} className="text-destructive">
+                              <Trash2 className="mr-2 h-4 w-4" />Hapus Permanen
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Harga:</span>
+                        <span className="font-semibold text-primary text-base">{formatRupiah(plan.price)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Durasi:</span>
+                        <Badge variant="secondary">{plan.duration_months} bulan</Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Limit Perangkat:</span>
+                        <Badge variant="outline">{plan.device_limit} perangkat</Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Limit Cabang:</span>
+                        <Badge variant="outline">{plan.branch_limit || 0} cabang</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Dialog */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
-          <form onSubmit={handleUpdate}>
+        <DialogContent className="sm:max-w-[500px]">
+          <form onSubmit={handleEditPlan}>
             <DialogHeader>
-              <DialogTitle>Edit Paket Langganan</DialogTitle>
-              <DialogDescription>
-                Perbarui detail paket langganan
-              </DialogDescription>
+              <DialogTitle>Edit Paket</DialogTitle>
+              <DialogDescription>Perbarui "{editingPlan?.plan_name}"</DialogDescription>
             </DialogHeader>
-            
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="edit_plan_name">Nama Paket <span className="text-destructive">*</span></Label>
-                <Input
-                  id="edit_plan_name"
-                  required
-                  value={formData.plan_name}
-                  onChange={(e) => setFormData({...formData, plan_name: e.target.value})}
-                  placeholder="Contoh: Paket Basic"
+                <Input 
+                  id="edit_plan_name" 
+                  required 
+                  value={editForm.plan_name} 
+                  onChange={(e) => setEditForm({...editForm, plan_name: e.target.value})} 
                 />
               </div>
-
+              <div className="grid gap-2">
+                <Label htmlFor="edit_price">Harga (Rp) <span className="text-destructive">*</span></Label>
+                <Input 
+                  id="edit_price" 
+                  type="number" 
+                  required 
+                  min="0" 
+                  step="1000" 
+                  value={editForm.price} 
+                  onChange={(e) => setEditForm({...editForm, price: e.target.value})} 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_duration">Durasi <span className="text-destructive">*</span></Label>
+                  <Input 
+                    id="edit_duration" 
+                    type="number" 
+                    required 
+                    min="1" 
+                    value={editForm.duration_months} 
+                    onChange={(e) => setEditForm({...editForm, duration_months: e.target.value})} 
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit_device_limit">Limit Perangkat <span className="text-destructive">*</span></Label>
+                  <Input 
+                    id="edit_device_limit" 
+                    type="number" 
+                    required 
+                    min="1" 
+                    value={editForm.device_limit} 
+                    onChange={(e) => setEditForm({...editForm, device_limit: e.target.value})} 
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit_branch_limit">Limit Cabang</Label>
+                <Input 
+                  id="edit_branch_limit" 
+                  type="number" 
+                  min="0" 
+                  value={editForm.branch_limit} 
+                  onChange={(e) => setEditForm({...editForm, branch_limit: e.target.value})} 
+                />
+              </div>
               <div className="grid gap-2">
                 <Label htmlFor="edit_description">Deskripsi</Label>
-                <Textarea
-                  id="edit_description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  placeholder="Deskripsi paket (opsional)"
-                  rows={3}
+                <Input 
+                  id="edit_description" 
+                  value={editForm.description} 
+                  onChange={(e) => setEditForm({...editForm, description: e.target.value})} 
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="edit_price">Harga (Rp) <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="edit_price"
-                    type="number"
-                    required
-                    value={formData.price}
-                    onChange={(e) => setFormData({...formData, price: e.target.value})}
-                    placeholder="500000"
-                    min="0"
-                  />
-                  {/* ✅ Preview Rupiah */}
-                  {formData.price && (
-                    <p className="text-xs text-muted-foreground">
-                      Preview: {formatRupiah(parseFloat(formData.price) || 0)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="edit_duration_months">Durasi (Bulan) <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="edit_duration_months"
-                    type="number"
-                    required
-                    value={formData.duration_months}
-                    onChange={(e) => setFormData({...formData, duration_months: e.target.value})}
-                    placeholder="12"
-                    min="1"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="edit_max_branches">Maks. Cabang <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="edit_max_branches"
-                    type="number"
-                    required
-                    value={formData.max_branches}
-                    onChange={(e) => setFormData({...formData, max_branches: e.target.value})}
-                    placeholder="5"
-                    min="1"
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="edit_max_devices">Maks. Perangkat <span className="text-destructive">*</span></Label>
-                  <Input
-                    id="edit_max_devices"
-                    type="number"
-                    required
-                    value={formData.max_devices}
-                    onChange={(e) => setFormData({...formData, max_devices: e.target.value})}
-                    placeholder="10"
-                    min="1"
-                  />
-                </div>
-              </div>
             </div>
-            
             <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline" onClick={resetForm}>Batal</Button>
-              </DialogClose>
-              <Button type="submit">Simpan Perubahan</Button>
+              <DialogClose asChild><Button variant="outline">Batal</Button></DialogClose>
+              <Button type="submit">Simpan</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ✅ FIXED: Custom Alert Dialogs menggunakan Dialog biasa */}
+      {/* Deactivate Alert Dialog */}
+      <CustomAlertDialog
+        open={deactivateDialogOpen}
+        onOpenChange={setDeactivateDialogOpen}
+        title="Non-aktifkan Paket"
+        description={
+          <div className="space-y-2">
+            <p>
+              Apakah Anda yakin ingin menonaktifkan paket <strong>"{selectedPlan?.plan_name}"</strong>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Paket akan disembunyikan dari pilihan mitra tetapi data tetap tersimpan.
+            </p>
+          </div>
+        }
+        onConfirm={handleDeactivatePlan}
+        confirmText="Non-aktifkan"
+        variant="warning"
+      />
+
+      {/* Reactivate Alert Dialog */}
+      <CustomAlertDialog
+        open={reactivateDialogOpen}
+        onOpenChange={setReactivateDialogOpen}
+        title="Aktifkan Kembali Paket"
+        description={
+          <div className="space-y-2">
+            <p>
+              Apakah Anda yakin ingin mengaktifkan kembali paket <strong>"{selectedPlan?.plan_name}"</strong>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Paket akan tersedia lagi untuk dipilih mitra.
+            </p>
+          </div>
+        }
+        onConfirm={handleReactivatePlan}
+        confirmText="Aktifkan Kembali"
+        variant="default"
+      />
+
+      {/* Hard Delete Alert Dialog */}
+      <CustomAlertDialog
+        open={hardDeleteDialogOpen}
+        onOpenChange={setHardDeleteDialogOpen}
+        title="Hapus Permanen"
+        description={
+          <div className="space-y-3">
+            <p>
+              Apakah Anda yakin ingin menghapus permanen paket <strong>"{selectedPlan?.plan_name}"</strong>?
+            </p>
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
+              <div className="font-medium text-destructive">⚠️ Permanen!</div>
+              <div className="text-destructive/80 mt-1">
+                Tindakan ini tidak dapat dibatalkan. Gagal jika paket sudah digunakan mitra.
+              </div>
+            </div>
+          </div>
+        }
+        onConfirm={handleHardDelete}
+        confirmText="Hapus Permanen"
+        variant="destructive"
+      />
     </div>
   );
 }
