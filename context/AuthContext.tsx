@@ -105,20 +105,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Redirect based on role
       console.log('Redirecting based on role:', data.user.role);
-      // Di dalam fungsi login, bagian redirect:
-switch (data.user.role) {
-  case 'admin_platform':
-    router.push('/platform');  // Ubah dari /dashboard/platform
-    break;
-  case 'super_admin':
-    router.push('/mitra');     // Ubah dari /dashboard/partner
-    break;
-  case 'branch_admin':
-    router.push('/branch');    // Ubah dari /dashboard/branch
-    break;
-  default:
-    throw new Error('Invalid role');
-}
+      
+      switch (data.user.role) {
+        case 'admin_platform':
+          router.push('/platform');
+          break;
+        case 'super_admin':
+          router.push('/mitra');
+          break;
+        case 'branch_admin':
+          router.push('/branch');
+          break;
+        default:
+          throw new Error('Invalid role');
+      }
 
     } catch (error) {
       console.error('=== LOGIN ERROR ===');

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { SubscriptionOrderResponse } from '@/types/mitra'; // Add this import
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.1.16:3001/api';
 
@@ -322,25 +323,34 @@ export const licenseAPI = {
 
 // ==================== SUBSCRIPTION ====================
 export const subscriptionAPI = {
+  // Get all subscription plans
   getPlans: async () => {
-    const response = await apiClient.get('/subscription/plans');
+    const response = await apiClient.get('/partner-subscription/plans');
     return response.data;
   },
 
-  getMySubscription: async () => {
-    const response = await apiClient.get('/partner-subscription/current');
-    return response.data;
-  },
-
+  // Create subscription order
   createOrder: async (planId: string) => {
-    const response = await apiClient.post('/partner-subscription/order', {
-      plan_id: planId,
+    const response = await apiClient.post('/partner-subscription/order', { 
+      plan_id: planId 
     });
     return response.data;
   },
 
+  // Get user's orders (if exists)
   getOrders: async () => {
     const response = await apiClient.get('/partner-subscription/orders');
+    return response.data;
+  },
+
+  // Upload payment proof (if exists)
+  uploadPaymentProof: async (orderId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('payment_proof', file);
+    
+    const response = await apiClient.post(`/partner-subscription/order/${orderId}/proof`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   },
 };

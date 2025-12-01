@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { subscriptionAPI } from '@/lib/api/mitra';
-import { SubscriptionPlan } from '@/types/mitra';
+import { SubscriptionPlan, SubscriptionOrder, SubscriptionOrderResponse } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,8 +24,40 @@ import {
   AlertCircle,
   Loader2,
   Info,
-  Sparkles
+  Sparkles,
+  Server
 } from 'lucide-react';
+
+// Mock data sebagai fallback
+const MOCK_PLANS: SubscriptionPlan[] = [
+  {
+    plan_id: '1',
+    plan_name: 'Starter',
+    price: '99000',
+    description: 'Cocok untuk usaha kecil yang baru memulai',
+    branch_limit: 1,
+    device_limit: 2,
+    features: ['1 Cabang', '2 Perangkat', 'Support 24/7', 'Cloud Backup', 'Update Gratis']
+  },
+  {
+    plan_id: '2',
+    plan_name: 'Professional',
+    price: '299000',
+    description: 'Ideal untuk bisnis yang sedang berkembang',
+    branch_limit: 5,
+    device_limit: 10,
+    features: ['5 Cabang', '10 Perangkat', 'Support Priority', 'Cloud Backup', 'Update Gratis', 'Analytics']
+  },
+  {
+    plan_id: '3',
+    plan_name: 'Enterprise',
+    price: '999000',
+    description: 'Solusi lengkap untuk bisnis berskala besar',
+    branch_limit: -1,
+    device_limit: -1,
+    features: ['Unlimited Cabang', 'Unlimited Perangkat', 'Dedicated Support', 'Cloud Backup', 'Update Gratis', 'Advanced Analytics', 'Custom Features']
+  },
+];
 
 export default function SubscriptionPage() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -34,7 +66,8 @@ export default function SubscriptionPage() {
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderResult, setOrderResult] = useState<any>(null);
+  const [orderResult, setOrderResult] = useState<SubscriptionOrder | null>(null);
+  const [useMockData, setUseMockData] = useState(false);
 
   useEffect(() => {
     loadPlans();
@@ -43,10 +76,55 @@ export default function SubscriptionPage() {
   const loadPlans = async () => {
     try {
       setIsLoading(true);
-      const data = await subscriptionAPI.getPlans();
-      setPlans(Array.isArray(data) ? data : []);
+      setError('');
+      
+      // ✅ Try API silently
+      try {
+        const response: any = await subscriptionAPI.getPlans();
+        
+        let plansList: SubscriptionPlan[] = [];
+        
+        if (Array.isArray(response)) {
+          plansList = response;
+        } else if (response?.data && Array.isArray(response.data)) {
+          plansList = response.data;
+        } else if (response?.plans && Array.isArray(response.plans)) {
+          plansList = response.plans;
+        }
+        
+        if (plansList.length > 0) {
+          setPlans(plansList);
+          setUseMockData(false);
+          console.log('✅ Loaded plans from API:', plansList.length);
+          return;
+        }
+      } catch (apiError: any) {
+        // ✅ Silent fallback for 404
+        if (apiError.response?.status === 404) {
+          console.log('ℹ️ API endpoint not found, using mock data');
+          setPlans(MOCK_PLANS);
+          setUseMockData(true);
+          return;
+        }
+        // Re-throw other errors
+        throw apiError;
+      }
+      
     } catch (err: any) {
-      setError(err.message || 'Gagal memuat data paket langganan');
+      console.error('❌ Error loading plans:', err.message);
+      
+      // Fallback to mock data on any error
+      setPlans(MOCK_PLANS);
+      setUseMockData(true);
+      
+      // Only show error for non-404
+      if (err.response?.status !== 404) {
+        if (err.response?.status === 401) {
+          setError('Session expired. Silakan login kembali.');
+        } else {
+          setError('Menggunakan data demo. Koneksi ke server bermasalah.');
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -62,18 +140,67 @@ export default function SubscriptionPage() {
     
     setIsSubmitting(true);
     try {
-      const result = await subscriptionAPI.createOrder(selectedPlan.plan_id);
-      setOrderResult(result);
+      if (useMockData) {
+        // ✅ Mock response
+        console.log('ℹ️ Using mock order (API not available)');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const mockOrder: SubscriptionOrder = {
+          order_id: `ORD-DEMO-${Date.now()}`,
+          plan_id: selectedPlan.plan_id,
+          status: 'WAITING_TRANSFER',
+          total_amount: selectedPlan.price,
+          bank_info: {
+            bank_name: 'Bank Mandiri',
+            account_number: '1234567890',
+            account_name: 'PT Horeka Indonesia'
+          },
+          created_at: new Date().toISOString(),
+        };
+        
+        setOrderResult(mockOrder);
+        return;
+      }
+      
+      // ✅ Real API call
+      const result = await subscriptionAPI.createOrder(selectedPlan.plan_id) as SubscriptionOrderResponse;
+      
+      const orderData: SubscriptionOrder = {
+        status: result.status,
+        total_amount: result.total_amount,
+        bank_info: result.bank_info,
+        plan_id: selectedPlan.plan_id,
+        order_id: result.order_id,
+        created_at: result.created_at || new Date().toISOString(),
+      };
+      
+      setOrderResult(orderData);
+      
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal membuat pesanan');
+      console.error('❌ Error creating order:', err);
+      
+      let errorMessage = 'Gagal membuat pesanan';
+      
+      if (err.response?.status === 400) {
+        errorMessage = err.response?.data?.message || 'Data tidak valid';
+      } else if (err.response?.status === 401) {
+        errorMessage = 'Session expired. Silakan login kembali.';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Endpoint belum tersedia. Hubungi administrator.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      alert(errorMessage);
       setIsOrderModalOpen(false);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const formatPrice = (price: string) => {
-    return 'Rp ' + parseInt(price).toLocaleString('id-ID');
+  const formatPrice = (price: string | number) => {
+    const priceNum = typeof price === 'string' ? parseInt(price) : price;
+    return 'Rp ' + priceNum.toLocaleString('id-ID');
   };
 
   if (isLoading) {
@@ -118,11 +245,27 @@ export default function SubscriptionPage() {
         </p>
       </div>
 
-      {/* Error Alert */}
+      {/* Mock Data Info (tidak error, cuma info) */}
+      {useMockData && (
+        <Alert className="bg-blue-50 border-blue-200">
+          <Server className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800">
+            <strong>Mode Demo:</strong> Endpoint <code className="bg-blue-100 px-1 rounded">/api/partner-subscription/plans</code> belum tersedia.
+            Menampilkan data contoh untuk development.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error Alert (only for non-404 errors) */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error}
+            <Button onClick={loadPlans} variant="outline" size="sm" className="ml-4">
+              Coba Lagi
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
 
@@ -142,6 +285,9 @@ export default function SubscriptionPage() {
             <div className="text-center">
               <CreditCard className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">Tidak ada paket tersedia</p>
+              <Button onClick={loadPlans} className="mt-4">
+                Muat Ulang
+              </Button>
             </div>
           </Card>
         ) : (
@@ -166,11 +312,10 @@ export default function SubscriptionPage() {
 
                 <CardHeader>
                   <CardTitle className="text-2xl">{plan.plan_name}</CardTitle>
-                  <CardDescription>{plan.description}</CardDescription>
+                  <CardDescription>{plan.description || 'Paket langganan'}</CardDescription>
                 </CardHeader>
 
                 <CardContent className="space-y-6">
-                  {/* Price */}
                   <div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-4xl font-bold">
@@ -180,7 +325,6 @@ export default function SubscriptionPage() {
                     </div>
                   </div>
 
-                  {/* Features */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
@@ -206,26 +350,14 @@ export default function SubscriptionPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                        <Check className="h-3 w-3 text-green-600" />
+                    {(plan.features || ['Support 24/7', 'Cloud Backup', 'Update Gratis']).slice(2).map((feature, idx) => (
+                      <div key={idx} className="flex items-center gap-3">
+                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
+                          <Check className="h-3 w-3 text-green-600" />
+                        </div>
+                        <span className="font-medium">{feature}</span>
                       </div>
-                      <span className="font-medium">Support 24/7</span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                        <Check className="h-3 w-3 text-green-600" />
-                      </div>
-                      <span className="font-medium">Cloud Backup</span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                        <Check className="h-3 w-3 text-green-600" />
-                      </div>
-                      <span className="font-medium">Update Gratis</span>
-                    </div>
+                    ))}
                   </div>
                 </CardContent>
 
@@ -244,7 +376,7 @@ export default function SubscriptionPage() {
         )}
       </div>
 
-      {/* Order Confirmation Modal */}
+      {/* Modals (tetap sama) */}
       <Dialog open={isOrderModalOpen && !orderResult} onOpenChange={setIsOrderModalOpen}>
         <DialogContent>
           <DialogHeader>
@@ -280,6 +412,15 @@ export default function SubscriptionPage() {
                   </span>
                 </div>
               </div>
+
+              {useMockData && (
+                <Alert className="bg-yellow-50 border-yellow-200">
+                  <AlertCircle className="h-4 w-4 text-yellow-600" />
+                  <AlertDescription className="text-yellow-800 text-sm">
+                    <strong>Mode Demo:</strong> Order akan menggunakan simulasi data.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <Alert>
                 <Info className="h-4 w-4" />
@@ -333,9 +474,18 @@ export default function SubscriptionPage() {
           {orderResult && (
             <div className="space-y-4 py-4">
               <div className="bg-muted p-4 rounded-lg space-y-3">
+                {orderResult.order_id && (
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Order ID:</p>
+                    <p className="font-mono font-semibold">{orderResult.order_id}</p>
+                  </div>
+                )}
+
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Order ID:</p>
-                  <p className="font-mono font-semibold">{orderResult.order_id}</p>
+                  <p className="text-sm text-muted-foreground mb-1">Status:</p>
+                  <Badge variant="outline" className="font-semibold">
+                    {orderResult.status === 'WAITING_TRANSFER' ? 'Menunggu Transfer' : orderResult.status}
+                  </Badge>
                 </div>
 
                 {orderResult.bank_info && (
@@ -364,12 +514,12 @@ export default function SubscriptionPage() {
                 <div className="border-t pt-3">
                   <p className="text-sm text-muted-foreground mb-1">Total Pembayaran:</p>
                   <p className="text-2xl font-bold text-primary">
-                    {formatPrice(selectedPlan?.price || '0')}
+                    {formatPrice(orderResult.total_amount)}
                   </p>
                 </div>
               </div>
 
-              <Alert variant="default" className="bg-yellow-50 border-yellow-200">
+              <Alert className="bg-yellow-50 border-yellow-200">
                 <AlertCircle className="h-4 w-4 text-yellow-600" />
                 <AlertDescription className="text-yellow-800">
                   <strong>Penting:</strong> Simpan informasi ini. Setelah melakukan pembayaran, 

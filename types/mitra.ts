@@ -70,29 +70,42 @@ export interface License {
   created_at: string;
 }
 
+// ✅ UPDATE: Tambahkan optional features
 export interface SubscriptionPlan {
   plan_id: string;
   plan_name: string;
-  price: string;
+  price: string | number;
   description?: string;
   branch_limit: number;
   device_limit: number;
-  features?: string[];
+  features?: string[]; // ✅ Tambahkan ini
 }
 
+export interface SubscriptionOrderResponse {
+  status: 'WAITING_TRANSFER' | 'CONFIRMED' | 'EXPIRED';
+  total_amount: string | number;
+  bank_info: {
+    bank_name: string;
+    account_number: string;
+    account_name?: string;
+  };
+  order_id?: string;
+  created_at?: string;
+}
+// Update SubscriptionOrder interface
 export interface SubscriptionOrder {
-  order_id: string;
-  plan_id: string;
+  order_id?: string; // Optional karena mungkin tidak ada di response
+  plan_id?: string;
   plan?: SubscriptionPlan;
   status: 'WAITING_TRANSFER' | 'CONFIRMED' | 'EXPIRED';
-  total_amount: string;
-  bank_info?: {
+  total_amount: string | number;
+  bank_info: {
     bank_name: string;
     account_number: string;
     account_name?: string;
   };
   payment_proof_url?: string;
-  created_at: string;
+  created_at?: string;
   expires_at?: string;
 }
 
@@ -119,4 +132,12 @@ export interface ItemsReport {
   category_name?: string;
   quantity_sold: number;
   total_revenue: string;
+}
+
+// ✅ TAMBAHAN: Type untuk API Response
+export interface ApiResponse<T = any> {
+  success?: boolean;
+  message?: string;
+  data?: T;
+  [key: string]: any; // Allow other properties
 }

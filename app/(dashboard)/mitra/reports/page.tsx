@@ -43,7 +43,7 @@ import {
 
 export default function ReportsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState('all');
   const [dateRange, setDateRange] = useState({
     start: '',
     end: '',
@@ -85,7 +85,8 @@ export default function ReportsPage() {
     try {
       const params: any = {};
       
-      if (selectedBranchId) {
+      // Only add branchId if not "all"
+      if (selectedBranchId && selectedBranchId !== 'all') {
         params.branchId = selectedBranchId;
       }
       if (dateRange.start) {
@@ -157,7 +158,7 @@ export default function ReportsPage() {
                   <SelectValue placeholder="Semua Cabang" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Semua Cabang</SelectItem>
+                  <SelectItem value="all">Semua Cabang</SelectItem>
                   {branches.map((branch) => (
                     <SelectItem key={branch.branch_id} value={branch.branch_id}>
                       {branch.branch_name}
