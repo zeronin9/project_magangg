@@ -1,19 +1,57 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { branchAdminAPI, branchAPI } from '@/lib/api';
+import { branchAdminAPI, branchAPI } from '@/lib/api/mitra';
 import { BranchAdmin, Branch } from '@/types/mitra';
-import TableSkeleton from '@/components/skeletons/TableSkeleton';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { 
   Plus, 
-  Edit, 
+  MoreHorizontal, 
+  Pencil, 
   Trash2, 
-  Loader2, 
-  AlertCircle,
   Users,
   Building2,
   User,
-  X
+  AlertCircle,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function BranchAdminsPage() {
@@ -24,13 +62,13 @@ export default function BranchAdminsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<BranchAdmin | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     username: '',
     password: '',
     branch_id: '',
   });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -117,7 +155,7 @@ export default function BranchAdminsPage() {
       await loadData();
       handleCloseModal();
     } catch (err: any) {
-      alert(err.message || 'Gagal menyimpan admin cabang');
+      alert(err.response?.data?.message || 'Gagal menyimpan admin cabang');
     } finally {
       setIsSubmitting(false);
     }
@@ -128,23 +166,17 @@ export default function BranchAdminsPage() {
     
     setIsSubmitting(true);
     try {
-      await branchAdminAPI.delete(selectedAdmin.user_id);
+      await branchAdminAPI.softDelete(selectedAdmin.user_id);
       await loadData();
       setIsDeleteModalOpen(false);
       setSelectedAdmin(null);
     } catch (err: any) {
-      alert(err.message || 'Gagal menghapus admin cabang');
+      alert(err.response?.data?.message || 'Gagal menghapus admin cabang');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const openDeleteModal = (admin: BranchAdmin) => {
-    setSelectedAdmin(admin);
-    setIsDeleteModalOpen(true);
-  };
-
-  // Helper function untuk mendapatkan nama cabang
   const getBranchName = (branchId: string) => {
     const branch = branches.find(b => b.branch_id === branchId);
     return branch ? branch.branch_name : 'Tidak ada cabang';
@@ -155,12 +187,18 @@ export default function BranchAdminsPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <div className="h-9 w-64 bg-gray-200 rounded animate-pulse mb-2"></div>
-            <div className="h-5 w-80 bg-gray-200 rounded animate-pulse"></div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-96" />
           </div>
-          <div className="h-12 w-40 bg-gray-200 rounded-xl animate-pulse"></div>
+          <Skeleton className="h-10 w-32" />
         </div>
-        <TableSkeleton rows={5} columns={4} />
+        <Card>
+          <div className="p-6 space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        </Card>
       </div>
     );
   }
@@ -170,242 +208,205 @@ export default function BranchAdminsPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admin Cabang</h1>
-          <p className="text-gray-600 mt-1">Kelola admin untuk setiap cabang</p>
+          <h1 className="text-3xl font-bold tracking-tight">Admin Cabang</h1>
+          <p className="text-muted-foreground">Kelola admin untuk setiap cabang</p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-xl hover:bg-green-700 transition-colors font-medium shadow-sm"
-        >
-          <Plus size={20} />
+        <Button onClick={() => handleOpenModal()}>
+          <Plus className="mr-2 h-4 w-4" />
           Tambah Admin
-        </button>
+        </Button>
       </div>
 
       {/* Error Alert */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-center gap-2">
-          <AlertCircle size={20} />
-          {error}
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
-                  Nama Lengkap
-                </th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
-                  Username
-                </th>
-                <th className="text-left py-4 px-6 text-sm font-semibold text-gray-700">
-                  Cabang
-                </th>
-                <th className="text-center py-4 px-6 text-sm font-semibold text-gray-700">
-                  Aksi
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {admins.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-12 text-gray-500">
-                    <Users size={48} className="mx-auto mb-3 text-gray-300" />
-                    <p className="font-medium">Belum ada admin cabang</p>
-                    <p className="text-sm">Tambahkan admin pertama Anda</p>
-                  </td>
-                </tr>
-              ) : (
-                admins.map((admin) => {
-                  const branchName = admin.branch?.branch_name || getBranchName(admin.branch_id);
-                  
-                  return (
-                    <tr key={admin.user_id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <User size={20} className="text-blue-600" />
-                          </div>
-                          <span className="font-medium text-gray-900">{admin.full_name}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className="text-sm text-gray-600">{admin.username}</span>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-2">
-                          
-                            <Building2 size={20} className={
-                              branchName === 'Tidak ada cabang' ? 'text-gray-400' : 'text-gray-500'
-                            } />
-                          
-                          <span className={`text-sm font-medium ${
-                            branchName === 'Tidak ada cabang' ? 'text-gray-400 italic' : 'text-gray-900'
-                          }`}>
-                            {branchName}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleOpenModal(admin)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit"
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nama Lengkap</TableHead>
+              <TableHead>Username</TableHead>
+              <TableHead>Cabang</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {admins.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-12">
+                  <Users className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground">Belum ada admin cabang</p>
+                </TableCell>
+              </TableRow>
+            ) : (
+              admins.map((admin) => {
+                const branchName = admin.branch?.branch_name || getBranchName(admin.branch_id);
+                
+                return (
+                  <TableRow key={admin.user_id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        {admin.full_name}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {admin.username}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">{branchName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={admin.is_active ? "default" : "secondary"}>
+                        {admin.is_active ? 'Aktif' : 'Non-aktif'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => handleOpenModal(admin)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedAdmin(admin);
+                              setIsDeleteModalOpen(true);
+                            }}
+                            className="text-destructive"
                           >
-                            <Edit size={18} />
-                          </button>
-                          <button
-                            onClick={() => openDeleteModal(admin)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Hapus"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Hapus
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </Card>
 
-      {/* Modal Form */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">
-                {selectedAdmin ? 'Edit Admin Cabang' : 'Tambah Admin Cabang'}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nama Lengkap *
-                </label>
-                <input
-                  type="text"
+      {/* Form Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedAdmin ? 'Edit Admin Cabang' : 'Tambah Admin Cabang'}
+            </DialogTitle>
+            <DialogDescription>
+              Lengkapi informasi admin cabang di bawah ini
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="full_name">Nama Lengkap *</Label>
+                <Input
+                  id="full_name"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Username *
-                </label>
-                <input
-                  type="text"
+              <div className="space-y-2">
+                <Label htmlFor="username">Username *</Label>
+                <Input
+                  id="username"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="space-y-2">
+                <Label htmlFor="password">
                   Password {selectedAdmin && '(Kosongkan jika tidak ingin mengubah)'}
-                </label>
-                <input
+                </Label>
+                <Input
+                  id="password"
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   required={!selectedAdmin}
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cabang *
-                </label>
-                <select
+              <div className="space-y-2">
+                <Label htmlFor="branch_id">Cabang *</Label>
+                <Select
                   value={formData.branch_id}
-                  onChange={(e) => setFormData({ ...formData, branch_id: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  required
+                  onValueChange={(value) => setFormData({ ...formData, branch_id: value })}
                   disabled={!!selectedAdmin}
+                  required
                 >
-                  <option value="">Pilih Cabang</option>
-                  {branches.map((branch) => (
-                    <option key={branch.branch_id} value={branch.branch_id}>
-                      {branch.branch_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting && <Loader2 size={16} className="animate-spin" />}
-                  {selectedAdmin ? 'Update' : 'Simpan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && selectedAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <AlertCircle size={32} className="text-red-600" />
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Hapus Admin?</h2>
-              <p className="text-gray-600 mb-6">
-                Apakah Anda yakin ingin menghapus admin <strong>{selectedAdmin.full_name}</strong>? 
-                Tindakan ini tidak dapat dibatalkan.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setIsDeleteModalOpen(false);
-                    setSelectedAdmin(null);
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isSubmitting}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isSubmitting && <Loader2 size={16} className="animate-spin" />}
-                  Hapus
-                </button>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih Cabang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.branch_id} value={branch.branch_id}>
+                        {branch.branch_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCloseModal}>
+                Batal
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {selectedAdmin ? 'Update' : 'Simpan'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Hapus Admin?
+            </DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin menghapus admin <strong>{selectedAdmin?.full_name}</strong>?
+              Tindakan ini tidak dapat dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

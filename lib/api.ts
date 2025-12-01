@@ -3,7 +3,7 @@
 const API_BASE_URL = 
   process.env.NEXT_PUBLIC_API_BASE_URL || 
   process.env.NEXT_PUBLIC_API_URL || 
-  'http://192.168.1.24:3001/api';
+  'http://192.168.1.16:3001/api';
 
 // Validation check
 if (typeof window !== 'undefined') {

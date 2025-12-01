@@ -1,19 +1,12 @@
-// types/mitra.ts
-export interface User {
-  name: string;
-  role: 'super_admin' | 'branch_admin';
-  partnerId: string;
-  branchId: string | null;
-}
-
 export interface Branch {
   branch_id: string;
-  partner_id: string;
   branch_name: string;
-  address: string;
-  phone_number: string;
-  tax_name: string | null;
-  tax_percentage: number | null;
+  address?: string;
+  phone_number?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface BranchAdmin {
@@ -22,78 +15,108 @@ export interface BranchAdmin {
   username: string;
   branch_id: string;
   branch?: Branch;
+  role: 'branch_admin';
+  is_active: boolean;
+  created_at?: string;
 }
 
 export interface Category {
   category_id: string;
-  partner_id: string;
-  branch_id: string | null;
   category_name: string;
+  branch_id: string | null;
   branch?: Branch | null;
+  is_active: boolean;
+  created_at?: string;
 }
 
 export interface Product {
   product_id: string;
-  partner_id: string;
-  branch_id: string | null;
-  category_id: string;
   product_name: string;
-  base_price: string;
-  product_image: string | null;
+  base_price: number;
+  category_id: string;
   category?: Category;
+  product_image_url?: string;
+  branch_id: string | null;
   branch?: Branch | null;
+  is_active: boolean;
+  created_at?: string;
 }
 
 export interface DiscountRule {
   discount_rule_id: string;
-  partner_id: string;
-  branch_id: string | null;
   discount_name: string;
-  discount_code: string | null;
   discount_type: 'PERCENTAGE' | 'FIXED_AMOUNT';
-  value: string;
-  applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_PRODUCTS' | 'SPECIFIC_CATEGORIES';
-  min_transaction_amount: string | null;
-  max_transaction_amount: string | null;
-  min_item_quantity: number | null;
-  max_item_quantity: number | null;
-  max_discount_amount: string | null;
+  value: number;
   start_date: string;
   end_date: string;
-  product_ids: string[];
-  category_ids: string[];
-  products?: Product[];
-  categories?: Category[];
+  applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_CATEGORY' | 'SPECIFIC_PRODUCT';
+  target_id?: string | null;
+  min_transaction?: number;
+  max_discount?: number;
+  branch_id: string | null;
+  branch?: Branch | null;
+  is_active: boolean;
 }
 
 export interface License {
   license_id: string;
-  partner_id: string;
-  branch_id: string | null;
   activation_code: string;
   license_status: 'Pending' | 'Assigned' | 'Active' | 'Inactive';
-  device_id: string | null;
-  device_name: string | null;
-  activated_at: string | null;
+  branch_id: string | null;
   branch?: Branch | null;
+  device_id?: string | null;
+  device_name?: string | null;
+  activated_at?: string | null;
+  created_at: string;
 }
 
 export interface SubscriptionPlan {
   plan_id: string;
   plan_name: string;
   price: string;
+  description?: string;
   branch_limit: number;
   device_limit: number;
-  description: string | null;
+  features?: string[];
+}
+
+export interface SubscriptionOrder {
+  order_id: string;
+  plan_id: string;
+  plan?: SubscriptionPlan;
+  status: 'WAITING_TRANSFER' | 'CONFIRMED' | 'EXPIRED';
+  total_amount: string;
+  bank_info?: {
+    bank_name: string;
+    account_number: string;
+    account_name?: string;
+  };
+  payment_proof_url?: string;
+  created_at: string;
+  expires_at?: string;
 }
 
 export interface SalesReport {
   summary: {
     total_sales: string;
     transaction_count: number;
-    total_subtotal: string;
-    total_discount: string;
-    total_tax: string;
+    total_discount?: string;
+    total_tax?: string;
   };
-  data: any[];
+  data: Array<{
+    transaction_id: string;
+    branch_name?: string;
+    final_total: string;
+    discount_amount: string;
+    tax_amount: string;
+    created_at: string;
+  }>;
+}
+
+export interface ItemsReport {
+  product_id: string;
+  product_name: string;
+  category_name?: string;
+  quantity_sold: number;
+  total_revenue: string;
 }
