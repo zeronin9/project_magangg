@@ -34,6 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
 import { 
   Plus, 
   MoreHorizontal, 
@@ -45,6 +46,7 @@ import {
   AlertCircle,
   Loader2,
   Archive,
+  RotateCcw,
   AlertTriangle
 } from 'lucide-react';
 
@@ -52,10 +54,14 @@ export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isHardDeleteModalOpen, setIsHardDeleteModalOpen] = useState(false);
+  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
+  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [formData, setFormData] = useState({
@@ -71,6 +77,8 @@ export default function BranchesPage() {
   const loadBranches = async () => {
     try {
       setIsLoading(true);
+      setError('');
+      // 2.2 Lihat Semua Cabang (?show_all=true jika showArchived true)
       const data = await branchAPI.getAll(showArchived);
       setBranches(Array.isArray(data) ? data : []);
     } catch (err: any) {
@@ -107,27 +115,39 @@ export default function BranchesPage() {
       address: '',
       phone_number: '',
     });
+    setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError('');
 
     try {
       if (selectedBranch) {
+        // 2.3 Edit Cabang
         await branchAPI.update(selectedBranch.branch_id, formData);
       } else {
+        // 2.1 Tambah Cabang Baru
         await branchAPI.create(formData);
       }
       await loadBranches();
       handleCloseModal();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menyimpan cabang');
+      // Handle Error 403 Limit
+      if (err.response?.status === 403) {
+        setError('Gagal: Anda telah mencapai batas jumlah cabang untuk paket ini. Silakan upgrade paket Anda.');
+        // Tutup modal agar user melihat pesan error
+        setIsModalOpen(false);
+      } else {
+        alert(err.response?.data?.message || 'Gagal menyimpan cabang');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // 2.4 Soft Delete Cabang
   const handleSoftDelete = async () => {
     if (!selectedBranch) return;
     
@@ -135,15 +155,33 @@ export default function BranchesPage() {
     try {
       await branchAPI.softDelete(selectedBranch.branch_id);
       await loadBranches();
-      setIsDeleteModalOpen(false);
+      setIsSoftDeleteOpen(false);
       setSelectedBranch(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menonaktifkan cabang');
+      alert(err.response?.data?.message || 'Gagal mengarsipkan cabang');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // 2.3 Restore/Aktifkan Kembali (Update is_active=true)
+  const handleRestore = async () => {
+    if (!selectedBranch) return;
+    
+    setIsSubmitting(true);
+    try {
+      await branchAPI.update(selectedBranch.branch_id, { is_active: true });
+      await loadBranches();
+      setIsRestoreOpen(false);
+      setSelectedBranch(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal mengaktifkan kembali cabang');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 2.5 Hard Delete Cabang
   const handleHardDelete = async () => {
     if (!selectedBranch) return;
     
@@ -151,10 +189,15 @@ export default function BranchesPage() {
     try {
       await branchAPI.hardDelete(selectedBranch.branch_id);
       await loadBranches();
-      setIsHardDeleteModalOpen(false);
+      setIsHardDeleteOpen(false);
       setSelectedBranch(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menghapus permanen cabang');
+      // Handle error jika cabang masih memiliki data terkait
+      if (err.response?.status === 400) {
+        alert('Gagal: Cabang tidak dapat dihapus karena masih memiliki data transaksi atau user.');
+      } else {
+        alert(err.response?.data?.message || 'Gagal menghapus permanen cabang');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -162,7 +205,7 @@ export default function BranchesPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <div className="flex justify-between items-center">
           <div>
             <Skeleton className="h-8 w-48 mb-2" />
@@ -182,14 +225,15 @@ export default function BranchesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Manajemen Cabang</h1>
           <p className="text-muted-foreground">Kelola cabang bisnis Anda</p>
         </div>
-        <div className="flex gap-2">
+      </div>
+      <div className="flex gap-2">
           <Button
             variant={showArchived ? "default" : "outline"}
             onClick={() => setShowArchived(!showArchived)}
@@ -202,7 +246,6 @@ export default function BranchesPage() {
             Tambah Cabang
           </Button>
         </div>
-      </div>
 
       {/* Error Alert */}
       {error && (
@@ -234,7 +277,7 @@ export default function BranchesPage() {
               </TableRow>
             ) : (
               branches.map((branch) => (
-                <TableRow key={branch.branch_id}>
+                <TableRow key={branch.branch_id} className={!branch.is_active ? 'opacity-75 bg-muted/30' : ''}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -255,7 +298,7 @@ export default function BranchesPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={branch.is_active ? "default" : "secondary"}>
-                      {branch.is_active ? 'Aktif' : 'Non-aktif'}
+                      {branch.is_active ? 'Aktif' : 'Diarsipkan'}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
@@ -272,21 +315,37 @@ export default function BranchesPage() {
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
+                        
+                        {branch.is_active ? (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedBranch(branch);
+                              setIsSoftDeleteOpen(true);
+                            }}
+                            className="text-orange-600"
+                          >
+                            <Archive className="mr-2 h-4 w-4" />
+                            Arsipkan
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedBranch(branch);
+                              setIsRestoreOpen(true);
+                            }}
+                            className="text-green-600"
+                          >
+                            <RotateCcw className="mr-2 h-4 w-4" />
+                            Aktifkan Kembali
+                          </DropdownMenuItem>
+                        )}
+
                         <DropdownMenuItem
                           onClick={() => {
                             setSelectedBranch(branch);
-                            setIsDeleteModalOpen(true);
+                            setIsHardDeleteOpen(true);
                           }}
-                        >
-                          <Archive className="mr-2 h-4 w-4" />
-                          Arsipkan
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedBranch(branch);
-                            setIsHardDeleteModalOpen(true);
-                          }}
-                          className="text-destructive"
+                          className="text-destructive focus:text-destructive"
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Hapus Permanen
@@ -356,53 +415,71 @@ export default function BranchesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Soft Delete Confirmation */}
-      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Arsipkan Cabang?</DialogTitle>
-            <DialogDescription>
-              Cabang <strong>{selectedBranch?.branch_name}</strong> akan dinonaktifkan dan dipindahkan ke arsip.
-              Data tidak akan hilang dan bisa diaktifkan kembali.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleSoftDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Arsipkan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Soft Delete (Archive) Confirmation */}
+      <CustomAlertDialog
+        open={isSoftDeleteOpen}
+        onOpenChange={setIsSoftDeleteOpen}
+        title="Arsipkan Cabang?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Apakah Anda yakin ingin mengarsipkan cabang <strong>{selectedBranch?.branch_name}</strong>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Cabang akan dinonaktifkan namun data tetap tersimpan. Anda dapat melihatnya kembali dengan filter "Tampilkan Arsip".
+            </p>
+          </div>
+        }
+        onConfirm={handleSoftDelete}
+        confirmText="Arsipkan"
+        variant="warning"
+      />
+
+      {/* Restore Confirmation */}
+      <CustomAlertDialog
+        open={isRestoreOpen}
+        onOpenChange={setIsRestoreOpen}
+        title="Aktifkan Kembali?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Apakah Anda yakin ingin mengaktifkan kembali cabang <strong>{selectedBranch?.branch_name}</strong>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Cabang akan muncul kembali di daftar aktif dan dapat digunakan.
+            </p>
+          </div>
+        }
+        onConfirm={handleRestore}
+        confirmText="Aktifkan"
+        variant="default"
+      />
 
       {/* Hard Delete Confirmation */}
-      <Dialog open={isHardDeleteModalOpen} onOpenChange={setIsHardDeleteModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Hapus Permanen?
-            </DialogTitle>
-            <DialogDescription>
-              <strong className="text-destructive">PERINGATAN:</strong> Cabang{' '}
-              <strong>{selectedBranch?.branch_name}</strong> akan dihapus PERMANEN dari database.
-              Tindakan ini tidak dapat dibatalkan!
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHardDeleteModalOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Hapus Permanen
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CustomAlertDialog
+        open={isHardDeleteOpen}
+        onOpenChange={setIsHardDeleteOpen}
+        title="Hapus Permanen?"
+        description={
+          <div className="space-y-3">
+            <p>
+              Apakah Anda yakin ingin menghapus cabang <strong>{selectedBranch?.branch_name}</strong> secara permanen?
+            </p>
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
+              <div className="flex items-center gap-2 font-medium text-destructive mb-1">
+                <AlertTriangle className="h-4 w-4" />
+                PERINGATAN
+              </div>
+              <div className="text-destructive/80">
+                Tindakan ini <strong>tidak dapat dibatalkan</strong>. Cabang hanya bisa dihapus jika tidak memiliki data transaksi atau user terkait.
+              </div>
+            </div>
+          </div>
+        }
+        onConfirm={handleHardDelete}
+        confirmText="Hapus Permanen"
+        variant="destructive"
+      />
     </div>
   );
 }

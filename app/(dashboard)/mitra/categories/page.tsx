@@ -169,7 +169,7 @@ export default function CategoriesPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <div className="flex justify-between items-center">
           <div>
             <Skeleton className="h-8 w-48 mb-2" />
@@ -193,7 +193,7 @@ export default function CategoriesPage() {
   const localCount = categories.filter(c => c.branch_id).length;
 
   return (
-    <div className="space-y-6">
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -227,10 +227,15 @@ export default function CategoriesPage() {
 
       {/* Filter */}
       <Card className="p-4">
-        <div className="flex items-center gap-4">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Filter Scope:</span>
-          <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          {/* ✅ Ikon dan Label dibungkus agar tetap sebaris di mobile */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium whitespace-nowrap">Filter Status:</span>
+          </div>
+          
+          {/* Container tombol wrapping */}
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={scopeFilter === 'all' ? 'default' : 'outline'}
               size="sm"

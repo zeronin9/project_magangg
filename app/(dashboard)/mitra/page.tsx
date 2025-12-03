@@ -93,7 +93,7 @@ export default function MitraDashboard() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <div>
           <Skeleton className="h-8 w-64 mb-2" />
           <Skeleton className="h-4 w-96" />
@@ -123,7 +123,7 @@ export default function MitraDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard Admin Mitra</h1>

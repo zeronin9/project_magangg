@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
 import { 
   Plus, 
   MoreHorizontal, 
@@ -45,9 +46,24 @@ import {
   Loader2,
   Filter,
   Upload,
+  Archive,
+  AlertTriangle,
   Image as ImageIcon
 } from 'lucide-react';
 import Image from 'next/image';
+import { formatRupiah } from '@/lib/utils'; // ✅ Import formatRupiah
+
+// Helper untuk mendapatkan URL lengkap gambar
+const getImageUrl = (path: string | null | undefined) => {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api';
+  const serverUrl = apiBaseUrl.replace(/\/api\/?$/, '');
+  const cleanPath = path.replace(/\\/g, '/').replace(/^\//, '');
+  
+  return `${serverUrl}/${cleanPath}`;
+};
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -56,8 +72,12 @@ export default function ProductsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  
+  // Delete States
+  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
+  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [imagePreview, setImagePreview] = useState<string>('');
@@ -85,14 +105,15 @@ export default function ProductsPage() {
       const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
       const productsList = Array.isArray(productsData) ? productsData : [];
       
-      // Map products dengan branch & category data
-      const productsWithRelations = productsList.map(product => {
+      const productsWithRelations = productsList.map((product: any) => {
         const branch = product.branch_id 
           ? branchesList.find(b => b.branch_id === product.branch_id)
           : null;
         const category = categoriesList.find(c => c.category_id === product.category_id);
+        
         return {
           ...product,
+          product_image_url: product.image_url || product.product_image_url || null,
           branch: branch || null,
           category: category || null
         };
@@ -117,7 +138,7 @@ export default function ProductsPage() {
         category_id: product.category_id,
         product_image: null,
       });
-      setImagePreview(product.product_image_url || '');
+      setImagePreview(getImageUrl(product.product_image_url) || '');
     } else {
       setSelectedProduct(null);
       setFormData({
@@ -183,17 +204,34 @@ export default function ProductsPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleSoftDelete = async () => {
     if (!selectedProduct) return;
     
     setIsSubmitting(true);
     try {
       await productAPI.softDelete(selectedProduct.product_id);
       await loadData();
-      setIsDeleteModalOpen(false);
+      setIsSoftDeleteOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menghapus produk');
+      alert(err.response?.data?.message || 'Gagal menonaktifkan produk');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleHardDelete = async () => {
+    if (!selectedProduct) return;
+    
+    setIsSubmitting(true);
+    try {
+      await productAPI.hardDelete(selectedProduct.product_id);
+      await loadData();
+      setIsHardDeleteOpen(false);
+      setSelectedProduct(null);
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || 'Gagal menghapus produk permanen';
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -207,7 +245,7 @@ export default function ProductsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <div className="flex justify-between items-center">
           <div>
             <Skeleton className="h-8 w-48 mb-2" />
@@ -233,7 +271,7 @@ export default function ProductsPage() {
   const localCount = products.filter(p => p.branch_id).length;
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -268,9 +306,15 @@ export default function ProductsPage() {
       {/* Filter */}
       <Card className="p-4">
         <div className="flex items-center gap-4">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Filter Scope:</span>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          {/* ✅ Ikon dan Label dibungkus agar tetap sebaris di mobile */}
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium whitespace-nowrap">Filter Status:</span>
+          </div>
+          
+          {/* Container tombol wrapping */}
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={scopeFilter === 'all' ? 'default' : 'outline'}
               size="sm"
@@ -295,11 +339,12 @@ export default function ProductsPage() {
               Lokal ({localCount})
             </Button>
           </div>
+          </div>
         </div>
       </Card>
 
       {/* Products Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {filteredProducts.length === 0 ? (
           <Card className="col-span-full p-12">
             <div className="text-center">
@@ -309,76 +354,111 @@ export default function ProductsPage() {
           </Card>
         ) : (
           filteredProducts.map((product) => (
-            <Card key={product.product_id} className="overflow-hidden">
+            <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${!product.is_active ? 'opacity-75' : ''}`}>
               {/* Product Image */}
-              <div className="aspect-square bg-muted relative">
+              <div className="aspect-[4/3] bg-muted relative">
                 {product.product_image_url ? (
                   <Image
-                    src={product.product_image_url}
+                    src={getImageUrl(product.product_image_url)}
                     alt={product.product_name}
                     fill
                     className="object-cover"
+                    unoptimized={true}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      target.parentElement?.classList.add('flex', 'items-center', 'justify-center');
+                    }}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <ImageIcon className="h-16 w-16 text-muted-foreground" />
+                    <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
+                  </div>
+                )}
+                
+                {product.product_image_url && (
+                   <div className="hidden flex items-center justify-center h-full absolute inset-0 bg-muted -z-10">
+                      <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
+                   </div>
+                )}
+
+                {/* Status Badge */}
+                {!product.is_active && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
+                    <Badge variant="secondary" className="bg-white/90 text-black">Non-Aktif</Badge>
                   </div>
                 )}
               </div>
 
               {/* Product Info */}
-              <div className="p-4 space-y-3">
-                <div>
-                  <h3 className="font-semibold line-clamp-2">{product.product_name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {product.category?.category_name || 'Tanpa Kategori'}
-                  </p>
+              <div className="p-3 space-y-2">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-sm line-clamp-1" title={product.product_name}>
+                      {product.product_name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground line-clamp-1">
+                      {product.category?.category_name || 'Tanpa Kategori'}
+                    </p>
+                  </div>
+                  {/* Action Menu */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 -mr-2">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => handleOpenModal(product)}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {product.is_active ? (
+                        <DropdownMenuItem onClick={() => {
+                          setSelectedProduct(product);
+                          setIsSoftDeleteOpen(true);
+                        }} className="text-orange-600">
+                          <Archive className="mr-2 h-4 w-4" />
+                          Arsipkan (Soft Delete)
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem disabled className="text-muted-foreground">
+                          <Archive className="mr-2 h-4 w-4" />
+                          Sudah Diarsipkan
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => {
+                        setSelectedProduct(product);
+                        setIsHardDeleteOpen(true);
+                      }} className="text-destructive focus:text-destructive">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Hapus Permanen
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <p className="text-lg font-bold text-primary">
-                    Rp {product.base_price.toLocaleString('id-ID')}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-primary truncate">
+                    {/* ✅ GANTI DI SINI: Menggunakan formatRupiah */}
+                    {formatRupiah(Number(product.base_price))}
                   </p>
-                  <Badge variant={product.branch_id ? 'secondary' : 'default'}>
-                    {product.branch_id ? (
-                      <Building2 className="mr-1 h-3 w-3" />
-                    ) : (
-                      <Globe className="mr-1 h-3 w-3" />
-                    )}
-                    {product.branch_id ? 'Lokal' : 'General'}
+                  <Badge 
+                    variant={product.branch_id ? 'secondary' : 'default'} 
+                    className="text-[10px] h-5 px-1.5 shrink-0"
+                  >
+                    {product.branch_id ? <Building2 className='h-3 w-3'/> : <Globe className="h-3 w-3" />}
                   </Badge>
                 </div>
 
                 {product.branch && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-[10px] text-muted-foreground line-clamp-1">
+                    <Building2 className="inline-block h-3 w-3 mr-1" />
                     {product.branch.branch_name}
                   </p>
                 )}
-
-                {/* Actions */}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleOpenModal(product)}
-                  >
-                    <Pencil className="mr-2 h-3 w-3" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => {
-                      setSelectedProduct(product);
-                      setIsDeleteModalOpen(true);
-                    }}
-                  >
-                    <Trash2 className="mr-2 h-3 w-3" />
-                    Hapus
-                  </Button>
-                </div>
               </div>
             </Card>
           ))
@@ -406,12 +486,13 @@ export default function ProductsPage() {
                 <Label>Gambar Produk</Label>
                 <div className="flex flex-col gap-4">
                   {imagePreview && (
-                    <div className="relative aspect-square w-full rounded-lg overflow-hidden border">
+                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
                       <Image
                         src={imagePreview}
                         alt="Preview"
                         fill
                         className="object-cover"
+                        unoptimized={true}
                       />
                     </div>
                   )}
@@ -495,26 +576,52 @@ export default function ProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus Produk?</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin menghapus produk <strong>{selectedProduct?.product_name}</strong>?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Soft Delete Confirmation */}
+      <CustomAlertDialog
+        open={isSoftDeleteOpen}
+        onOpenChange={setIsSoftDeleteOpen}
+        title="Arsipkan Produk?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Apakah Anda yakin ingin mengarsipkan <strong>{selectedProduct?.product_name}</strong>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Produk akan dinonaktifkan (Soft Delete) dan tidak muncul di menu kasir, namun data riwayat tetap tersimpan.
+            </p>
+          </div>
+        }
+        onConfirm={handleSoftDelete}
+        confirmText="Arsipkan"
+        variant="warning"
+      />
+
+      {/* Hard Delete Confirmation */}
+      <CustomAlertDialog
+        open={isHardDeleteOpen}
+        onOpenChange={setIsHardDeleteOpen}
+        title="Hapus Permanen?"
+        description={
+          <div className="space-y-3">
+            <p>
+              Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
+            </p>
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
+              <div className="flex items-center gap-2 font-medium text-destructive mb-1">
+                <AlertTriangle className="h-4 w-4" />
+                PERINGATAN
+              </div>
+              <div className="text-destructive/80">
+                Tindakan ini <strong>tidak dapat dibatalkan</strong>. Produk dan gambar akan dihapus dari database. 
+                Gagal jika produk memiliki riwayat transaksi.
+              </div>
+            </div>
+          </div>
+        }
+        onConfirm={handleHardDelete}
+        confirmText="Hapus Permanen"
+        variant="destructive"
+      />
     </div>
   );
 }

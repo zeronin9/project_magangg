@@ -70,7 +70,24 @@ export interface License {
   created_at: string;
 }
 
-// ✅ UPDATE: Tambahkan optional features
+// ... existing types ...
+// ✅ Tambahkan Interface untuk Riwayat Langganan (Sesuai Doc 7.7)
+export interface PartnerSubscriptionHistory {
+  subscription_id: string;
+  partner_id: string;
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+  payment_status: 'Paid' | 'Pending' | 'Expired' | 'Upgraded' | 'Failed';
+  subscription_plan: {
+    plan_name: string;
+    price: string | number;
+    duration_months: number;
+    branch_limit: number;
+    device_limit: number;
+  };
+}
+
 export interface SubscriptionPlan {
   plan_id: string;
   plan_name: string;
@@ -78,7 +95,8 @@ export interface SubscriptionPlan {
   description?: string;
   branch_limit: number;
   device_limit: number;
-  features?: string[]; // ✅ Tambahkan ini
+  duration_months?: number; // Tambahan field
+  features?: string[];
 }
 
 export interface SubscriptionOrderResponse {
@@ -92,9 +110,47 @@ export interface SubscriptionOrderResponse {
   order_id?: string;
   created_at?: string;
 }
-// Update SubscriptionOrder interface
+export interface SubscriptionPlan {
+  plan_id: string;
+  plan_name: string;
+  price: string | number;
+  description?: string;
+  branch_limit: number;
+  device_limit: number;
+  duration_months?: number;
+  features?: string[];
+}
+
+export interface SubscriptionOrderResponse {
+  status: 'WAITING_TRANSFER' | 'CONFIRMED' | 'EXPIRED';
+  total_amount: string | number;
+  bank_info: {
+    bank_name: string;
+    account_number: string;
+    account_name?: string;
+  };
+  order_id?: string;
+  created_at?: string;
+}
+
+export interface Subscription {
+  subscription_id: string;
+  partner_id: string;
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+  payment_status: 'Paid' | 'Pending' | 'Expired' | 'Upgraded';
+  subscription_plan: {
+    plan_name: string;
+    price: string;
+    duration_months: number;
+    branch_limit: number;
+    device_limit: number;
+  };
+}
+
 export interface SubscriptionOrder {
-  order_id?: string; // Optional karena mungkin tidak ada di response
+  order_id?: string;
   plan_id?: string;
   plan?: SubscriptionPlan;
   status: 'WAITING_TRANSFER' | 'CONFIRMED' | 'EXPIRED';

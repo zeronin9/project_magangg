@@ -103,6 +103,74 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
       ];
     }
+
+    if (role === 'super_admin') {
+      return [
+        { 
+          href: '/mitra', 
+          icon: '/images/icons/dashboard.png',
+          label: 'Dashboard',
+          badge: null,
+          exact: true
+        },
+        { 
+          href: '/mitra/branches', 
+          icon: '/images/icons/branch.png',
+          label: 'Cabang',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/branch-admins', 
+          icon: '/images/icons/branchadmin.png',
+          label: 'Admin Cabang',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/categories', 
+          icon: '/images/icons/catalog.png',
+          label: 'Kategori',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/products', 
+          icon: '/images/icons/BranchProduk.png',
+          label: 'Produk',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/discounts', 
+          icon: '/images/icons/discount.png',
+          label: 'Diskon',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/licenses', 
+          icon: '/images/icons/licenses.png',
+          label: 'Lisensi',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/subscription', 
+          icon: '/images/icons/Langganan1.png',
+          label: 'Langganan',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/mitra/reports', 
+          icon: '/images/icons/reportbaru.png',
+          label: 'Laporan',
+          badge: null,
+          exact: false
+        },
+      ];
+    }
     
     return [];
   };
@@ -122,7 +190,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
             isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <div className="relative w-5 h-5 flex-shrink-0">
+          <div className="relative w-4 h-4 flex-shrink-0">
             <Image
               src={item.icon}
               alt={item.label}
@@ -130,6 +198,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
               height={20}
               className={cn(
                 "object-contain transition-all duration-200",
+                item.label === 'Laporan' && "p-0.5",
                 isActive ? "opacity-100 scale-110" : "opacity-60 group-hover:opacity-80 group-hover:scale-105"
               )}
             />
@@ -174,7 +243,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         <div className="flex items-center justify-between w-full">
           {!isCollapsed ? (
             <Link 
-              href={`/${role === 'admin_platform' ? 'platform' : role === 'super_admin' ? 'admin' : 'branch'}`} 
+              href={`/${role === 'admin_platform' ? 'platform' : role === 'super_admin' ? 'mitra' : 'branch'}`} 
               className="flex items-center gap-2.5 font-semibold"
               onClick={() => setIsMobileOpen(false)}
             >
@@ -194,7 +263,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
             </Link>
           ) : (
             <Link 
-              href={`/${role === 'admin_platform' ? 'platform' : role === 'super_admin' ? 'admin' : 'branch'}`} 
+              href={`/${role === 'admin_platform' ? 'platform' : role === 'super_admin' ? 'mitra' : 'branch'}`} 
               className="flex items-center justify-center w-full"
               onClick={() => setIsMobileOpen(false)}
             >
@@ -312,7 +381,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           
           {/* Logo & Title - Centered */}
           <Link 
-            href={`/${role === 'admin_platform' ? 'platform' : role === 'super_admin' ? 'admin' : 'branch'}`}
+            href={`/${role === 'admin_platform' ? 'platform' : role === 'super_admin' ? 'mitra' : 'branch'}`}
             className="flex items-center gap-2 absolute left-1/2 transform -translate-x-1/2"
           >
             <div className="relative w-7 h-7 flex-shrink-0">

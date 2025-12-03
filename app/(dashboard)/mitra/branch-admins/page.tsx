@@ -41,6 +41,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
 import { 
   Plus, 
   MoreHorizontal, 
@@ -51,7 +52,9 @@ import {
   User,
   AlertCircle,
   Loader2,
-  AlertTriangle
+  Archive,
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 
 export default function BranchAdminsPage() {
@@ -59,9 +62,13 @@ export default function BranchAdminsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
+  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<BranchAdmin | null>(null);
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
@@ -141,15 +148,24 @@ export default function BranchAdminsPage() {
 
     try {
       if (selectedAdmin) {
+        // Edit Mode (3.3 Edit Admin Cabang)
         const updateData: any = {
           full_name: formData.full_name,
-          username: formData.username,
+          branch_id: formData.branch_id // Opsional: Pindah cabang
         };
+        
+        // Include username jika berubah (opsional, tergantung backend)
+        if (formData.username !== selectedAdmin.username) {
+          updateData.username = formData.username;
+        }
+
+        // Include password hanya jika diisi
         if (formData.password) {
           updateData.password = formData.password;
         }
         await branchAdminAPI.update(selectedAdmin.user_id, updateData);
       } else {
+        // Create Mode (3.1 Buat Admin Cabang)
         await branchAdminAPI.create(formData);
       }
       await loadData();
@@ -161,17 +177,35 @@ export default function BranchAdminsPage() {
     }
   };
 
-  const handleDelete = async () => {
+  // 3.4 Soft Delete Handler
+  const handleSoftDelete = async () => {
     if (!selectedAdmin) return;
     
     setIsSubmitting(true);
     try {
       await branchAdminAPI.softDelete(selectedAdmin.user_id);
       await loadData();
-      setIsDeleteModalOpen(false);
+      setIsSoftDeleteOpen(false);
       setSelectedAdmin(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menghapus admin cabang');
+      alert(err.response?.data?.message || 'Gagal menonaktifkan admin cabang');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 3.5 Hard Delete Handler
+  const handleHardDelete = async () => {
+    if (!selectedAdmin) return;
+    
+    setIsSubmitting(true);
+    try {
+      await branchAdminAPI.hardDelete(selectedAdmin.user_id);
+      await loadData();
+      setIsHardDeleteOpen(false);
+      setSelectedAdmin(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal menghapus permanen admin cabang');
     } finally {
       setIsSubmitting(false);
     }
@@ -184,7 +218,7 @@ export default function BranchAdminsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <div className="flex justify-between items-center">
           <div>
             <Skeleton className="h-8 w-48 mb-2" />
@@ -204,7 +238,7 @@ export default function BranchAdminsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -250,7 +284,7 @@ export default function BranchAdminsPage() {
                 const branchName = admin.branch?.branch_name || getBranchName(admin.branch_id);
                 
                 return (
-                  <TableRow key={admin.user_id}>
+                  <TableRow key={admin.user_id} className={!admin.is_active ? 'opacity-75 bg-muted/30' : ''}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
@@ -285,15 +319,34 @@ export default function BranchAdminsPage() {
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
+                          
+                          {admin.is_active ? (
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                setSelectedAdmin(admin);
+                                setIsSoftDeleteOpen(true);
+                              }}
+                              className="text-orange-600"
+                            >
+                              <Archive className="mr-2 h-4 w-4" />
+                              Non-aktifkan
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem disabled className="text-muted-foreground">
+                              <Archive className="mr-2 h-4 w-4" />
+                              Sudah Non-aktif
+                            </DropdownMenuItem>
+                          )}
+
                           <DropdownMenuItem
                             onClick={() => {
                               setSelectedAdmin(admin);
-                              setIsDeleteModalOpen(true);
+                              setIsHardDeleteOpen(true);
                             }}
-                            className="text-destructive"
+                            className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Hapus
+                            Hapus Permanen
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -354,7 +407,7 @@ export default function BranchAdminsPage() {
                 <Select
                   value={formData.branch_id}
                   onValueChange={(value) => setFormData({ ...formData, branch_id: value })}
-                  disabled={!!selectedAdmin}
+                  // Enable branch change on edit mode
                   required
                 >
                   <SelectTrigger>
@@ -383,30 +436,51 @@ export default function BranchAdminsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              Hapus Admin?
-            </DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin menghapus admin <strong>{selectedAdmin?.full_name}</strong>?
-              Tindakan ini tidak dapat dibatalkan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Soft Delete Confirmation */}
+      <CustomAlertDialog
+        open={isSoftDeleteOpen}
+        onOpenChange={setIsSoftDeleteOpen}
+        title="Non-aktifkan Admin?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Apakah Anda yakin ingin menonaktifkan admin <strong>{selectedAdmin?.full_name}</strong>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              User tidak akan bisa login, tetapi data tidak hilang.
+            </p>
+          </div>
+        }
+        onConfirm={handleSoftDelete}
+        confirmText="Non-aktifkan"
+        variant="warning"
+      />
+
+      {/* Hard Delete Confirmation */}
+      <CustomAlertDialog
+        open={isHardDeleteOpen}
+        onOpenChange={setIsHardDeleteOpen}
+        title="Hapus Permanen?"
+        description={
+          <div className="space-y-3">
+            <p>
+              Apakah Anda yakin ingin menghapus admin <strong>{selectedAdmin?.full_name}</strong> secara permanen?
+            </p>
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
+              <div className="flex items-center gap-2 font-medium text-destructive mb-1">
+                <AlertTriangle className="h-4 w-4" />
+                PERINGATAN
+              </div>
+              <div className="text-destructive/80">
+                Tindakan ini <strong>tidak dapat dibatalkan</strong>. Data admin akan hilang selamanya.
+              </div>
+            </div>
+          </div>
+        }
+        onConfirm={handleHardDelete}
+        confirmText="Hapus Permanen"
+        variant="destructive"
+      />
     </div>
   );
 }

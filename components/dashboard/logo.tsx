@@ -13,12 +13,14 @@ interface LogoProps {
 export function Logo({ collapsed = false, href = '/mitra', className }: LogoProps) {
   return (
     <Link href={href} className={cn('flex items-center gap-2', className)}>
-      <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center flex-shrink-0">
-        <Building2 className="h-5 w-5 text-primary-foreground" />
-      </div>
+        <img
+          src="/images/LOGO HOREKA (1).png "
+          alt="Horeka Logo"
+          className="w-6 h-6 object-contain"
+        />
       {!collapsed && (
         <div className="flex flex-col">
-          <span className="font-bold text-lg leading-none">Horeka</span>
+          <span className="font-bold text-sm leading-none">Horeka Pos +</span>
           <span className="text-xs text-muted-foreground">Admin Mitra</span>
         </div>
       )}

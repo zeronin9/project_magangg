@@ -49,7 +49,7 @@ export function Header({ onMenuClick, userName = 'Admin', userEmail, onLogout }:
           <Menu className="h-5 w-5" />
         </Button>
 
-        {/* Search Bar - Desktop */}
+        {/* Search Bar - Desktop
         <div className="hidden md:flex flex-1 max-w-md">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -59,16 +59,16 @@ export function Header({ onMenuClick, userName = 'Admin', userEmail, onLogout }:
               className="pl-9 w-full"
             />
           </div>
-        </div>
+        </div> */}
 
         {/* Right Section */}
         <div className="flex flex-1 items-center justify-end gap-2">
-          {/* Search Button - Mobile */}
+          {/* Search Button - Mobile
           <Button variant="ghost" size="icon" className="md:hidden">
             <Search className="h-5 w-5" />
-          </Button>
+          </Button> */}
 
-          {/* Notifications */}
+          {/* Notifications
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">
@@ -83,7 +83,7 @@ export function Header({ onMenuClick, userName = 'Admin', userEmail, onLogout }:
                 Tidak ada notifikasi baru
               </div>
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu> */}
 
           {/* User Menu */}
           <DropdownMenu>

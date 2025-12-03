@@ -59,9 +59,17 @@ export function CustomAlertDialog({
             )}
             {title}
           </DialogTitle>
-          <DialogDescription className="text-left">
-            {description}
+          
+          {/* PERBAIKAN DI SINI:
+              Menambahkan 'asChild' agar komponen ini merender <div> (child-nya)
+              bukannya <p> default dari Radix UI.
+          */}
+          <DialogDescription className="text-left" asChild>
+            <div className="text-sm text-muted-foreground">
+              {description}
+            </div>
           </DialogDescription>
+          
         </DialogHeader>
         <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
           <DialogClose asChild>

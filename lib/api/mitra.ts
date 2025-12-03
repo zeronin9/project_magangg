@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { SubscriptionOrderResponse } from '@/types/mitra'; // Add this import
+import { SubscriptionOrderResponse, Subscription } from '@/types/mitra'; // Add this import
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.1.16:3001/api';
 
@@ -323,13 +323,21 @@ export const licenseAPI = {
 
 // ==================== SUBSCRIPTION ====================
 export const subscriptionAPI = {
-  // Get all subscription plans
+  // Get all subscription plans (Daftar paket yang dijual)
   getPlans: async () => {
-    const response = await apiClient.get('/partner-subscription/plans');
+    const response = await apiClient.get('/partner-subscription/plans'); // Sesuaikan jika ada endpoint khusus list plan
+    return response.data; 
+    // Note: Jika backend belum ada endpoint list public plans, kita pakai endpoint /subscription-plan (platform)
+    // atau mock data di frontend sementara.
+  },
+
+  // ✅ Doc 7.7: Cek Status Paket / Riwayat Langganan
+  getHistory: async (partnerId: string) => {
+    const response = await apiClient.get(`/partner-subscription/partner/${partnerId}`);
     return response.data;
   },
 
-  // Create subscription order
+  // ✅ Doc 7.6: Beli Paket (Buat Pesanan)
   createOrder: async (planId: string) => {
     const response = await apiClient.post('/partner-subscription/order', { 
       plan_id: planId 
@@ -337,13 +345,7 @@ export const subscriptionAPI = {
     return response.data;
   },
 
-  // Get user's orders (if exists)
-  getOrders: async () => {
-    const response = await apiClient.get('/partner-subscription/orders');
-    return response.data;
-  },
-
-  // Upload payment proof (if exists)
+  // Upload payment proof (Opsional/Existing)
   uploadPaymentProof: async (orderId: string, file: File) => {
     const formData = new FormData();
     formData.append('payment_proof', file);

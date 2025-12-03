@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { subscriptionAPI } from '@/lib/api/mitra';
-import { SubscriptionPlan, SubscriptionOrder, SubscriptionOrderResponse } from '@/types/mitra';
+import { fetchWithAuth } from '@/lib/api'; // ✅ FIX: Import dari lib/api
+import { SubscriptionPlan, SubscriptionOrderResponse, PartnerSubscriptionHistory } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -17,114 +18,78 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { 
-  CreditCard,
-  Check,
   Building2,
   Smartphone,
   AlertCircle,
   Loader2,
   Info,
   Sparkles,
-  Server
+  CheckCircle,
+  Clock,
+  History
 } from 'lucide-react';
-
-// Mock data sebagai fallback
-const MOCK_PLANS: SubscriptionPlan[] = [
-  {
-    plan_id: '1',
-    plan_name: 'Starter',
-    price: '99000',
-    description: 'Cocok untuk usaha kecil yang baru memulai',
-    branch_limit: 1,
-    device_limit: 2,
-    features: ['1 Cabang', '2 Perangkat', 'Support 24/7', 'Cloud Backup', 'Update Gratis']
-  },
-  {
-    plan_id: '2',
-    plan_name: 'Professional',
-    price: '299000',
-    description: 'Ideal untuk bisnis yang sedang berkembang',
-    branch_limit: 5,
-    device_limit: 10,
-    features: ['5 Cabang', '10 Perangkat', 'Support Priority', 'Cloud Backup', 'Update Gratis', 'Analytics']
-  },
-  {
-    plan_id: '3',
-    plan_name: 'Enterprise',
-    price: '999000',
-    description: 'Solusi lengkap untuk bisnis berskala besar',
-    branch_limit: -1,
-    device_limit: -1,
-    features: ['Unlimited Cabang', 'Unlimited Perangkat', 'Dedicated Support', 'Cloud Backup', 'Update Gratis', 'Advanced Analytics', 'Custom Features']
-  },
-];
+import { formatRupiah } from '@/lib/utils';
 
 export default function SubscriptionPage() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [history, setHistory] = useState<PartnerSubscriptionHistory[]>([]);
+  const [activeSubscription, setActiveSubscription] = useState<PartnerSubscriptionHistory | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderResult, setOrderResult] = useState<SubscriptionOrder | null>(null);
-  const [useMockData, setUseMockData] = useState(false);
+  const [orderResult, setOrderResult] = useState<SubscriptionOrderResponse | null>(null);
 
   useEffect(() => {
-    loadPlans();
+    initializeData();
   }, []);
 
-  const loadPlans = async () => {
+  const initializeData = async () => {
     try {
       setIsLoading(true);
-      setError('');
       
-      // ✅ Try API silently
-      try {
-        const response: any = await subscriptionAPI.getPlans();
-        
-        let plansList: SubscriptionPlan[] = [];
-        
-        if (Array.isArray(response)) {
-          plansList = response;
-        } else if (response?.data && Array.isArray(response.data)) {
-          plansList = response.data;
-        } else if (response?.plans && Array.isArray(response.plans)) {
-          plansList = response.plans;
-        }
-        
-        if (plansList.length > 0) {
-          setPlans(plansList);
-          setUseMockData(false);
-          console.log('✅ Loaded plans from API:', plansList.length);
-          return;
-        }
-      } catch (apiError: any) {
-        // ✅ Silent fallback for 404
-        if (apiError.response?.status === 404) {
-          console.log('ℹ️ API endpoint not found, using mock data');
-          setPlans(MOCK_PLANS);
-          setUseMockData(true);
-          return;
-        }
-        // Re-throw other errors
-        throw apiError;
+      // 1. Ambil User Data untuk Partner ID
+      const userStr = localStorage.getItem('user');
+      if (!userStr) throw new Error('User not found');
+      const user = JSON.parse(userStr);
+      // Fallback untuk berbagai format key partner_id
+      const partnerId = user.partnerId || user.partner_id;
+
+      if (!partnerId) {
+        console.error('Partner ID not found in user session');
+        return;
       }
-      
-    } catch (err: any) {
-      console.error('❌ Error loading plans:', err.message);
-      
-      // Fallback to mock data on any error
-      setPlans(MOCK_PLANS);
-      setUseMockData(true);
-      
-      // Only show error for non-404
-      if (err.response?.status !== 404) {
-        if (err.response?.status === 401) {
-          setError('Session expired. Silakan login kembali.');
-        } else {
-          setError('Menggunakan data demo. Koneksi ke server bermasalah.');
-        }
+
+      // 2. Fetch Plans & History
+      const [plansData, historyData] = await Promise.allSettled([
+        fetchWithAuth('/subscription-plan'), 
+        subscriptionAPI.getHistory(partnerId)
+      ]);
+
+      // Handle Plans
+      if (plansData.status === 'fulfilled') {
+        const pData = plansData.value;
+        setPlans(Array.isArray(pData) ? pData : []);
       }
+
+      // Handle History & Active Subscription Logic
+      if (historyData.status === 'fulfilled') {
+        const hData = Array.isArray(historyData.value) ? historyData.value : [];
+        setHistory(hData);
+
+        // ✅ LOGIC 7.7: Filter Active Package
+        const now = new Date();
+        const active = hData.find((sub: PartnerSubscriptionHistory) => {
+          const endDate = new Date(sub.end_date);
+          return sub.payment_status === 'Paid' && endDate > now;
+        });
+
+        setActiveSubscription(active || null);
+      }
+
+    } catch (err) {
+      console.error('Error initializing subscription page:', err);
     } finally {
       setIsLoading(false);
     }
@@ -140,405 +105,280 @@ export default function SubscriptionPage() {
     
     setIsSubmitting(true);
     try {
-      if (useMockData) {
-        // ✅ Mock response
-        console.log('ℹ️ Using mock order (API not available)');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const mockOrder: SubscriptionOrder = {
-          order_id: `ORD-DEMO-${Date.now()}`,
-          plan_id: selectedPlan.plan_id,
-          status: 'WAITING_TRANSFER',
-          total_amount: selectedPlan.price,
-          bank_info: {
-            bank_name: 'Bank Mandiri',
-            account_number: '1234567890',
-            account_name: 'PT Horeka Indonesia'
-          },
-          created_at: new Date().toISOString(),
-        };
-        
-        setOrderResult(mockOrder);
-        return;
-      }
-      
-      // ✅ Real API call
-      const result = await subscriptionAPI.createOrder(selectedPlan.plan_id) as SubscriptionOrderResponse;
-      
-      const orderData: SubscriptionOrder = {
-        status: result.status,
-        total_amount: result.total_amount,
-        bank_info: result.bank_info,
-        plan_id: selectedPlan.plan_id,
-        order_id: result.order_id,
-        created_at: result.created_at || new Date().toISOString(),
-      };
-      
-      setOrderResult(orderData);
-      
+      // ✅ DOC 7.6: Buat Pesanan
+      const result = await subscriptionAPI.createOrder(selectedPlan.plan_id);
+      setOrderResult(result as SubscriptionOrderResponse);
     } catch (err: any) {
-      console.error('❌ Error creating order:', err);
-      
-      let errorMessage = 'Gagal membuat pesanan';
-      
-      if (err.response?.status === 400) {
-        errorMessage = err.response?.data?.message || 'Data tidak valid';
-      } else if (err.response?.status === 401) {
-        errorMessage = 'Session expired. Silakan login kembali.';
-      } else if (err.response?.status === 404) {
-        errorMessage = 'Endpoint belum tersedia. Hubungi administrator.';
-      } else if (err.response?.data?.message) {
-        errorMessage = err.response.data.message;
-      }
-      
-      alert(errorMessage);
+      alert(err.response?.data?.message || 'Gagal membuat pesanan');
       setIsOrderModalOpen(false);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const formatPrice = (price: string | number) => {
-    const priceNum = typeof price === 'string' ? parseInt(price) : price;
-    return 'Rp ' + priceNum.toLocaleString('id-ID');
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
   };
 
   if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <Skeleton className="h-8 w-64 mb-2" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <Skeleton className="h-24 w-full" />
+    return <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+      <Skeleton className="h-48 w-full" /><Skeleton className="h-96 w-full" /></div>;
+  }
+
+  return (
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Langganan & Tagihan</h1>
+        <p className="text-muted-foreground">
+          Kelola paket layanan Horeka Pos+ Anda
+        </p>
+      </div>
+
+      {/* ✅ SECTION 1: ACTIVE PLAN BANNER */}
+      {activeSubscription ? (
+        <Card className="bg-white border-primary/20">
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <div>
+                <Badge className="mb-2 bg-black hover:bg-green-500">Paket Aktif</Badge>
+                <CardTitle className="text-2xl text-primary">
+                  {activeSubscription.subscription_plan.plan_name}
+                </CardTitle>
+                <CardDescription>
+                  Aktif hingga <span className="font-semibold text-foreground">{formatDate(activeSubscription.end_date)}</span>
+                </CardDescription>
+              </div>
+              <div className="text-right hidden md:block">
+                <p className="text-sm text-muted-foreground">Harga Paket</p>
+                <p className="text-xl font-bold">{formatRupiah(Number(activeSubscription.subscription_plan.price))}</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ">
+              <div className="flex items-center gap-3 p-3 bg-background/50 rounded-lg border border-primary/20 shadow-sm">
+                <Building2 className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Limit Cabang</p>
+                  <p className="font-semibold">
+                    {activeSubscription.subscription_plan.branch_limit === -1 ? 'Unlimited' : activeSubscription.subscription_plan.branch_limit} Unit
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-background/50 rounded-lg border border-primary/20 shadow-sm">
+                <Smartphone className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Limit Perangkat</p>
+                  <p className="font-semibold">
+                    {activeSubscription.subscription_plan.device_limit === -1 ? 'Unlimited' : activeSubscription.subscription_plan.device_limit} Device
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-background/50 rounded-lg border border-primary/20 shadow-sm">
+                <Clock className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Durasi</p>
+                  <p className="font-semibold">{activeSubscription.subscription_plan.duration_months} Bulan</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-900">
+          <AlertCircle className="h-4 w-4 text-red-900" />
+          <AlertTitle>Tidak Ada Paket Aktif</AlertTitle>
+          <AlertDescription>
+            Layanan Anda mungkin terbatas. Silakan beli paket langganan di bawah ini untuk mengakses semua fitur.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* ✅ SECTION 2: AVAILABLE PLANS */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-black" />
+          Pilihan Paket
+        </h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <Card key={i}>
+          {plans.map((plan) => (
+            <Card key={plan.plan_id} className="flex flex-col relative overflow-hidden transition-all hover:shadow-md">
               <CardHeader>
-                <Skeleton className="h-6 w-32 mb-2" />
-                <Skeleton className="h-8 w-24" />
+                <CardTitle>{plan.plan_name}</CardTitle>
+                <CardDescription>{plan.description || 'Paket bulanan'}</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[1, 2, 3, 4].map((j) => (
-                    <Skeleton key={j} className="h-6 w-full" />
-                  ))}
+              <CardContent className="flex-1 space-y-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-bold">{formatRupiah(Number(plan.price))}</span>
+                  <span className="text-muted-foreground text-sm">/{plan.duration_months} bln</span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>{plan.branch_limit === -1 ? 'Unlimited' : plan.branch_limit} Cabang</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>{plan.device_limit === -1 ? 'Unlimited' : plan.device_limit} Perangkat</span>
+                  </div>
                 </div>
               </CardContent>
               <CardFooter>
-                <Skeleton className="h-10 w-full" />
+                <Button className="w-full" onClick={() => handleSelectPlan(plan)}>
+                  Pilih Paket
+                </Button>
               </CardFooter>
             </Card>
           ))}
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Paket Langganan</h1>
-        <p className="text-muted-foreground">
-          Pilih paket yang sesuai dengan kebutuhan bisnis Anda
-        </p>
-      </div>
-
-      {/* Mock Data Info (tidak error, cuma info) */}
-      {useMockData && (
-        <Alert className="bg-blue-50 border-blue-200">
-          <Server className="h-4 w-4 text-blue-600" />
-          <AlertDescription className="text-blue-800">
-            <strong>Mode Demo:</strong> Endpoint <code className="bg-blue-100 px-1 rounded">/api/partner-subscription/plans</code> belum tersedia.
-            Menampilkan data contoh untuk development.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Error Alert (only for non-404 errors) */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {error}
-            <Button onClick={loadPlans} variant="outline" size="sm" className="ml-4">
-              Coba Lagi
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Info Card */}
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Informasi Langganan:</strong> Upgrade paket Anda untuk mendapatkan akses ke lebih 
-          banyak cabang dan perangkat. Pembayaran dilakukan melalui transfer manual ke rekening yang tertera.
-        </AlertDescription>
-      </Alert>
-
-      {/* Plans Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {plans.length === 0 ? (
-          <Card className="col-span-full p-12">
-            <div className="text-center">
-              <CreditCard className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">Tidak ada paket tersedia</p>
-              <Button onClick={loadPlans} className="mt-4">
-                Muat Ulang
-              </Button>
+      {/* ✅ SECTION 3: HISTORY LIST */}
+      {history.length > 0 && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Riwayat Pesanan
+          </h2>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted text-muted-foreground border-b">
+                  <tr>
+                    <th className="px-4 py-3">Paket</th>
+                    <th className="px-4 py-3">Tanggal</th>
+                    <th className="px-4 py-3">Harga</th>
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {history.map((sub) => (
+                    <tr key={sub.subscription_id} className="hover:bg-muted/50">
+                      <td className="px-4 py-3 font-medium">
+                        {sub.subscription_plan?.plan_name || 'Paket Lama'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatDate(sub.start_date)} - {formatDate(sub.end_date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {sub.subscription_plan?.price ? formatRupiah(Number(sub.subscription_plan.price)) : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge 
+                          variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}
+                          className={
+                            sub.payment_status === 'Paid' ? 'bg-green-100 text-green-800 hover:bg-green-100' :
+                            sub.payment_status === 'Pending' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100' : ''
+                          }
+                        >
+                          {sub.payment_status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
-        ) : (
-          plans.map((plan) => {
-            const isPopular = plan.plan_name.toLowerCase().includes('pro');
-            
-            return (
-              <Card 
-                key={plan.plan_id} 
-                className={`relative overflow-hidden ${
-                  isPopular ? 'border-2 border-primary shadow-lg' : ''
-                }`}
-              >
-                {isPopular && (
-                  <div className="absolute top-0 right-0">
-                    <Badge className="rounded-none rounded-bl-lg">
-                      <Sparkles className="mr-1 h-3 w-3" />
-                      Popular
-                    </Badge>
-                  </div>
-                )}
+        </div>
+      )}
 
-                <CardHeader>
-                  <CardTitle className="text-2xl">{plan.plan_name}</CardTitle>
-                  <CardDescription>{plan.description || 'Paket langganan'}</CardDescription>
-                </CardHeader>
-
-                <CardContent className="space-y-6">
-                  <div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold">
-                        {formatPrice(plan.price)}
-                      </span>
-                      <span className="text-muted-foreground">/bulan</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                        <Check className="h-3 w-3 text-green-600" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">
-                          {plan.branch_limit === -1 ? 'Unlimited' : plan.branch_limit} Cabang
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                        <Check className="h-3 w-3 text-green-600" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">
-                          {plan.device_limit === -1 ? 'Unlimited' : plan.device_limit} Perangkat
-                        </span>
-                      </div>
-                    </div>
-
-                    {(plan.features || ['Support 24/7', 'Cloud Backup', 'Update Gratis']).slice(2).map((feature, idx) => (
-                      <div key={idx} className="flex items-center gap-3">
-                        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                          <Check className="h-3 w-3 text-green-600" />
-                        </div>
-                        <span className="font-medium">{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-
-                <CardFooter>
-                  <Button
-                    onClick={() => handleSelectPlan(plan)}
-                    className="w-full"
-                    variant={isPopular ? 'default' : 'outline'}
-                  >
-                    Pilih Paket
-                  </Button>
-                </CardFooter>
-              </Card>
-            );
-          })
-        )}
-      </div>
-
-      {/* Modals (tetap sama) */}
+      {/* CONFIRMATION MODAL */}
       <Dialog open={isOrderModalOpen && !orderResult} onOpenChange={setIsOrderModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Konfirmasi Pesanan</DialogTitle>
+            <DialogTitle>Konfirmasi Pembelian</DialogTitle>
             <DialogDescription>
-              Periksa detail pesanan Anda sebelum melanjutkan
+              Anda akan membeli paket <strong>{selectedPlan?.plan_name}</strong>
             </DialogDescription>
           </DialogHeader>
-          
-          {selectedPlan && (
-            <div className="space-y-4 py-4">
-              <div className="bg-muted p-4 rounded-lg space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Paket:</span>
-                  <span className="font-semibold">{selectedPlan.plan_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Cabang:</span>
-                  <span className="font-semibold">
-                    {selectedPlan.branch_limit === -1 ? 'Unlimited' : selectedPlan.branch_limit}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Perangkat:</span>
-                  <span className="font-semibold">
-                    {selectedPlan.device_limit === -1 ? 'Unlimited' : selectedPlan.device_limit}
-                  </span>
-                </div>
-                <div className="border-t pt-3 flex justify-between items-center">
-                  <span className="font-medium">Total:</span>
-                  <span className="text-2xl font-bold text-primary">
-                    {formatPrice(selectedPlan.price)}
-                  </span>
-                </div>
-              </div>
-
-              {useMockData && (
-                <Alert className="bg-yellow-50 border-yellow-200">
-                  <AlertCircle className="h-4 w-4 text-yellow-600" />
-                  <AlertDescription className="text-yellow-800 text-sm">
-                    <strong>Mode Demo:</strong> Order akan menggunakan simulasi data.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription className="text-sm">
-                  Setelah konfirmasi, Anda akan mendapatkan instruksi pembayaran via transfer manual.
-                </AlertDescription>
-              </Alert>
+          <div className="py-4">
+            <div className="flex justify-between mb-2">
+              <span>Harga Paket</span>
+              <span className="font-bold">{selectedPlan && formatRupiah(Number(selectedPlan.price))}</span>
             </div>
-          )}
-
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Durasi</span>
+              <span>{selectedPlan?.duration_months} Bulan</span>
+            </div>
+          </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsOrderModalOpen(false);
-                setSelectedPlan(null);
-              }}
-              disabled={isSubmitting}
-            >
-              Batal
-            </Button>
+            <Button variant="outline" onClick={() => setIsOrderModalOpen(false)}>Batal</Button>
             <Button onClick={handleCreateOrder} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Konfirmasi Pesanan
+              Buat Pesanan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Order Result Modal */}
-      <Dialog open={!!orderResult} onOpenChange={(open) => {
-        if (!open) {
-          setOrderResult(null);
-          setIsOrderModalOpen(false);
-          setSelectedPlan(null);
-        }
-      }}>
-        <DialogContent className="max-w-md">
+      {/* SUCCESS / PAYMENT INFO MODAL */}
+      <Dialog open={!!orderResult} onOpenChange={(open) => !open && setOrderResult(null)}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <Check className="h-6 w-6 text-green-600" />
-              </div>
-              Pesanan Berhasil!
-            </DialogTitle>
-            <DialogDescription>
-              Silakan lakukan pembayaran ke rekening di bawah ini
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+            </div>
+            <DialogTitle className="text-center mt-4">Pesanan Berhasil Dibuat!</DialogTitle>
+            <DialogDescription className="text-center">
+              Silakan lakukan transfer sesuai detail di bawah ini.
             </DialogDescription>
           </DialogHeader>
-
+          
           {orderResult && (
             <div className="space-y-4 py-4">
               <div className="bg-muted p-4 rounded-lg space-y-3">
-                {orderResult.order_id && (
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="text-sm text-muted-foreground">Total Pembayaran</span>
+                  <span className="text-xl font-bold text-primary">{formatRupiah(Number(orderResult.total_amount))}</span>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Bank Transfer</p>
+                  <p className="font-semibold">{orderResult.bank_info.bank_name}</p>
+                </div>
+                
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Nomor Rekening</p>
+                  <div className="flex items-center justify-between bg-background p-2 rounded border">
+                    <code className="font-mono text-lg">{orderResult.bank_info.account_number}</code>
+                  </div>
+                </div>
+
+                {orderResult.bank_info.account_name && (
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Order ID:</p>
-                    <p className="font-mono font-semibold">{orderResult.order_id}</p>
+                    <p className="text-xs text-muted-foreground uppercase mb-1">Atas Nama</p>
+                    <p className="font-medium">{orderResult.bank_info.account_name}</p>
                   </div>
                 )}
-
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Status:</p>
-                  <Badge variant="outline" className="font-semibold">
-                    {orderResult.status === 'WAITING_TRANSFER' ? 'Menunggu Transfer' : orderResult.status}
-                  </Badge>
-                </div>
-
-                {orderResult.bank_info && (
-                  <>
-                    <div className="border-t pt-3">
-                      <p className="text-sm text-muted-foreground mb-1">Bank:</p>
-                      <p className="font-semibold">{orderResult.bank_info.bank_name}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Nomor Rekening:</p>
-                      <p className="font-mono font-semibold text-lg">
-                        {orderResult.bank_info.account_number}
-                      </p>
-                    </div>
-
-                    {orderResult.bank_info.account_name && (
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Atas Nama:</p>
-                        <p className="font-semibold">{orderResult.bank_info.account_name}</p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <div className="border-t pt-3">
-                  <p className="text-sm text-muted-foreground mb-1">Total Pembayaran:</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {formatPrice(orderResult.total_amount)}
-                  </p>
+                
+                <div className="mt-4 pt-2 border-t text-xs text-center text-muted-foreground">
+                  Status: <span className="font-bold text-yellow-600">{orderResult.status}</span>
                 </div>
               </div>
-
-              <Alert className="bg-yellow-50 border-yellow-200">
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-                <AlertDescription className="text-yellow-800">
-                  <strong>Penting:</strong> Simpan informasi ini. Setelah melakukan pembayaran, 
-                  hubungi admin untuk konfirmasi.
+              
+              <Alert className="bg-blue-50 text-blue-900 border-blue-200">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-xs">
+                  Harap simpan bukti transfer Anda. Admin akan memverifikasi pembayaran Anda secepatnya.
                 </AlertDescription>
               </Alert>
             </div>
           )}
 
           <DialogFooter>
-            <Button
-              onClick={() => {
-                setOrderResult(null);
-                setIsOrderModalOpen(false);
-                setSelectedPlan(null);
-              }}
-              className="w-full"
-            >
-              Mengerti
+            <Button className="w-full" onClick={() => {
+              setOrderResult(null);
+              setIsOrderModalOpen(false);
+              setSelectedPlan(null);
+              initializeData(); 
+            }}>
+              Saya Sudah Transfer
             </Button>
           </DialogFooter>
         </DialogContent>
