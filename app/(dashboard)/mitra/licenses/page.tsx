@@ -185,14 +185,14 @@ export default function LicensesPage() {
     switch (status) {
       case 'Active':
         return (
-          <Badge className="bg-green-500">
+          <Badge className="bg-green-600">
             <CheckCircle className="mr-1 h-3 w-3" />
             Aktif
           </Badge>
         );
       case 'Assigned':
         return (
-          <Badge className="bg-blue-500">
+          <Badge className="bg-black">
             <Building2 className="mr-1 h-3 w-3" />
             Dialokasikan
           </Badge>

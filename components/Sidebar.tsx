@@ -64,6 +64,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
   };
 
   const getNavigationItems = () => {
+    // 1. ADMIN PLATFORM (L3)
     if (role === 'admin_platform') {
       return [
         { 
@@ -104,6 +105,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
       ];
     }
 
+    // 2. ADMIN MITRA (L2)
     if (role === 'super_admin') {
       return [
         { 
@@ -115,7 +117,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
         { 
           href: '/mitra/branches', 
-          icon: '/images/icons/branch.png',
+          icon: '/images/icons/Cabang1.png',
           label: 'Cabang',
           badge: null,
           exact: false
@@ -164,8 +166,77 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
         { 
           href: '/mitra/reports', 
+          icon: '/images/icons/reportbaru1.png',
+          label: 'Laporan',
+          badge: null,
+          exact: false
+        },
+      ];
+    }
+
+    // 3. ADMIN CABANG (L1) - FULL MENU
+    if (role === 'branch_admin') {
+      return [
+        { 
+          href: '/branch', 
+          icon: '/images/icons/dashboard.png',
+          label: 'Dashboard',
+          badge: null,
+          exact: true
+        },
+        { 
+          href: '/branch/cashiers', 
+          icon: '/images/icons/branchadmin.png', 
+          label: 'Kasir & Staf',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/shifts', // New Page
+          icon: '/images/icons/Branch.png', // Icon shift/waktu (reused)
+          label: 'Jadwal Shift',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/products', 
+          icon: '/images/icons/BranchProduk.png',
+          label: 'Produk & Menu',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/discounts', 
+          icon: '/images/icons/discount.png',
+          label: 'Diskon & Promo',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/expenses', 
+          icon: '/images/icons/report.png', 
+          label: 'Pengeluaran',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/voids', // New Page
+          icon: '/images/icons/logout.png', // Placeholder icon for void/cancel
+          label: 'Permintaan Void',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/reports', 
           icon: '/images/icons/reportbaru.png',
           label: 'Laporan',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/settings', 
+          icon: '/images/icons/Cabang1.png',
+          label: 'Pengaturan',
           badge: null,
           exact: false
         },
@@ -190,7 +261,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
             isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <div className="relative w-4 h-4 flex-shrink-0">
+          <div className="relative w-5 h-5 flex-shrink-0">
             <Image
               src={item.icon}
               alt={item.label}

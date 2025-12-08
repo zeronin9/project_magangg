@@ -48,20 +48,19 @@ import {
   Upload,
   Archive,
   AlertTriangle,
+  RotateCcw,
   Image as ImageIcon
 } from 'lucide-react';
 import Image from 'next/image';
-import { formatRupiah } from '@/lib/utils'; // ✅ Import formatRupiah
+import { formatRupiah } from '@/lib/utils';
 
-// Helper untuk mendapatkan URL lengkap gambar
+// Helper URL Gambar
 const getImageUrl = (path: string | null | undefined) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api';
   const serverUrl = apiBaseUrl.replace(/\/api\/?$/, '');
   const cleanPath = path.replace(/\\/g, '/').replace(/^\//, '');
-  
   return `${serverUrl}/${cleanPath}`;
 };
 
@@ -71,15 +70,19 @@ export default function ProductsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Delete States
+  // Modal States
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false); // ✅ Restore Modal
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
+  
+  // ✅ Filter State: 'archived' added
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'archived'>('all');
+  
   const [imagePreview, setImagePreview] = useState<string>('');
   const [formData, setFormData] = useState({
     product_name: '',
@@ -92,11 +95,14 @@ export default function ProductsPage() {
     loadData();
   }, []);
 
+  // Helper Delay 3 Detik
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   const loadData = async () => {
     try {
       setIsLoading(true);
       const [productsData, categoriesData, branchesData] = await Promise.all([
-        productAPI.getAll(),
+        productAPI.getAll(), 
         categoryAPI.getAll(),
         branchAPI.getAll(),
       ]);
@@ -176,11 +182,18 @@ export default function ProductsPage() {
     }
   };
 
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9]/g, '');
+    setFormData({ ...formData, base_price: value });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
+      await delay(3000); // ✅ Delay
+
       const formDataToSend = new FormData();
       formDataToSend.append('product_name', formData.product_name);
       formDataToSend.append('base_price', formData.base_price);
@@ -209,6 +222,8 @@ export default function ProductsPage() {
     
     setIsSubmitting(true);
     try {
+      await delay(3000); // ✅ Delay
+
       await productAPI.softDelete(selectedProduct.product_id);
       await loadData();
       setIsSoftDeleteOpen(false);
@@ -220,11 +235,42 @@ export default function ProductsPage() {
     }
   };
 
+  // ✅ HANDLER BARU: Restore Produk
+  const handleRestore = async () => {
+    if (!selectedProduct) return;
+    
+    setIsSubmitting(true);
+    try {
+      await delay(3000); // ✅ Delay
+
+      // Menggunakan endpoint update untuk set is_active: true
+      // Kita kirim FormData karena endpoint update mengharapkan multipart/form-data
+      const formDataToSend = new FormData();
+      formDataToSend.append('is_active', 'true');
+      // Kirim data wajib lain jika diperlukan oleh backend, biasanya partial update cukup
+      formDataToSend.append('product_name', selectedProduct.product_name);
+      formDataToSend.append('base_price', String(selectedProduct.base_price));
+      formDataToSend.append('category_id', selectedProduct.category_id);
+
+      await productAPI.update(selectedProduct.product_id, formDataToSend);
+      
+      await loadData();
+      setIsRestoreOpen(false);
+      setSelectedProduct(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal mengaktifkan produk');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleHardDelete = async () => {
     if (!selectedProduct) return;
     
     setIsSubmitting(true);
     try {
+      await delay(3000); // ✅ Delay
+
       await productAPI.hardDelete(selectedProduct.product_id);
       await loadData();
       setIsHardDeleteOpen(false);
@@ -238,10 +284,22 @@ export default function ProductsPage() {
   };
 
   const filteredProducts = products.filter(prod => {
+    // 1. Filter Arsip
+    if (scopeFilter === 'archived') return !prod.is_active;
+    
+    // 2. Filter Aktif (Default) - Hanya tampilkan yang aktif jika bukan mode arsip
+    if (!prod.is_active) return false; 
+
+    // 3. Filter Scope (General/Lokal)
     if (scopeFilter === 'general') return !prod.branch_id;
     if (scopeFilter === 'local') return !!prod.branch_id;
-    return true;
+    
+    return true; // scopeFilter === 'all'
   });
+
+  const generalCount = products.filter(p => !p.branch_id && p.is_active).length;
+  const localCount = products.filter(p => p.branch_id && p.is_active).length;
+  const archivedCount = products.filter(p => !p.is_active).length;
 
   if (isLoading) {
     return (
@@ -266,9 +324,6 @@ export default function ProductsPage() {
       </div>
     );
   }
-
-  const generalCount = products.filter(p => !p.branch_id).length;
-  const localCount = products.filter(p => p.branch_id).length;
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
@@ -305,22 +360,18 @@ export default function ProductsPage() {
 
       {/* Filter */}
       <Card className="p-4">
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          {/* ✅ Ikon dan Label dibungkus agar tetap sebaris di mobile */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium whitespace-nowrap">Filter Status:</span>
+            <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
           </div>
-          
-          {/* Container tombol wrapping */}
           <div className="flex flex-wrap gap-2">
             <Button
               variant={scopeFilter === 'all' ? 'default' : 'outline'}
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({products.length})
+              Semua ({generalCount + localCount})
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -338,7 +389,16 @@ export default function ProductsPage() {
               <Building2 className="mr-2 h-3 w-3" />
               Lokal ({localCount})
             </Button>
-          </div>
+            {/* ✅ Tombol Arsip */}
+            <Button
+              variant={scopeFilter === 'archived' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('archived')}
+              className={scopeFilter === 'archived' ? "bg-orange-600 hover:bg-orange-700 text-white" : "text-orange-600 border-orange-200 hover:bg-orange-50"}
+            >
+              <Archive className="mr-2 h-3 w-3" />
+              Arsip ({archivedCount})
+            </Button>
           </div>
         </div>
       </Card>
@@ -349,12 +409,14 @@ export default function ProductsPage() {
           <Card className="col-span-full p-12">
             <div className="text-center">
               <Package className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">Tidak ada produk</p>
+              <p className="text-muted-foreground">
+                {scopeFilter === 'archived' ? 'Tidak ada produk di arsip' : 'Tidak ada produk'}
+              </p>
             </div>
           </Card>
         ) : (
           filteredProducts.map((product) => (
-            <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${!product.is_active ? 'opacity-75' : ''}`}>
+            <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${!product.is_active ? 'opacity-75 bg-muted/40' : ''}`}>
               {/* Product Image */}
               <div className="aspect-[4/3] bg-muted relative">
                 {product.product_image_url ? (
@@ -385,7 +447,7 @@ export default function ProductsPage() {
                 {/* Status Badge */}
                 {!product.is_active && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
-                    <Badge variant="secondary" className="bg-white/90 text-black">Non-Aktif</Badge>
+                    <Badge variant="secondary" className="bg-white/90 text-black">Diarsipkan</Badge>
                   </div>
                 )}
               </div>
@@ -410,25 +472,34 @@ export default function ProductsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => handleOpenModal(product)}>
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
+                      
+                      {/* Kondisi Menu: Jika Aktif vs Jika Arsip */}
                       {product.is_active ? (
+                        <>
+                          <DropdownMenuItem onClick={() => handleOpenModal(product)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => {
+                            setSelectedProduct(product);
+                            setIsSoftDeleteOpen(true);
+                          }} className="text-orange-600">
+                            <Archive className="mr-2 h-4 w-4" />
+                            Arsipkan
+                          </DropdownMenuItem>
+                        </>
+                      ) : (
                         <DropdownMenuItem onClick={() => {
                           setSelectedProduct(product);
-                          setIsSoftDeleteOpen(true);
-                        }} className="text-orange-600">
-                          <Archive className="mr-2 h-4 w-4" />
-                          Arsipkan (Soft Delete)
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem disabled className="text-muted-foreground">
-                          <Archive className="mr-2 h-4 w-4" />
-                          Sudah Diarsipkan
+                          setIsRestoreOpen(true);
+                        }} className="text-green-600">
+                          <RotateCcw className="mr-2 h-4 w-4" />
+                          Aktifkan Kembali
                         </DropdownMenuItem>
                       )}
+
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => {
                         setSelectedProduct(product);
                         setIsHardDeleteOpen(true);
@@ -442,14 +513,13 @@ export default function ProductsPage() {
 
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-bold text-primary truncate">
-                    {/* ✅ GANTI DI SINI: Menggunakan formatRupiah */}
                     {formatRupiah(Number(product.base_price))}
                   </p>
                   <Badge 
                     variant={product.branch_id ? 'secondary' : 'default'} 
                     className="text-[10px] h-5 px-1.5 shrink-0"
                   >
-                    {product.branch_id ? <Building2 className='h-3 w-3'/> : <Globe className="h-3 w-3" />}
+                    {product.branch_id ? 'Lokal' : <Globe className="h-3 w-3" />}
                   </Badge>
                 </div>
 
@@ -534,10 +604,10 @@ export default function ProductsPage() {
                 <Label htmlFor="base_price">Harga *</Label>
                 <Input
                   id="base_price"
-                  type="number"
-                  value={formData.base_price}
-                  onChange={(e) => setFormData({ ...formData, base_price: e.target.value })}
-                  placeholder="18000"
+                  type="text"
+                  value={formData.base_price ? `Rp. ${Number(formData.base_price).toLocaleString('id-ID')}` : ''}
+                  onChange={handlePriceChange}
+                  placeholder="Masukkan harga"
                   required
                 />
               </div>
@@ -564,7 +634,7 @@ export default function ProductsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal}>
+              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
                 Batal
               </Button>
               <Button type="submit" disabled={isSubmitting}>
@@ -577,51 +647,82 @@ export default function ProductsPage() {
       </Dialog>
 
       {/* Soft Delete Confirmation */}
-      <CustomAlertDialog
-        open={isSoftDeleteOpen}
-        onOpenChange={setIsSoftDeleteOpen}
-        title="Arsipkan Produk?"
-        description={
-          <div className="space-y-2">
-            <p>
+      <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Arsipkan Produk?</DialogTitle>
+            <DialogDescription>
               Apakah Anda yakin ingin mengarsipkan <strong>{selectedProduct?.product_name}</strong>?
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Produk akan dinonaktifkan (Soft Delete) dan tidak muncul di menu kasir, namun data riwayat tetap tersimpan.
-            </p>
-          </div>
-        }
-        onConfirm={handleSoftDelete}
-        confirmText="Arsipkan"
-        variant="warning"
-      />
+              <br/>
+              Produk akan dinonaktifkan (Soft Delete) dan tidak muncul di menu kasir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button 
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={handleSoftDelete} 
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Arsipkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore Confirmation */}
+      <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aktifkan Kembali?</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin mengaktifkan kembali produk <strong>{selectedProduct?.product_name}</strong>?
+              <br/>
+              Produk akan muncul kembali di daftar aktif dan menu kasir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button onClick={handleRestore} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Aktifkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Hard Delete Confirmation */}
-      <CustomAlertDialog
-        open={isHardDeleteOpen}
-        onOpenChange={setIsHardDeleteOpen}
-        title="Hapus Permanen?"
-        description={
-          <div className="space-y-3">
-            <p>
+      <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Hapus Permanen?
+            </DialogTitle>
+            <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
-            </p>
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
-              <div className="flex items-center gap-2 font-medium text-destructive mb-1">
-                <AlertTriangle className="h-4 w-4" />
-                PERINGATAN
-              </div>
-              <div className="text-destructive/80">
-                Tindakan ini <strong>tidak dapat dibatalkan</strong>. Produk dan gambar akan dihapus dari database. 
-                Gagal jika produk memiliki riwayat transaksi.
-              </div>
-            </div>
-          </div>
-        }
-        onConfirm={handleHardDelete}
-        confirmText="Hapus Permanen"
-        variant="destructive"
-      />
+              <br/>
+              <span className="bg-destructive/10 text-destructive p-1 rounded mt-2 block text-xs">
+                PERINGATAN: Tindakan ini tidak dapat dibatalkan. Gagal jika produk memiliki riwayat transaksi.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus Permanen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,571 +1,295 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
 import { useParams, useRouter } from 'next/navigation';
 import { fetchWithAuth } from '@/lib/api';
-import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
-import { Partner, PartnerSubscription, License, SubscriptionPlan } from '@/types';
-import { Edit2, Plus, ArrowLeft, CheckCircle, Clock, Calendar, DollarSign, Key, Smartphone, Building2 } from 'lucide-react';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Partner, PartnerSubscription, License } from '@/types';
+import { 
+  ArrowLeft, 
+  Building2, 
+  Mail, 
+  Phone, 
+  Ban, 
+  CheckCircle, 
+  CreditCard,
+  Smartphone,
+  Key
+} from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-
-// Format Rupiah function
-const formatRupiah = (amount: number): string => {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CustomAlertDialog } from "@/components/ui/custom-alert-dialog";
+import { DetailSkeleton } from '@/components/skeletons/DetailSkeleton';
 
 export default function PartnerDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const partnerId = params.id as string;
+  const id = params.id as string;
 
   const [partner, setPartner] = useState<Partner | null>(null);
   const [subscriptions, setSubscriptions] = useState<PartnerSubscription[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
-  const [availablePlans, setAvailablePlans] = useState<SubscriptionPlan[]>([]);
-  const [allPlans, setAllPlans] = useState<SubscriptionPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  const [isSubModalOpen, setIsSubModalOpen] = useState(false);
-  const [subForm, setSubForm] = useState({
-    plan_id: '',
-    start_date: new Date().toISOString().split('T')[0],
-    payment_status: 'Paid'
-  });
 
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({
-    business_name: '',
-    business_email: '',
-    business_phone: ''
-  });
-
-  const getPlanName = (subscription: PartnerSubscription) => {
-    if (subscription.plan_snapshot?.plan_name) {
-      return subscription.plan_snapshot.plan_name;
-    }
-    const plan = allPlans.find(p => p.plan_id === subscription.plan_id);
-    return plan?.plan_name || 'Paket tidak tersedia';
-  };
-
-  const getPlanDetails = (subscription: PartnerSubscription) => {
-    if (subscription.plan_snapshot) {
-      return {
-        price: subscription.plan_snapshot.price,
-        duration: subscription.plan_snapshot.duration_months
-      };
-    }
-    const plan = allPlans.find(p => p.plan_id === subscription.plan_id);
-    if (plan) {
-      return {
-        price: plan.price,
-        duration: plan.duration_months
-      };
-    }
-    return { price: 0, duration: 0 };
-  };
+  // Alert States
+  const [isSuspendOpen, setIsSuspendOpen] = useState(false);
+  const [isActivateOpen, setIsActivateOpen] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
+    if (id) {
+      fetchData();
+    }
+  }, [id]);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // 1. Fetch Partner Detail (Prioritas Utama)
+      // Gunakan logika fallback jika endpoint single ID belum tersedia
+      let partnerData;
       try {
-        setIsLoading(true);
-        
-        const allPartnersData = await fetchWithAuth('/partner');
-        const allPartners = Array.isArray(allPartnersData) ? allPartnersData : [];
-        const foundPartner = allPartners.find((p: Partner) => p.partner_id === partnerId);
-        
-        if (!foundPartner) {
-          alert('Mitra tidak ditemukan');
-          router.push('/platform/partners');
-          return;
-        }
-        setPartner(foundPartner);
-
-        const plansData = await fetchWithAuth('/subscription-plan');
-        const plans = Array.isArray(plansData) ? plansData : [];
-        setAvailablePlans(plans);
-        setAllPlans(plans);
-
+        partnerData = await fetchWithAuth(`/partner/${id}`);
+      } catch (e: any) {
+        // Jika 404 atau error lain, coba cari dari list semua partner
+        console.warn("Direct fetch failed, trying fallback list...");
         try {
-          const subsData = await fetchWithAuth(`/partner-subscription/partner/${partnerId}`);
-          setSubscriptions(Array.isArray(subsData) ? subsData : []);
-        } catch (error) {
-          setSubscriptions([]);
+          const allPartners = await fetchWithAuth('/partner');
+          partnerData = allPartners.find((p: Partner) => p.partner_id === id);
+        } catch (listError) {
+          console.error("Fallback fetch failed", listError);
         }
-
-        try {
-          const licensesData = await fetchWithAuth(`/license/partner/${partnerId}`);
-          setLicenses(Array.isArray(licensesData) ? licensesData : []);
-        } catch (error) {
-          setLicenses([]);
-        }
-
-      } catch (error) {
-        console.error('Error fetching partner details:', error);
-        alert('Gagal memuat data mitra');
-      } finally {
-        setIsLoading(false);
       }
-    };
 
-    if (partnerId) fetchData();
-  }, [partnerId, router]);
+      if (!partnerData) {
+        throw new Error('Mitra tidak ditemukan');
+      }
+      setPartner(partnerData);
 
-  const handleAddSubscription = async (e: React.FormEvent) => {
-    e.preventDefault();
+      // 2. Fetch Riwayat Langganan (Dengan Error Handling Khusus)
+      // Agar jika 404 (data kosong), halaman tidak crash
+      try {
+        const subsData = await fetchWithAuth(`/partner-subscription/partner/${id}`);
+        setSubscriptions(Array.isArray(subsData) ? subsData : []);
+      } catch (e) {
+        console.warn("Subscription history not found or empty (404 expected if new)", e);
+        setSubscriptions([]); // Set kosong jika error/404
+      }
+
+      // 3. Fetch Lisensi (Dengan Error Handling Khusus)
+      try {
+        const licData = await fetchWithAuth(`/license/partner/${id}`);
+        setLicenses(Array.isArray(licData) ? licData : []);
+      } catch (e) {
+        console.warn("Licenses not found or empty (404 expected if new)", e);
+        setLicenses([]); // Set kosong jika error/404
+      }
+
+    } catch (error) {
+      console.error('Critical Error loading detail:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSuspend = async () => {
     try {
-      await fetchWithAuth('/partner-subscription', {
-        method: 'POST',
-        body: JSON.stringify({
-          partner_id: partnerId,
-          plan_id: subForm.plan_id,
-          start_date: new Date(subForm.start_date).toISOString(),
-          payment_status: subForm.payment_status
-        }),
-      });
-      
-      alert('Paket langganan berhasil ditambahkan!');
-      setIsSubModalOpen(false);
-      
-      const subsData = await fetchWithAuth(`/partner-subscription/partner/${partnerId}`);
-      setSubscriptions(Array.isArray(subsData) ? subsData : []);
-
-      setSubForm({
-        plan_id: '',
-        start_date: new Date().toISOString().split('T')[0],
-        payment_status: 'Paid'
-      });
+      await fetchWithAuth(`/partner/${id}`, { method: 'DELETE' });
+      alert('Mitra berhasil disuspend.');
+      setIsSuspendOpen(false);
+      fetchData(); // Refresh data
     } catch (error: any) {
-      alert(error.message || 'Gagal menambahkan langganan');
+      alert(error.message || 'Gagal suspend mitra');
     }
   };
 
-  const handleOpenEdit = () => {
-    if (partner) {
-      setEditForm({
-        business_name: partner.business_name,
-        business_email: partner.business_email,
-        business_phone: partner.business_phone
-      });
-      setIsEditModalOpen(true);
-    }
-  };
-
-  const handleEditPartner = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleActivate = async () => {
     try {
-      await fetchWithAuth(`/partner/${partnerId}`, {
+      // Menggunakan endpoint edit untuk update status
+      await fetchWithAuth(`/partner/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(editForm),
+        body: JSON.stringify({ 
+          // Kirim data existing agar tidak blank (jika backend require)
+          business_name: partner?.business_name,
+          business_phone: partner?.business_phone,
+          status: 'Active' 
+        })
       });
-
-      alert('Data mitra berhasil diperbarui!');
-      setIsEditModalOpen(false);
-
-      const allPartnersData = await fetchWithAuth('/partner');
-      const allPartners = Array.isArray(allPartnersData) ? allPartnersData : [];
-      const updatedPartner = allPartners.find((p: Partner) => p.partner_id === partnerId);
-      if (updatedPartner) {
-        setPartner(updatedPartner);
-      }
+      alert('Mitra berhasil diaktifkan kembali.');
+      setIsActivateOpen(false);
+      fetchData();
     } catch (error: any) {
-      alert(error.message || 'Gagal memperbarui data mitra');
+      alert(error.message || 'Gagal aktivasi mitra');
     }
   };
 
-  if (isLoading) {
-    return <DetailSkeleton />; // ✅ Use skeleton
-  }
-
-  if (!partner) {
-    return (
-      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-destructive">Mitra tidak ditemukan</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  if (isLoading) return <DetailSkeleton />;
+  if (!partner) return <div className="p-8 text-center">Data tidak ditemukan</div>;
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-      {/* Back Button */}
-      <Button
-        variant="ghost"
-        onClick={() => router.push('/platform/partners')}
-        className="mb-4"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        <span className="hidden @sm:inline">Kembali ke Daftar Mitra</span>
-        <span className="@sm:hidden">Kembali</span>
-      </Button>
-
-      {/* Partner Info Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
-            <div>
-              <CardTitle className="text-2xl @md:text-3xl">{partner.business_name}</CardTitle>
-              <CardDescription className="mt-2">
-                <Badge variant={partner.status === 'Active' ? 'default' : 'destructive'}>
-                  {partner.status === 'Active' ? 'Aktif' : 'Ditangguhkan'}
-                </Badge>
-              </CardDescription>
-            </div>
-            
-            <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" onClick={handleOpenEdit} className="w-full @md:w-auto">
-                  <Edit2 className="mr-2 h-4 w-4" />
-                  <span className="hidden @sm:inline">Edit Data Mitra</span>
-                  <span className="@sm:hidden">Edit</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <form onSubmit={handleEditPartner}>
-                  <DialogHeader>
-                    <DialogTitle>Edit Data Mitra</DialogTitle>
-                    <DialogDescription>
-                      Perubahan data akan langsung diterapkan setelah disimpan.
-                    </DialogDescription>
-                  </DialogHeader>
-                  
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="business_name">Nama Bisnis <span className="text-destructive">*</span></Label>
-                      <Input
-                        id="business_name"
-                        required
-                        value={editForm.business_name}
-                        onChange={(e) => setEditForm({...editForm, business_name: e.target.value})}
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="business_email">Email Bisnis <span className="text-destructive">*</span></Label>
-                      <Input
-                        id="business_email"
-                        type="email"
-                        required
-                        value={editForm.business_email}
-                        onChange={(e) => setEditForm({...editForm, business_email: e.target.value})}
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="business_phone">Nomor Telepon <span className="text-destructive">*</span></Label>
-                      <Input
-                        id="business_phone"
-                        required
-                        value={editForm.business_phone}
-                        onChange={(e) => setEditForm({...editForm, business_phone: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                  
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button variant="outline">Batal</Button>
-                    </DialogClose>
-                    <Button type="submit">Simpan Perubahan</Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          <div className="grid gap-4 grid-cols-1 @md:grid-cols-3">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Email</p>
-              <p className="font-medium text-sm @md:text-base break-all">{partner.business_email}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Telepon</p>
-              <p className="font-medium text-sm @md:text-base">{partner.business_phone}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Bergabung</p>
-              <p className="font-medium text-sm @md:text-base">
-                {new Date(partner.joined_date).toLocaleDateString('id-ID', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric'
-                })}
-              </p>
+      {/* Header & Navigation */}
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" onClick={() => router.back()}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="space-y-1">
+            <h2 className="text-2xl font-bold tracking-tight">{partner.business_name}</h2>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant={partner.status === 'Active' ? 'default' : 'destructive'}>
+                {partner.status}
+              </Badge>
+              <span>•</span>
+              <span>Bergabung sejak {new Date(partner.joined_date).toLocaleDateString('id-ID')}</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Subscriptions Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
-            <div>
-              <CardTitle>Riwayat Langganan</CardTitle>
-              <CardDescription>
-                Daftar paket langganan yang pernah atau sedang aktif
-              </CardDescription>
-            </div>
-            
-            <Dialog open={isSubModalOpen} onOpenChange={setIsSubModalOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="w-full @md:w-auto">
-                  <Plus className="mr-2 h-4 w-4" />
-                  <span className="hidden @sm:inline">Tetapkan Paket Baru</span>
-                  <span className="@sm:hidden">Tambah Paket</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <form onSubmit={handleAddSubscription}>
-                  <DialogHeader>
-                    <DialogTitle>Tetapkan Paket Langganan</DialogTitle>
-                    <DialogDescription>
-                      Tanggal selesai akan dihitung otomatis berdasarkan durasi paket.
-                    </DialogDescription>
-                  </DialogHeader>
-                  
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="plan_id">Pilih Paket <span className="text-destructive">*</span></Label>
-                      <select
-                        id="plan_id"
-                        required
-                        value={subForm.plan_id}
-                        onChange={(e) => setSubForm({...subForm, plan_id: e.target.value})}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      >
-                        <option value="">-- Pilih Paket --</option>
-                        {availablePlans.map(plan => (
-                          <option key={plan.plan_id} value={plan.plan_id}>
-                            {plan.plan_name} - {formatRupiah(plan.price)} ({plan.duration_months} bulan)
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="start_date">Tanggal Mulai <span className="text-destructive">*</span></Label>
-                      <Input
-                        id="start_date"
-                        type="date"
-                        required
-                        value={subForm.start_date}
-                        onChange={(e) => setSubForm({...subForm, start_date: e.target.value})}
-                      />
-                    </div>
-                    
-                    <div className="grid gap-2">
-                      <Label htmlFor="payment_status">Status Pembayaran <span className="text-destructive">*</span></Label>
-                      <select
-                        id="payment_status"
-                        value={subForm.payment_status}
-                        onChange={(e) => setSubForm({...subForm, payment_status: e.target.value})}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      >
-                        <option value="Paid">Lunas</option>
-                        <option value="Pending">Menunggu</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button variant="outline">Batal</Button>
-                    </DialogClose>
-                    <Button type="submit">Simpan Transaksi</Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          {subscriptions.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Belum ada riwayat langganan
-            </div>
+        {/* Actions (Suspend/Activate Only) */}
+        <div className="flex items-center gap-2">
+          {partner.status === 'Active' ? (
+            <Button variant="destructive" onClick={() => setIsSuspendOpen(true)}>
+              <Ban className="mr-2 h-4 w-4" />
+              Suspend Mitra
+            </Button>
           ) : (
-            <div className="@container/subs">
-              {/* Desktop Table */}
-              <div className="hidden @lg/subs:block overflow-x-auto">
+            <Button className="bg-green-600 hover:bg-green-700" onClick={() => setIsActivateOpen(true)}>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Aktifkan Kembali
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Info Card */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="md:col-span-1">
+          <CardHeader>
+            <CardTitle>Informasi Kontak</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-muted rounded-lg">
+                <Building2 className="h-4 w-4" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Nama Bisnis</p>
+                <p className="text-sm text-muted-foreground">{partner.business_name}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-muted rounded-lg">
+                <Mail className="h-4 w-4" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Email</p>
+                <p className="text-sm text-muted-foreground">{partner.business_email}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-muted rounded-lg">
+                <Phone className="h-4 w-4" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Telepon</p>
+                <p className="text-sm text-muted-foreground">{partner.business_phone}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stats Summary */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>Ringkasan Akun</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="p-4 border rounded-lg flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Total Langganan</p>
+                <p className="text-2xl font-bold">{subscriptions.length}</p>
+              </div>
+              <CreditCard className="h-8 w-8 text-muted-foreground/50" />
+            </div>
+            <div className="p-4 border rounded-lg flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Total Lisensi</p>
+                <p className="text-2xl font-bold">{licenses.length}</p>
+              </div>
+              <Key className="h-8 w-8 text-muted-foreground/50" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Tabs Data */}
+      <Tabs defaultValue="subscriptions" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="subscriptions">Riwayat Langganan</TabsTrigger>
+          <TabsTrigger value="licenses">Daftar Lisensi</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="subscriptions">
+          <Card>
+            <CardHeader>
+              <CardTitle>Riwayat Langganan</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {subscriptions.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">Belum ada riwayat langganan.</div>
+              ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Nama Paket</TableHead>
-                      <TableHead>Harga & Durasi</TableHead>
-                      <TableHead>Tanggal Mulai</TableHead>
-                      <TableHead>Tanggal Selesai</TableHead>
-                      <TableHead>Pembayaran</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead>Paket</TableHead>
+                      <TableHead>Periode</TableHead>
+                      <TableHead>Status Pembayaran</TableHead>
+                      <TableHead>Status Aktif</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {subscriptions.map((sub) => {
-                      const planDetails = getPlanDetails(sub);
-                      return (
-                        <TableRow key={sub.subscription_id}>
-                          <TableCell className="font-medium">
-                            {getPlanName(sub)}
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              <div className="font-semibold flex items-center gap-1">
-                                {formatRupiah(planDetails.price)}
-                              </div>
-                              <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                {planDetails.duration} bulan
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {new Date(sub.start_date).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {new Date(sub.end_date).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric'
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}>
-                              {sub.payment_status === 'Paid' ? (
-                                <><CheckCircle className="mr-1 h-3 w-3" /> Lunas</>
-                              ) : (
-                                <><Clock className="mr-1 h-3 w-3" /> Menunggu</>
-                              )}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={sub.status === 'Active' ? 'default' : 'outline'}>
-                              {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {subscriptions.map((sub) => (
+                      <TableRow key={sub.subscription_id}>
+                        <TableCell className="font-medium">
+                          {sub.plan_snapshot?.plan_name || 'Paket Lama'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(sub.start_date).toLocaleDateString()} - {new Date(sub.end_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}>
+                            {sub.payment_status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{sub.status}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
-              </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              {/* Mobile Card List */}
-              <div className="@lg/subs:hidden space-y-4">
-                {subscriptions.map((sub) => {
-                  const planDetails = getPlanDetails(sub);
-                  return (
-                    <Card key={sub.subscription_id}>
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <CardTitle className="text-base">{getPlanName(sub)}</CardTitle>
-                          <Badge variant={sub.status === 'Active' ? 'default' : 'outline'}>
-                            {sub.status === 'Active' ? 'Aktif' : 'Tidak Aktif'}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Harga:</span>
-                          <span className="font-semibold">{formatRupiah(planDetails.price)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Durasi:</span>
-                          <span className="font-medium">{planDetails.duration} bulan</span>
-                        </div>
-                        <Separator />
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Mulai:</span>
-                          <span>{new Date(sub.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Selesai:</span>
-                          <span>{new Date(sub.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                        </div>
-                        <Separator />
-                        <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Pembayaran:</span>
-                          <Badge variant={sub.payment_status === 'Paid' ? 'default' : 'secondary'}>
-                            {sub.payment_status === 'Paid' ? 'Lunas' : 'Menunggu'}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Licenses Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Pemantauan Lisensi Perangkat</CardTitle>
-          <CardDescription>
-            Daftar perangkat yang terdaftar untuk mitra ini
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          {licenses.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Belum ada lisensi perangkat
-            </div>
-          ) : (
-            <div className="@container/license">
-              {/* Desktop Table */}
-              <div className="hidden @lg/license:block overflow-x-auto">
+        <TabsContent value="licenses">
+          <Card>
+            <CardHeader>
+              <CardTitle>Lisensi Perangkat</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {licenses.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">Belum ada lisensi.</div>
+              ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Kode Aktivasi</TableHead>
-                      <TableHead>ID Perangkat</TableHead>
-                      <TableHead>Nama Perangkat</TableHead>
+                      <TableHead>Perangkat</TableHead>
                       <TableHead>Cabang</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
@@ -573,86 +297,49 @@ export default function PartnerDetailPage() {
                   <TableBody>
                     {licenses.map((lic) => (
                       <TableRow key={lic.license_id}>
+                        <TableCell className="font-mono">{lic.activation_code}</TableCell>
                         <TableCell>
-                          <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold">
-                            {lic.activation_code}
-                          </code>
+                          <div className="flex items-center gap-2">
+                            <Smartphone className="h-4 w-4 text-muted-foreground" />
+                            {lic.device_name || '-'}
+                          </div>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {lic.device_id || '-'}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {lic.device_name || '-'}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {lic.branch?.branch_name || '-'}
-                        </TableCell>
+                        <TableCell>{lic.branch?.branch_name || '-'}</TableCell>
                         <TableCell>
-                          <Badge 
-                            variant={
-                              lic.license_status === 'Active' ? 'default' :
-                              lic.license_status === 'Assigned' ? 'secondary' : 'outline'
-                            }
-                          >
-                            {lic.license_status === 'Active' ? 'Aktif' : 
-                             lic.license_status === 'Assigned' ? 'Dialokasikan' : 'Menunggu'}
+                          <Badge variant={lic.license_status === 'Active' ? 'default' : 'outline'}>
+                            {lic.license_status}
                           </Badge>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-              {/* Mobile Card List */}
-              <div className="@lg/license:hidden space-y-4">
-                {licenses.map((lic) => (
-                  <Card key={lic.license_id}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Key className="h-4 w-4 text-muted-foreground" />
-                            <code className="text-xs font-mono font-semibold bg-muted px-2 py-1 rounded">
-                              {lic.activation_code}
-                            </code>
-                          </div>
-                        </div>
-                        <Badge 
-                          variant={
-                            lic.license_status === 'Active' ? 'default' :
-                            lic.license_status === 'Assigned' ? 'secondary' : 'outline'
-                          }
-                        >
-                          {lic.license_status === 'Active' ? 'Aktif' : 
-                           lic.license_status === 'Assigned' ? 'Dialokasikan' : 'Menunggu'}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Device ID:</span>
-                        <span className="font-medium">{lic.device_id || '-'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Nama:</span>
-                        <span className="font-medium">{lic.device_name || '-'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Cabang:</span>
-                        <span className="font-medium">{lic.branch?.branch_name || '-'}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Confirmation Dialogs */}
+      <CustomAlertDialog
+        open={isSuspendOpen}
+        onOpenChange={setIsSuspendOpen}
+        title="Suspend Mitra?"
+        description="Mitra ini akan dinonaktifkan. Semua akses login dan layanan akan dihentikan sementara."
+        onConfirm={handleSuspend}
+        confirmText="Suspend"
+        variant="destructive"
+      />
+
+      <CustomAlertDialog
+        open={isActivateOpen}
+        onOpenChange={setIsActivateOpen}
+        title="Aktifkan Mitra?"
+        description="Mitra akan dapat mengakses kembali dashboard dan layanan mereka."
+        onConfirm={handleActivate}
+        confirmText="Aktifkan"
+        variant="default"
+      />
     </div>
   );
 }

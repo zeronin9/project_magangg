@@ -122,31 +122,21 @@ export const branchAPI = {
 };
 
 // ==================== BRANCH ADMIN ====================
+// lib/api/mitra.ts
+
 export const branchAdminAPI = {
-  getAll: async () => {
-    const response = await apiClient.get('/branch/admin');
+  // Update getAll untuk menerima parameter showAll
+  getAll: async (showAll = false) => {
+    const response = await apiClient.get(`/branch/admin${showAll ? '?show_all=true' : ''}`);
     return response.data;
   },
-
-  create: async (data: {
-    full_name: string;
-    username: string;
-    password: string;
-    branch_id: string;
-  }) => {
+  
+  create: async (data: any) => {
     const response = await apiClient.post('/branch/admin', data);
     return response.data;
   },
 
-  update: async (
-    id: string,
-    data: {
-      full_name?: string;
-      username?: string;
-      password?: string;
-      branch_id?: string;
-    }
-  ) => {
+  update: async (id: string, data: any) => {
     const response = await apiClient.put(`/branch/admin/${id}`, data);
     return response.data;
   },
@@ -162,10 +152,17 @@ export const branchAdminAPI = {
   },
 };
 
+// lib/api/mitra.ts
+
+// ... (kode lainnya tetap sama)
+
 // ==================== PRODUCT ====================
 export const productAPI = {
-  getAll: async () => {
-    const response = await apiClient.get('/product');
+  // ✅ UPDATE: Tambahkan parameter showAll = false
+  getAll: async (showAll = false) => {
+    const response = await apiClient.get('/product', {
+      params: showAll ? { show_all: true } : {},
+    });
     return response.data;
   },
 
@@ -181,6 +178,7 @@ export const productAPI = {
     return response.data;
   },
 
+  // ✅ UPDATE: Menggunakan FormData untuk support update gambar + data
   update: async (id: string, formData: FormData) => {
     const response = await apiClient.put(`/product/${id}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -199,6 +197,7 @@ export const productAPI = {
   },
 };
 
+// ... (sisanya tetap sama)
 // ==================== CATEGORY ====================
 export const categoryAPI = {
   getAll: async () => {
