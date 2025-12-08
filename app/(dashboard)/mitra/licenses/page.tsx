@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { licenseAPI, branchAPI } from '@/lib/api/mitra';
 import { License, Branch } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +41,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { 
   Plus, 
   MoreHorizontal, 
@@ -54,27 +62,44 @@ import {
   Clock,
   XCircle,
   Trash2,
-  Filter // ✅ Ditambahkan import Filter
+  Filter
 } from 'lucide-react';
+
+// Konfigurasi Pagination
+const ITEMS_PER_PAGE = 10;
 
 export default function LicensesPage() {
   const [licenses, setLicenses] = useState<License[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // Modal States
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  
   const [selectedLicense, setSelectedLicense] = useState<License | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generateQuantity, setGenerateQuantity] = useState('1');
   const [selectedBranchId, setSelectedBranchId] = useState('');
+  
+  // Filter & Pagination State
   const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Assigned' | 'Active'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Reset halaman ke 1 saat filter berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter]);
+
+  // Helper Delay
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const loadData = async () => {
     try {
@@ -87,11 +112,9 @@ export default function LicensesPage() {
       const branchesList = Array.isArray(branchesData) ? branchesData : [];
       const licensesList = Array.isArray(licensesData) ? licensesData : [];
       
-      // Map licenses dengan branch data dan calculated status
       const licensesWithBranch = licensesList.map(license => {
         const branch = branchesList.find(b => b.branch_id === license.branch_id);
         
-        // Calculate actual status based on conditions
         let actualStatus: 'Pending' | 'Assigned' | 'Active' | 'Inactive' = 'Pending';
         
         if (license.device_name && license.device_id) {
@@ -121,6 +144,7 @@ export default function LicensesPage() {
   const handleGenerateLicense = async () => {
     setIsSubmitting(true);
     try {
+      await delay(3000); 
       await licenseAPI.generate(parseInt(generateQuantity));
       await loadData();
       setIsGenerateModalOpen(false);
@@ -137,6 +161,7 @@ export default function LicensesPage() {
     
     setIsSubmitting(true);
     try {
+      await delay(3000); 
       await licenseAPI.assignBranch(selectedLicense.activation_code, selectedBranchId);
       await loadData();
       setIsAssignModalOpen(false);
@@ -154,6 +179,7 @@ export default function LicensesPage() {
     
     setIsSubmitting(true);
     try {
+      await delay(3000); 
       await licenseAPI.resetDevice(selectedLicense.activation_code);
       await loadData();
       setIsResetModalOpen(false);
@@ -170,6 +196,7 @@ export default function LicensesPage() {
     
     setIsSubmitting(true);
     try {
+      await delay(3000); 
       await licenseAPI.delete(selectedLicense.activation_code);
       await loadData();
       setIsDeleteModalOpen(false);
@@ -225,6 +252,7 @@ export default function LicensesPage() {
     return null;
   };
 
+  // 1. Filter Logic
   const filteredLicenses = statusFilter === 'all' 
     ? licenses 
     : licenses.filter(l => l.license_status === statusFilter);
@@ -234,6 +262,20 @@ export default function LicensesPage() {
     active: licenses.filter(l => l.license_status === 'Active').length,
     assigned: licenses.filter(l => l.license_status === 'Assigned').length,
     pending: licenses.filter(l => l.license_status === 'Pending').length,
+  };
+
+  // 2. Pagination Logic
+  const totalItems = filteredLicenses.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedLicenses = filteredLicenses.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (page > 0 && page <= totalPages) {
+      setCurrentPage(page);
+    }
   };
 
   if (isLoading) {
@@ -291,16 +333,13 @@ export default function LicensesPage() {
         </Alert>
       )}
 
-      {/* Filter - RESPONSIVE FIX */}
+      {/* Filter */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          {/* ✅ Ikon dan Label dibungkus agar tetap sebaris di mobile */}
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium whitespace-nowrap">Filter Status:</span>
           </div>
-          
-          {/* Container tombol wrapping */}
           <div className="flex flex-wrap gap-2">
             <Button
               variant={statusFilter === 'all' ? 'default' : 'outline'}
@@ -347,7 +386,7 @@ export default function LicensesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredLicenses.length === 0 ? (
+            {paginatedLicenses.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12">
                   <Key className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
@@ -360,7 +399,7 @@ export default function LicensesPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredLicenses.map((license) => {
+              paginatedLicenses.map((license) => {
                 const branchName = getBranchName(license);
                 
                 return (
@@ -459,6 +498,43 @@ export default function LicensesPage() {
             )}
           </TableBody>
         </Table>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="py-4 flex justify-center">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    href="#" 
+                    onClick={(e) => handlePageChange(currentPage - 1, e)}
+                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+                
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink 
+                      href="#" 
+                      isActive={currentPage === i + 1}
+                      onClick={(e) => handlePageChange(i + 1, e)}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+
+                <PaginationItem>
+                  <PaginationNext 
+                    href="#" 
+                    onClick={(e) => handlePageChange(currentPage + 1, e)}
+                    className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </Card>
 
       {/* Generate Modal */}

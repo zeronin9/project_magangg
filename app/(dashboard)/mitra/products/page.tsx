@@ -33,7 +33,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { 
   Plus, 
   MoreHorizontal, 
@@ -64,6 +72,9 @@ const getImageUrl = (path: string | null | undefined) => {
   return `${serverUrl}/${cleanPath}`;
 };
 
+// Konfigurasi Pagination
+const ITEMS_PER_PAGE = 10;
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -71,17 +82,20 @@ export default function ProductsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
+  // State Filter & Pagination
+  const [showArchived, setShowArchived] = useState(false);
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
-  const [isRestoreOpen, setIsRestoreOpen] = useState(false); // ✅ Restore Modal
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // ✅ Filter State: 'archived' added
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'archived'>('all');
+  const [imageError, setImageError] = useState('');
   
   const [imagePreview, setImagePreview] = useState<string>('');
   const [formData, setFormData] = useState({
@@ -93,16 +107,21 @@ export default function ProductsPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [showArchived]);
 
-  // Helper Delay 3 Detik
+  // Reset pagination saat filter berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [scopeFilter, showArchived]);
+
+  // Helper Delay
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const loadData = async () => {
     try {
       setIsLoading(true);
       const [productsData, categoriesData, branchesData] = await Promise.all([
-        productAPI.getAll(), 
+        productAPI.getAll(showArchived),
         categoryAPI.getAll(),
         branchAPI.getAll(),
       ]);
@@ -111,7 +130,11 @@ export default function ProductsPage() {
       const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
       const productsList = Array.isArray(productsData) ? productsData : [];
       
-      const productsWithRelations = productsList.map((product: any) => {
+      const filteredList = showArchived 
+        ? productsList.filter((p: any) => p.is_active === false)
+        : productsList.filter((p: any) => p.is_active !== false);
+
+      const productsWithRelations = filteredList.map((product: any) => {
         const branch = product.branch_id 
           ? branchesList.find(b => b.branch_id === product.branch_id)
           : null;
@@ -136,6 +159,7 @@ export default function ProductsPage() {
   };
 
   const handleOpenModal = (product?: Product) => {
+    setImageError('');
     if (product) {
       setSelectedProduct(product);
       setFormData({
@@ -168,11 +192,25 @@ export default function ProductsPage() {
       product_image: null,
     });
     setImagePreview('');
+    setImageError('');
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 1024 * 1024) {
+        setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
+        e.target.value = '';
+        setFormData({ ...formData, product_image: null });
+        if (selectedProduct && selectedProduct.product_image_url) {
+           setImagePreview(getImageUrl(selectedProduct.product_image_url) || '');
+        } else {
+           setImagePreview('');
+        }
+        return;
+      }
+
+      setImageError('');
       setFormData({ ...formData, product_image: file });
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -189,10 +227,12 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (imageError) return;
+
     setIsSubmitting(true);
 
     try {
-      await delay(3000); // ✅ Delay
+      await delay(3000); 
 
       const formDataToSend = new FormData();
       formDataToSend.append('product_name', formData.product_name);
@@ -222,7 +262,7 @@ export default function ProductsPage() {
     
     setIsSubmitting(true);
     try {
-      await delay(3000); // ✅ Delay
+      await delay(3000); 
 
       await productAPI.softDelete(selectedProduct.product_id);
       await loadData();
@@ -235,24 +275,21 @@ export default function ProductsPage() {
     }
   };
 
-  // ✅ HANDLER BARU: Restore Produk
   const handleRestore = async () => {
     if (!selectedProduct) return;
     
     setIsSubmitting(true);
     try {
-      await delay(3000); // ✅ Delay
+      await delay(3000); 
 
-      // Menggunakan endpoint update untuk set is_active: true
-      // Kita kirim FormData karena endpoint update mengharapkan multipart/form-data
-      const formDataToSend = new FormData();
-      formDataToSend.append('is_active', 'true');
-      // Kirim data wajib lain jika diperlukan oleh backend, biasanya partial update cukup
-      formDataToSend.append('product_name', selectedProduct.product_name);
-      formDataToSend.append('base_price', String(selectedProduct.base_price));
-      formDataToSend.append('category_id', selectedProduct.category_id);
+      const payload = {
+        is_active: true,
+        product_name: selectedProduct.product_name,
+        base_price: selectedProduct.base_price,
+        category_id: selectedProduct.category_id
+      };
 
-      await productAPI.update(selectedProduct.product_id, formDataToSend);
+      await productAPI.update(selectedProduct.product_id, payload);
       
       await loadData();
       setIsRestoreOpen(false);
@@ -269,7 +306,7 @@ export default function ProductsPage() {
     
     setIsSubmitting(true);
     try {
-      await delay(3000); // ✅ Delay
+      await delay(3000); 
 
       await productAPI.hardDelete(selectedProduct.product_id);
       await loadData();
@@ -283,23 +320,29 @@ export default function ProductsPage() {
     }
   };
 
+  // 1. Filter Logic
   const filteredProducts = products.filter(prod => {
-    // 1. Filter Arsip
-    if (scopeFilter === 'archived') return !prod.is_active;
-    
-    // 2. Filter Aktif (Default) - Hanya tampilkan yang aktif jika bukan mode arsip
-    if (!prod.is_active) return false; 
-
-    // 3. Filter Scope (General/Lokal)
     if (scopeFilter === 'general') return !prod.branch_id;
     if (scopeFilter === 'local') return !!prod.branch_id;
-    
-    return true; // scopeFilter === 'all'
+    return true; 
   });
 
-  const generalCount = products.filter(p => !p.branch_id && p.is_active).length;
-  const localCount = products.filter(p => p.branch_id && p.is_active).length;
-  const archivedCount = products.filter(p => !p.is_active).length;
+  const generalCount = products.filter(p => !p.branch_id).length;
+  const localCount = products.filter(p => p.branch_id).length;
+
+  // 2. Pagination Logic
+  const totalItems = filteredProducts.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (page > 0 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -335,10 +378,19 @@ export default function ProductsPage() {
             Kelola produk (General & Lokal)
           </p>
         </div>
-        <Button onClick={() => handleOpenModal()}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tambah Produk
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            onClick={() => setShowArchived(!showArchived)}
+          >
+            <Archive className="mr-2 h-4 w-4" />
+            {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
+          </Button>
+          <Button onClick={() => handleOpenModal()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Tambah Produk
+          </Button>
+        </div>
       </div>
 
       {/* Error Alert */}
@@ -389,34 +441,24 @@ export default function ProductsPage() {
               <Building2 className="mr-2 h-3 w-3" />
               Lokal ({localCount})
             </Button>
-            {/* ✅ Tombol Arsip */}
-            <Button
-              variant={scopeFilter === 'archived' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('archived')}
-              className={scopeFilter === 'archived' ? "bg-orange-600 hover:bg-orange-700 text-white" : "text-orange-600 border-orange-200 hover:bg-orange-50"}
-            >
-              <Archive className="mr-2 h-3 w-3" />
-              Arsip ({archivedCount})
-            </Button>
           </div>
         </div>
       </Card>
 
       {/* Products Grid */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {filteredProducts.length === 0 ? (
+        {paginatedProducts.length === 0 ? (
           <Card className="col-span-full p-12">
             <div className="text-center">
               <Package className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {scopeFilter === 'archived' ? 'Tidak ada produk di arsip' : 'Tidak ada produk'}
+                {showArchived ? 'Tidak ada produk di arsip' : 'Tidak ada produk'}
               </p>
             </div>
           </Card>
         ) : (
-          filteredProducts.map((product) => (
-            <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${!product.is_active ? 'opacity-75 bg-muted/40' : ''}`}>
+          paginatedProducts.map((product) => (
+            <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${showArchived ? 'opacity-75 bg-muted/40' : ''}`}>
               {/* Product Image */}
               <div className="aspect-[4/3] bg-muted relative">
                 {product.product_image_url ? (
@@ -445,7 +487,7 @@ export default function ProductsPage() {
                 )}
 
                 {/* Status Badge */}
-                {!product.is_active && (
+                {showArchived && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
                     <Badge variant="secondary" className="bg-white/90 text-black">Diarsipkan</Badge>
                   </div>
@@ -473,8 +515,7 @@ export default function ProductsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Aksi</DropdownMenuLabel>
                       
-                      {/* Kondisi Menu: Jika Aktif vs Jika Arsip */}
-                      {product.is_active ? (
+                      {!showArchived ? (
                         <>
                           <DropdownMenuItem onClick={() => handleOpenModal(product)}>
                             <Pencil className="mr-2 h-4 w-4" />
@@ -535,6 +576,44 @@ export default function ProductsPage() {
         )}
       </div>
 
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="py-4 flex justify-center">
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious 
+                  href="#" 
+                  onClick={(e) => handlePageChange(currentPage - 1, e)}
+                  className={currentPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationItem>
+              
+              {/* Generate Page Numbers */}
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <PaginationItem key={i}>
+                  <PaginationLink 
+                    href="#" 
+                    isActive={currentPage === i + 1}
+                    onClick={(e) => handlePageChange(i + 1, e)}
+                  >
+                    {i + 1}
+                  </PaginationLink>
+                </PaginationItem>
+              ))}
+
+              <PaginationItem>
+                <PaginationNext 
+                  href="#" 
+                  onClick={(e) => handlePageChange(currentPage + 1, e)}
+                  className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
+
       {/* Form Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
@@ -554,6 +633,14 @@ export default function ProductsPage() {
               {/* Image Upload */}
               <div className="space-y-2">
                 <Label>Gambar Produk</Label>
+                
+                {imageError && (
+                  <Alert variant="destructive" className="mb-2 py-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-xs font-medium">{imageError}</AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="flex flex-col gap-4">
                   {imagePreview && (
                     <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
@@ -578,10 +665,10 @@ export default function ProductsPage() {
                       htmlFor="product_image"
                       className="flex-1 cursor-pointer"
                     >
-                      <div className="flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                        <Upload className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {imagePreview ? 'Ganti Gambar' : 'Upload Gambar'}
+                      <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'}`}>
+                        <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
+                        <span className={`text-sm ${imageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                          {imagePreview ? 'Ganti Gambar' : 'Upload Gambar (Max 1MB)'}
                         </span>
                       </div>
                     </Label>
@@ -637,7 +724,7 @@ export default function ProductsPage() {
               <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
                 Batal
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || !!imageError}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {selectedProduct ? 'Update' : 'Simpan'}
               </Button>

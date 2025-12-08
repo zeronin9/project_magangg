@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { SubscriptionOrderResponse, Subscription } from '@/types/mitra'; // Add this import
+import { SubscriptionOrderResponse, Subscription } from '@/types/mitra'; 
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.1.16:3001/api';
 
@@ -122,10 +122,7 @@ export const branchAPI = {
 };
 
 // ==================== BRANCH ADMIN ====================
-// lib/api/mitra.ts
-
 export const branchAdminAPI = {
-  // Update getAll untuk menerima parameter showAll
   getAll: async (showAll = false) => {
     const response = await apiClient.get(`/branch/admin${showAll ? '?show_all=true' : ''}`);
     return response.data;
@@ -152,13 +149,8 @@ export const branchAdminAPI = {
   },
 };
 
-// lib/api/mitra.ts
-
-// ... (kode lainnya tetap sama)
-
 // ==================== PRODUCT ====================
 export const productAPI = {
-  // ✅ UPDATE: Tambahkan parameter showAll = false
   getAll: async (showAll = false) => {
     const response = await apiClient.get('/product', {
       params: showAll ? { show_all: true } : {},
@@ -171,18 +163,16 @@ export const productAPI = {
     return response.data;
   },
 
-  create: async (formData: FormData) => {
-    const response = await apiClient.post('/product', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+  // ✅ FIX: Hapus header manual. Axios akan otomatis set 'multipart/form-data' jika data adalah FormData
+  create: async (data: any) => {
+    const response = await apiClient.post('/product', data);
     return response.data;
   },
 
-  // ✅ UPDATE: Menggunakan FormData untuk support update gambar + data
-  update: async (id: string, formData: FormData) => {
-    const response = await apiClient.put(`/product/${id}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+  // ✅ FIX: Terima 'any' agar bisa kirim JSON (untuk restore) atau FormData (untuk upload)
+  // Jangan set header Content-Type secara manual!
+  update: async (id: string, data: any) => {
+    const response = await apiClient.put(`/product/${id}`, data);
     return response.data;
   },
 
@@ -197,7 +187,8 @@ export const productAPI = {
   },
 };
 
-// ... (sisanya tetap sama)
+// ... sisa kode lainnya (categoryAPI, discountAPI, dll)
+
 // ==================== CATEGORY ====================
 export const categoryAPI = {
   getAll: async () => {
@@ -231,6 +222,8 @@ export const categoryAPI = {
   },
 };
 
+// ... imports
+
 // ==================== DISCOUNT ====================
 export const discountAPI = {
   getAll: async () => {
@@ -243,35 +236,13 @@ export const discountAPI = {
     return response.data;
   },
 
-  create: async (data: {
-    discount_name: string;
-    discount_type: 'PERCENTAGE' | 'FIXED_AMOUNT';
-    value: number;
-    start_date: string;
-    end_date: string;
-    applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_CATEGORY' | 'SPECIFIC_PRODUCT';
-    target_id?: string;
-    min_transaction?: number;
-    max_discount?: number;
-  }) => {
+  // ✅ UPDATE: Mendukung field rules baru
+  create: async (data: any) => {
     const response = await apiClient.post('/discount-rule', data);
     return response.data;
   },
 
-  update: async (
-    id: string,
-    data: {
-      discount_name?: string;
-      discount_type?: 'PERCENTAGE' | 'FIXED_AMOUNT';
-      value?: number;
-      start_date?: string;
-      end_date?: string;
-      applies_to?: 'ENTIRE_TRANSACTION' | 'SPECIFIC_CATEGORY' | 'SPECIFIC_PRODUCT';
-      target_id?: string;
-      min_transaction?: number;
-      max_discount?: number;
-    }
-  ) => {
+  update: async (id: string, data: any) => {
     const response = await apiClient.put(`/discount-rule/${id}`, data);
     return response.data;
   },
@@ -287,6 +258,7 @@ export const discountAPI = {
   },
 };
 
+// ... kode lainnya
 // ==================== LICENSE ====================
 export const licenseAPI = {
   getAll: async () => {
@@ -322,21 +294,16 @@ export const licenseAPI = {
 
 // ==================== SUBSCRIPTION ====================
 export const subscriptionAPI = {
-  // Get all subscription plans (Daftar paket yang dijual)
   getPlans: async () => {
-    const response = await apiClient.get('/partner-subscription/plans'); // Sesuaikan jika ada endpoint khusus list plan
+    const response = await apiClient.get('/partner-subscription/plans'); 
     return response.data; 
-    // Note: Jika backend belum ada endpoint list public plans, kita pakai endpoint /subscription-plan (platform)
-    // atau mock data di frontend sementara.
   },
 
-  // ✅ Doc 7.7: Cek Status Paket / Riwayat Langganan
   getHistory: async (partnerId: string) => {
     const response = await apiClient.get(`/partner-subscription/partner/${partnerId}`);
     return response.data;
   },
 
-  // ✅ Doc 7.6: Beli Paket (Buat Pesanan)
   createOrder: async (planId: string) => {
     const response = await apiClient.post('/partner-subscription/order', { 
       plan_id: planId 
@@ -344,14 +311,12 @@ export const subscriptionAPI = {
     return response.data;
   },
 
-  // Upload payment proof (Opsional/Existing)
+  // ✅ FIX: Hapus header manual Content-Type
   uploadPaymentProof: async (orderId: string, file: File) => {
     const formData = new FormData();
     formData.append('payment_proof', file);
     
-    const response = await apiClient.post(`/partner-subscription/order/${orderId}/proof`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const response = await apiClient.post(`/partner-subscription/order/${orderId}/proof`, formData);
     return response.data;
   },
 };
@@ -386,7 +351,6 @@ export const reportAPI = {
   },
 };
 
-// ==================== HELPER ====================
 export const formatCurrency = (value: string | number): string => {
   const numValue = typeof value === 'string' ? parseFloat(value) : value;
   return new Intl.NumberFormat('id-ID', {

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { categoryAPI, branchAPI } from '@/lib/api/mitra';
 import { Category, Branch } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -41,6 +41,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
 import { 
   Plus, 
@@ -58,14 +67,19 @@ import {
   RotateCcw
 } from 'lucide-react';
 
+// Konstanta Pagination
+const ITEMS_PER_PAGE = 5;
+
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // State Filter
+  // State Filter & Pagination
   const [showArchived, setShowArchived] = useState(false);
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,7 +91,6 @@ export default function CategoriesPage() {
   // Loading State
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [formData, setFormData] = useState({
     category_name: '',
   });
@@ -85,6 +98,11 @@ export default function CategoriesPage() {
   useEffect(() => {
     loadData();
   }, [showArchived]);
+
+  // Reset pagination saat filter berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [scopeFilter, showArchived]);
 
   // Helper Delay
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -221,6 +239,7 @@ export default function CategoriesPage() {
     }
   };
 
+  // 1. Filter Data
   const filteredCategories = categories.filter(cat => {
     if (scopeFilter === 'general') return !cat.branch_id;
     if (scopeFilter === 'local') return !!cat.branch_id;
@@ -229,6 +248,21 @@ export default function CategoriesPage() {
 
   const generalCount = categories.filter(c => !c.branch_id).length;
   const localCount = categories.filter(c => c.branch_id).length;
+
+  // 2. Logika Pagination
+  const totalItems = filteredCategories.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedCategories = filteredCategories.slice(startIndex, endIndex);
+
+  // Helper untuk pindah halaman
+  const handlePageChange = (page: number, e: React.MouseEvent) => {
+    e.preventDefault(); // Mencegah reload karena PaginationLink adalah <a>
+    if (page > 0 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -340,17 +374,17 @@ export default function CategoriesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredCategories.length === 0 ? (
+            {paginatedCategories.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12">
                   <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                   <p className="text-muted-foreground">
-                    {showArchived ? 'Tidak ada kategori yang diarsipkan' : 'Tidak ada kategori'}
+                    {showArchived ? 'Tidak ada kategori yang diarsipkan' : 'Tidak ada kategori ditemukan'}
                   </p>
                 </TableCell>
               </TableRow>
             ) : (
-              filteredCategories.map((category) => (
+              paginatedCategories.map((category) => (
                 <TableRow key={category.category_id} className={category.is_active === false ? 'opacity-75 bg-muted/30' : ''}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
@@ -433,6 +467,44 @@ export default function CategoriesPage() {
             )}
           </TableBody>
         </Table>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="py-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    href="#" 
+                    onClick={(e) => handlePageChange(currentPage - 1, e)}
+                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+                
+                {/* Generate Page Numbers */}
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink 
+                      href="#" 
+                      isActive={currentPage === i + 1}
+                      onClick={(e) => handlePageChange(i + 1, e)}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+
+                <PaginationItem>
+                  <PaginationNext 
+                    href="#" 
+                    onClick={(e) => handlePageChange(currentPage + 1, e)}
+                    className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </Card>
 
       {/* Form Modal */}

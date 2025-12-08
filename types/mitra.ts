@@ -42,6 +42,8 @@ export interface Product {
   created_at?: string;
 }
 
+// ... (interface lainnya tetap)
+
 export interface DiscountRule {
   discount_rule_id: string;
   discount_name: string;
@@ -51,13 +53,21 @@ export interface DiscountRule {
   end_date: string;
   applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_CATEGORY' | 'SPECIFIC_PRODUCT';
   target_id?: string | null;
-  min_transaction?: number;
-  max_discount?: number;
+  
+  // ✅ UPDATE: Field Rules Baru
+  min_transaction_amount?: number;
+  max_transaction_amount?: number;
+  min_item_quantity?: number;
+  max_item_quantity?: number;
+  min_discount_amount?: number;
+  max_discount_amount?: number;
+
   branch_id: string | null;
   branch?: Branch | null;
   is_active: boolean;
+  created_at?: string;
 }
-
+// ... (interface lainnya tetap)
 export interface License {
   license_id: string;
   activation_code: string;
