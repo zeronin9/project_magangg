@@ -71,6 +71,39 @@ import {
 import { formatRupiah } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 
+// ✅ HELPER: Parse product_ids/category_ids dari backend
+const parseArrayField = (field: any, relatedField?: any[]): string[] => {
+  console.log('🔍 DEBUG parseArrayField - Input:', field, 'Related:', relatedField);
+  
+  // Jika ada relatedField (products/categories), ekstrak ID dari situ
+  if (relatedField && Array.isArray(relatedField) && relatedField.length > 0) {
+    const ids = relatedField.map(item => item.product_id || item.category_id).filter(Boolean);
+    console.log('✅ Extracted IDs from related field:', ids);
+    return ids;
+  }
+  
+  // Jika field sudah array dan berisi data
+  if (Array.isArray(field)) {
+    console.log('✅ Already array:', field);
+    return field;
+  }
+  
+  // Jika field adalah string, coba parse
+  if (typeof field === 'string') {
+    try {
+      const parsed = JSON.parse(field);
+      console.log('✅ Parsed from string:', parsed);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error('❌ Failed to parse:', e);
+      return [];
+    }
+  }
+  
+  console.log('⚠️ Returning empty array');
+  return [];
+};
+
 // Konfigurasi Pagination
 const ITEMS_PER_PAGE = 5;
 
@@ -137,64 +170,80 @@ export default function DiscountsPage() {
   };
 
   const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const [discountsData, categoriesData, productsData, branchesData] = await Promise.all([
-        discountAPI.getAll(),
-        categoryAPI.getAll(),
-        productAPI.getAll(),
-        branchAPI.getAll(),
-      ]);
-      
-      const branchesList = Array.isArray(branchesData) ? branchesData : [];
-      const discountsList = Array.isArray(discountsData) ? discountsData : [];
-      
-      const filteredApiData = showArchived 
-        ? discountsList.filter(d => d.is_active === false)
-        : discountsList.filter(d => d.is_active !== false);
+  try {
+    setIsLoading(true);
+    const [discountsData, categoriesData, productsData, branchesData] = await Promise.all([
+      discountAPI.getAll(),
+      categoryAPI.getAll(),
+      productAPI.getAll(),
+      branchAPI.getAll(),
+    ]);
+    
+    const branchesList = Array.isArray(branchesData) ? branchesData : [];
+    const discountsList = Array.isArray(discountsData) ? discountsData : [];
+    
+    console.log('🔍 RAW DISCOUNTS DATA:', discountsList); // ✅ TAMBAHKAN INI
+    
+    const filteredApiData = showArchived 
+      ? discountsList.filter(d => d.is_active === false)
+      : discountsList.filter(d => d.is_active !== false);
 
-      const discountsWithBranch = filteredApiData.map(discount => {
-        const branch = discount.branch_id 
-          ? branchesList.find(b => b.branch_id === discount.branch_id)
-          : null;
-        return {
-          ...discount,
-          branch: branch || null
-        };
-      });
-      
-      setDiscounts(discountsWithBranch);
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      setProducts(Array.isArray(productsData) ? productsData : []);
-      setBranches(branchesList);
-    } catch (err: any) {
-      setError(err.message || 'Gagal memuat data diskon');
-    } finally {
-      setIsLoading(false);
-    }
+    // ✅ PERBAIKAN: Parse product_ids dan category_ids
+    // ✅ PERBAIKAN: Parse product_ids dan category_ids
+const discountsWithBranch = filteredApiData.map(discount => {
+  console.log('🔍 Processing discount:', discount.discount_name, {
+    product_ids: discount.product_ids,
+    category_ids: discount.category_ids,
+    products: discount.products, // ✅ Tambahkan ini
+    categories: discount.categories // ✅ Tambahkan ini
+  });
+  
+  const branch = discount.branch_id 
+    ? branchesList.find(b => b.branch_id === discount.branch_id)
+    : null;
+  
+  return {
+    ...discount,
+    product_ids: parseArrayField(discount.product_ids, discount.products), // ✅ Pass products
+    category_ids: parseArrayField(discount.category_ids, discount.categories), // ✅ Pass categories
+    branch: branch || null
   };
+});
 
-  const handleOpenModal = (discount?: DiscountRule) => {
-    if (discount) {
-      setSelectedDiscount(discount);
-      setFormData({
-        discount_name: discount.discount_name,
-        discount_code: discount.discount_code || '',
-        discount_type: discount.discount_type,
-        value: discount.value.toString(),
-        start_date: discount.start_date.split('T')[0],
-        end_date: discount.end_date.split('T')[0],
-        applies_to: discount.applies_to,
-        product_ids: discount.product_ids || [],  // ✅ UBAH
-        category_ids: discount.category_ids || [], // ✅ UBAH
-        min_transaction_amount: discount.min_transaction_amount?.toString() || '',
-        max_transaction_amount: discount.max_transaction_amount?.toString() || '',
-        min_item_quantity: discount.min_item_quantity?.toString() || '',
-        max_item_quantity: discount.max_item_quantity?.toString() || '',
-        min_discount_amount: discount.min_discount_amount?.toString() || '',
-        max_discount_amount: discount.max_discount_amount?.toString() || '',
-      });
-    } else {
+    console.log('✅ PROCESSED DISCOUNTS:', discountsWithBranch); // ✅ TAMBAHKAN INI
+    
+    setDiscounts(discountsWithBranch);
+    setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+    setProducts(Array.isArray(productsData) ? productsData : []);
+    setBranches(branchesList);
+  } catch (err: any) {
+    setError(err.message || 'Gagal memuat data diskon');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+const handleOpenModal = (discount?: DiscountRule) => {
+  if (discount) {
+    setSelectedDiscount(discount);
+    setFormData({
+      discount_name: discount.discount_name,
+      discount_code: discount.discount_code || '',
+      discount_type: discount.discount_type,
+      value: discount.value.toString(),
+      start_date: discount.start_date.split('T')[0],
+      end_date: discount.end_date.split('T')[0],
+      applies_to: discount.applies_to,
+      product_ids: parseArrayField(discount.product_ids, (discount as any).products), // ✅ Pass products
+      category_ids: parseArrayField(discount.category_ids, (discount as any).categories), // ✅ Pass categories
+      min_transaction_amount: discount.min_transaction_amount?.toString() || '',
+      max_transaction_amount: discount.max_transaction_amount?.toString() || '',
+      min_item_quantity: discount.min_item_quantity?.toString() || '',
+      max_item_quantity: discount.max_item_quantity?.toString() || '',
+      min_discount_amount: discount.min_discount_amount?.toString() || '',
+      max_discount_amount: discount.max_discount_amount?.toString() || '',
+    });
+  } else {
       setSelectedDiscount(null);
       setFormData({
         discount_name: '',
@@ -218,9 +267,19 @@ export default function DiscountsPage() {
   };
 
   const handleViewDetail = (discount: DiscountRule) => {
-    setSelectedDiscount(discount);
-    setIsDetailModalOpen(true);
+  console.log('🔍 VIEW DETAIL - Original:', discount);
+  
+  const processed = {
+    ...discount,
+    product_ids: parseArrayField(discount.product_ids, (discount as any).products), // ✅ Pass products
+    category_ids: parseArrayField(discount.category_ids, (discount as any).categories), // ✅ Pass categories
   };
+  
+  console.log('✅ VIEW DETAIL - Processed:', processed);
+  
+  setSelectedDiscount(processed);
+  setIsDetailModalOpen(true);
+};
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
@@ -908,26 +967,27 @@ export default function DiscountsPage() {
                   id="discount_name"
                   value={formData.discount_name}
                   onChange={(e) => setFormData({ ...formData, discount_name: e.target.value })}
-                  placeholder="Contoh: Promo Kemerdekaan"
+                  placeholder="Masukkan nama diskon"
                   required
                 />
               </div>
 
               {/* Kode Diskon */}
-              <div className="space-y-2">
-                <Label htmlFor="discount_code">Kode Diskon (Opsional)</Label>
-                <Input
-                  id="discount_code"
-                  value={formData.discount_code}
-                  onChange={(e) => setFormData({ ...formData, discount_code: e.target.value.toUpperCase() })}
-                  placeholder="Contoh: MERDEKA17"
-                  maxLength={20}
-                  className="font-mono uppercase"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Kosongkan jika diskon diterapkan otomatis tanpa kode
-                </p>
-              </div>
+<div className="space-y-2">
+  <Label htmlFor="discount_code">Kode Diskon *</Label>
+  <Input
+    id="discount_code"
+    value={formData.discount_code}
+    onChange={(e) => setFormData({ ...formData, discount_code: e.target.value.toUpperCase() })}
+    placeholder="Masukkan kode unik"
+    maxLength={20}
+    className="font-mono uppercase"
+    required
+  />
+  <p className="text-xs text-muted-foreground">
+    Masukkan kode unik untuk diskon ini
+  </p>
+</div>
 
               {/* Tipe & Nilai */}
               <div className="grid grid-cols-2 gap-4">
@@ -960,21 +1020,20 @@ export default function DiscountsPage() {
                       max="100"
                       value={formData.value}
                       onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                      placeholder="10"
+                      placeholder="Masukkan nilai diskon"
                       required
                     />
                   ) : (
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">Rp</span>
-                      <Input
-                        id="value"
-                        className="pl-9"
-                        value={displayFormatted(formData.value)}
-                        onChange={(e) => handleNumberInput(e, 'value')}
-                        placeholder="10.000"
-                        required
-                      />
-                    </div>
+  <Input
+    id="value"
+    value={formData.value ? `Rp. ${Number(formData.value).toLocaleString('id-ID')}` : ''}
+    onChange={(e) => handleNumberInput(e, 'value')}
+    placeholder="Masukkan nilai potongan"
+    required
+  />
+</div>
+
                   )}
                 </div>
               </div>

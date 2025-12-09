@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -30,6 +31,21 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { 
   FileText,
   DollarSign,
@@ -38,8 +54,19 @@ import {
   Download,
   AlertCircle,
   Loader2,
-  Calendar
+  Calendar,
+  Receipt,
+  User,
+  CreditCard,
+  Package,
+  Eye,
+  ImageIcon,
+  X
 } from 'lucide-react';
+import Image from 'next/image';
+
+// Konfigurasi Pagination
+const ITEMS_PER_PAGE = 10;
 
 export default function ReportsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -54,6 +81,21 @@ export default function ReportsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('sales');
+
+  // Pagination states
+  const [salesCurrentPage, setSalesCurrentPage] = useState(1);
+  const [expensesCurrentPage, setExpensesCurrentPage] = useState(1);
+  const [itemsCurrentPage, setItemsCurrentPage] = useState(1);
+
+  // Modal state untuk bukti pengeluaran
+  const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  const [selectedProof, setSelectedProof] = useState<{
+    image_url: string;
+    description: string;
+    amount: string;
+    date: string;
+    user: string;
+  } | null>(null);
 
   useEffect(() => {
     loadBranches();
@@ -82,6 +124,11 @@ export default function ReportsPage() {
     setIsLoading(true);
     setError('');
     
+    // Reset pagination saat generate report baru
+    if (type === 'sales') setSalesCurrentPage(1);
+    if (type === 'expenses') setExpensesCurrentPage(1);
+    if (type === 'items') setItemsCurrentPage(1);
+    
     try {
       const params: any = {};
       
@@ -96,37 +143,136 @@ export default function ReportsPage() {
         params.tanggalSelesai = dateRange.end;
       }
 
+      console.log('📊 Fetching report:', type, 'with params:', params);
+
       if (type === 'sales') {
-        const data = await reportAPI.getSales(params);
+        const data = await reportAPI.getSales(params) as any;
+        console.log('✅ Sales Report Data:', data);
+        
+        // Sort data berdasarkan transaction_time (terlama di atas)
+        if (data.data && Array.isArray(data.data)) {
+          data.data.sort((a: any, b: any) => {
+            const dateA = new Date(a.transaction_time || 0).getTime();
+            const dateB = new Date(b.transaction_time || 0).getTime();
+            return dateA - dateB; // Ascending (terlama dulu)
+          });
+        }
+        
         setSalesReport(data);
       } else if (type === 'expenses') {
-        const data = await reportAPI.getExpenses(params);
+        const data = await reportAPI.getExpenses(params) as any;
+        console.log('✅ Expenses Report Data:', data);
+        
+        // Sort data berdasarkan expense_date (terlama di atas)
+        if (data.data && Array.isArray(data.data)) {
+          data.data.sort((a: any, b: any) => {
+            const dateA = new Date(a.expense_date || 0).getTime();
+            const dateB = new Date(b.expense_date || 0).getTime();
+            return dateA - dateB; // Ascending (terlama dulu)
+          });
+        }
+        
         setExpensesReport(data);
       } else if (type === 'items') {
-        const data = await reportAPI.getItems(params);
+        const data = await reportAPI.getItems(params) as any;
+        console.log('✅ Items Report Data:', data);
         setItemsReport(Array.isArray(data) ? data : []);
       }
     } catch (err: any) {
+      console.error('❌ Error fetching report:', err);
       setError(err.response?.data?.message || 'Gagal memuat laporan');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const handleViewProof = (expense: any) => {
+  const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.1.23:3001').replace(/\/+$/, '');
+  
+  let imagePath = expense.proof_image || '';
+  console.log('🔍 Original path dari backend:', imagePath);
+  
+  // ✅ CLEANING AGRESIF: Hapus semua kemungkinan prefix
+  imagePath = imagePath
+    .replace(/^\/+/, '')           // Hapus / di awal
+    .replace(/^api\//, '')          // Hapus api/ di awal
+    .replace(/^\/api\//, '')        // Hapus /api/ di awal
+    .replace(/\/api\/uploads\//, 'uploads/') // Ganti /api/uploads/ jadi uploads/
+    .replace(/api\/uploads\//, 'uploads/');   // Ganti api/uploads/ jadi uploads/
+  
+  console.log('✅ Cleaned path:', imagePath);
+  
+  // Pastikan tidak double slash
+  const imageUrl = imagePath.startsWith('http') 
+    ? imagePath 
+    : `${baseUrl}/${imagePath}`;
+  
+  console.log('🌐 Final URL:', imageUrl);
+  
+  setSelectedProof({
+    image_url: imageUrl,
+    description: expense.description || '-',
+    amount: expense.amount || '0',
+    date: expense.expense_date || '',
+    user: expense.user?.full_name || '-'
+  });
+  setIsProofModalOpen(true);
+};
+
+
+
+
   const formatCurrency = (value: string | number) => {
-    return 'Rp ' + parseInt(value.toString()).toLocaleString('id-ID');
+    return 'Rp. ' + parseInt(value.toString()).toLocaleString('id-ID');
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('id-ID', {
       day: '2-digit',
       month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatDateOnly = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
       year: 'numeric'
     });
   };
 
+  // Pagination helper functions
+  const getPaginatedData = (data: any[], currentPage: number) => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return data.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (dataLength: number) => {
+    return Math.ceil(dataLength / ITEMS_PER_PAGE);
+  };
+
+  const handlePageChange = (page: number, setPage: (page: number) => void, totalPages: number) => {
+    if (page > 0 && page <= totalPages) {
+      setPage(page);
+    }
+  };
+
+  // Pagination data
+  const paginatedSalesData = salesReport?.data ? getPaginatedData(salesReport.data, salesCurrentPage) : [];
+  const salesTotalPages = salesReport?.data ? getTotalPages(salesReport.data.length) : 0;
+
+  const paginatedExpensesData = expensesReport?.data ? getPaginatedData(expensesReport.data, expensesCurrentPage) : [];
+  const expensesTotalPages = expensesReport?.data ? getTotalPages(expensesReport.data.length) : 0;
+
+  const paginatedItemsData = itemsReport.length > 0 ? getPaginatedData(itemsReport, itemsCurrentPage) : [];
+  const itemsTotalPages = itemsReport.length > 0 ? getTotalPages(itemsReport.length) : 0;
+
   return (
-      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Laporan</h1>
@@ -222,13 +368,13 @@ export default function ReportsPage() {
           {salesReport && (
             <>
               {/* Summary Cards */}
-              <div className="grid gap-4 md:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-5">
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">Total Penjualan</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-2xl font-bold text-black">
                       {formatCurrency(salesReport.summary?.total_sales || 0)}
                     </div>
                   </CardContent>
@@ -247,10 +393,21 @@ export default function ReportsPage() {
 
                 <Card>
                   <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Total Subtotal</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-black">
+                      {formatCurrency(salesReport.summary?.total_subtotal || 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">Total Diskon</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-orange-600">
+                    <div className="text-2xl font-bold text-black">
                       {formatCurrency(salesReport.summary?.total_discount || 0)}
                     </div>
                   </CardContent>
@@ -261,54 +418,131 @@ export default function ReportsPage() {
                     <CardTitle className="text-sm font-medium">Total Pajak</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-2xl font-bold text-black">
                       {formatCurrency(salesReport.summary?.total_tax || 0)}
                     </div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Data Table */}
+              {/* Data Table dengan Pagination */}
               <Card>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Tanggal</TableHead>
+                      <TableHead className="w-16">No</TableHead>
+                      <TableHead>No. Struk</TableHead>
+                      <TableHead>Waktu Transaksi</TableHead>
                       <TableHead>Cabang</TableHead>
+                      <TableHead>Kasir</TableHead>
+                      <TableHead>Metode</TableHead>
                       <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Diskon</TableHead>
-                      <TableHead className="text-right">Pajak</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {salesReport.data && salesReport.data.length > 0 ? (
-                      salesReport.data.slice(0, 20).map((item: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell>
-                            {item.created_at ? formatDate(item.created_at) : '-'}
-                          </TableCell>
-                          <TableCell>{item.branch_name || 'N/A'}</TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {formatCurrency(item.final_total || 0)}
-                          </TableCell>
-                          <TableCell className="text-right text-orange-600">
-                            {formatCurrency(item.discount_amount || 0)}
-                          </TableCell>
-                          <TableCell className="text-right text-blue-600">
-                            {formatCurrency(item.tax_amount || 0)}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                    {paginatedSalesData.length > 0 ? (
+                      paginatedSalesData.map((item: any, index: number) => {
+                        const globalIndex = (salesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                        return (
+                          <TableRow key={item.transaction_id || index}>
+                            <TableCell className="font-medium text-center">
+                              {globalIndex}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {item.receipt_number || '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {item.transaction_time ? formatDate(item.transaction_time) : '-'}
+                            </TableCell>
+                            <TableCell>
+                              {item.branch?.branch_name || 'N/A'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div className="flex items-center gap-2">
+                                <User className="h-3 w-3 text-muted-foreground" />
+                                {item.user?.full_name || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                <CreditCard className="mr-1 h-3 w-3" />
+                                {item.payment_method || '-'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-gray-800">
+                              {formatCurrency(item.total_amount || 0)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={item.status === 'COMPLETED' ? 'default' : 'secondary'}
+                                className="text-xs"
+                              >
+                                {item.status || '-'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-12">
+                        <TableCell colSpan={8} className="text-center py-12">
                           <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                          <p className="text-muted-foreground">Tidak ada data</p>
+                          <p className="text-muted-foreground">Tidak ada data transaksi</p>
                         </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
                 </Table>
+
+                {/* Pagination untuk Sales */}
+                {salesTotalPages > 1 && (
+                  <div className="py-4">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious 
+                            href="#" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(salesCurrentPage - 1, setSalesCurrentPage, salesTotalPages);
+                            }}
+                            className={salesCurrentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        
+                        {Array.from({ length: salesTotalPages }).map((_, i) => (
+                          <PaginationItem key={i}>
+                            <PaginationLink 
+                              href="#" 
+                              isActive={salesCurrentPage === i + 1}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handlePageChange(i + 1, setSalesCurrentPage, salesTotalPages);
+                              }}
+                            >
+                              {i + 1}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ))}
+
+                        <PaginationItem>
+                          <PaginationNext 
+                            href="#" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(salesCurrentPage + 1, setSalesCurrentPage, salesTotalPages);
+                            }}
+                            className={salesCurrentPage >= salesTotalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                    <div className="text-center text-sm text-muted-foreground mt-2">
+                      Halaman {salesCurrentPage} dari {salesTotalPages} ({salesReport.data.length} total transaksi)
+                    </div>
+                  </div>
+                )}
               </Card>
             </>
           )}
@@ -338,53 +572,151 @@ export default function ReportsPage() {
 
           {expensesReport && (
             <>
-              {/* Summary Card */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium">Total Pengeluaran</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-red-600">
-                    {formatCurrency(expensesReport.summary?.total_expenses || 0)}
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Summary Cards */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Total Pengeluaran</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-black">
+                      {formatCurrency(expensesReport.summary?.total_expenses || 0)}
+                    </div>
+                  </CardContent>
+                </Card>
 
-              {/* Data Table */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">Jumlah Pengeluaran</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold">
+                      {expensesReport.summary?.expense_count || 0} item
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Data Table dengan Pagination */}
               <Card>
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-16">No</TableHead>
                       <TableHead>Tanggal</TableHead>
                       <TableHead>Deskripsi</TableHead>
-                      <TableHead>Kategori</TableHead>
+                      <TableHead>Cabang</TableHead>
+                      <TableHead>Input Oleh</TableHead>
                       <TableHead className="text-right">Jumlah</TableHead>
+                      <TableHead className="text-center">Bukti</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {expensesReport.data && expensesReport.data.length > 0 ? (
-                      expensesReport.data.slice(0, 20).map((item: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell>
-                            {item.created_at ? formatDate(item.created_at) : '-'}
-                          </TableCell>
-                          <TableCell>{item.description || '-'}</TableCell>
-                          <TableCell>{item.category || '-'}</TableCell>
-                          <TableCell className="text-right font-semibold text-red-600">
-                            {formatCurrency(item.amount || 0)}
-                          </TableCell>
-                        </TableRow>
-                      ))
+                    {paginatedExpensesData.length > 0 ? (
+                      paginatedExpensesData.map((item: any, index: number) => {
+                        const globalIndex = (expensesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                        return (
+                          <TableRow key={item.expense_id || index}>
+                            <TableCell className="font-medium text-center">
+                              {globalIndex}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {item.expense_date ? formatDateOnly(item.expense_date) : '-'}
+                            </TableCell>
+                            <TableCell className="max-w-xs">
+                              <div className="truncate" title={item.description}>
+                                {item.description || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {item.branch?.branch_name || 'N/A'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <div className="flex items-center gap-2">
+                                <User className="h-3 w-3 text-muted-foreground" />
+                                {item.user?.full_name || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-black">
+                              {formatCurrency(item.amount || 0)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {item.proof_image ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewProof(item)}
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Eye className="mr-1 h-4 w-4" />
+                                  Lihat Bukti
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Tidak ada bukti</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center py-12">
+                        <TableCell colSpan={7} className="text-center py-12">
                           <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                          <p className="text-muted-foreground">Tidak ada data</p>
+                          <p className="text-muted-foreground">Tidak ada data pengeluaran</p>
                         </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
                 </Table>
+
+                {/* Pagination untuk Expenses */}
+                {expensesTotalPages > 1 && (
+                  <div className="py-4">
+                    <Pagination>
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious 
+                            href="#" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(expensesCurrentPage - 1, setExpensesCurrentPage, expensesTotalPages);
+                            }}
+                            className={expensesCurrentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                        
+                        {Array.from({ length: expensesTotalPages }).map((_, i) => (
+                          <PaginationItem key={i}>
+                            <PaginationLink 
+                              href="#" 
+                              isActive={expensesCurrentPage === i + 1}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handlePageChange(i + 1, setExpensesCurrentPage, expensesTotalPages);
+                              }}
+                            >
+                              {i + 1}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ))}
+
+                        <PaginationItem>
+                          <PaginationNext 
+                            href="#" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(expensesCurrentPage + 1, setExpensesCurrentPage, expensesTotalPages);
+                            }}
+                            className={expensesCurrentPage >= expensesTotalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                    <div className="text-center text-sm text-muted-foreground mt-2">
+                      Halaman {expensesCurrentPage} dari {expensesTotalPages} ({expensesReport.data.length} total pengeluaran)
+                    </div>
+                  </div>
+                )}
               </Card>
             </>
           )}
@@ -417,31 +749,96 @@ export default function ReportsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Peringkat</TableHead>
+                    <TableHead className="w-16 text-center">No</TableHead>
+                    <TableHead className="w-24 text-center">Rank</TableHead>
                     <TableHead>Produk</TableHead>
-                    <TableHead>Kategori</TableHead>
-                    <TableHead className="text-right">Terjual</TableHead>
-                    <TableHead className="text-right">Total Pendapatan</TableHead>
+                    <TableHead className="text-center">Quantity Terjual</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {itemsReport.map((item: any, index: number) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-bold">#{index + 1}</TableCell>
-                      <TableCell className="font-medium">
-                        {item.product_name || item.name || '-'}
-                      </TableCell>
-                      <TableCell>{item.category_name || '-'}</TableCell>
-                      <TableCell className="text-right font-semibold text-blue-600">
-                        {item.quantity_sold || item.total_sold || 0}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-green-600">
-                        {formatCurrency(item.total_revenue || item.revenue || 0)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {paginatedItemsData.map((item: any, index: number) => {
+                    const globalIndex = (itemsCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                    return (
+                      <TableRow key={item.product_id || index}>
+                        <TableCell className="font-medium text-center">
+                          {globalIndex}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            variant={globalIndex <= 3 ? 'default' : 'secondary'}
+                            className="font-bold text-sm px-3 py-1"
+                          >
+                            #{globalIndex}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Package className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                            <span className="font-medium text-base">{item.product_name || '-'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div>
+                            <div className="font-bold text-xl text-black">
+                              {item.quantity_sold || 0}
+                            </div>
+                            <div className="text-xs text-muted-foreground">pcs</div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
+
+              {/* Pagination untuk Items */}
+              {itemsTotalPages > 1 && (
+                <div className="py-4">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious 
+                          href="#" 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handlePageChange(itemsCurrentPage - 1, setItemsCurrentPage, itemsTotalPages);
+                          }}
+                          className={itemsCurrentPage <= 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                      
+                      {Array.from({ length: itemsTotalPages }).map((_, i) => (
+                        <PaginationItem key={i}>
+                          <PaginationLink 
+                            href="#" 
+                            isActive={itemsCurrentPage === i + 1}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(i + 1, setItemsCurrentPage, itemsTotalPages);
+                            }}
+                          >
+                            {i + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext 
+                          href="#" 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handlePageChange(itemsCurrentPage + 1, setItemsCurrentPage, itemsTotalPages);
+                          }}
+                          className={itemsCurrentPage >= itemsTotalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                  <div className="text-center text-sm text-muted-foreground mt-2">
+                    Halaman {itemsCurrentPage} dari {itemsTotalPages} ({itemsReport.length} total produk)
+                  </div>
+                </div>
+              )}
             </Card>
           ) : (
             !isLoading && (
@@ -457,6 +854,82 @@ export default function ReportsPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Modal Bukti Pengeluaran */}
+<Dialog open={isProofModalOpen} onOpenChange={setIsProofModalOpen}>
+  <DialogContent className="max-w-3xl">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <ImageIcon className="h-5 w-5" />
+        Bukti Pengeluaran
+      </DialogTitle>
+      <DialogDescription>
+        Lihat detail dan foto bukti pengeluaran operasional
+      </DialogDescription>
+    </DialogHeader>
+              
+          {selectedProof && (
+            <div className="space-y-4">
+              {/* Info Pengeluaran */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div>
+                  <p className="text-sm text-muted-foreground">Deskripsi</p>
+                  <p className="font-medium">{selectedProof.description}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Jumlah</p>
+                  <p className="font-bold text-lg text-red-600">
+                    {formatCurrency(selectedProof.amount)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Tanggal</p>
+                  <p className="font-medium">{formatDateOnly(selectedProof.date)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Input Oleh</p>
+                  <p className="font-medium">{selectedProof.user}</p>
+                </div>
+              </div>
+
+              {/* Gambar Bukti */}
+<div className="relative w-full h-[400px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+  {/* eslint-disable-next-line @next/next/no-img-element */}
+  <img
+    src={selectedProof.image_url}
+    alt="Bukti Pengeluaran"
+    className="max-w-full max-h-full object-contain rounded"
+    onError={(e) => {
+      const target = e.target as HTMLImageElement;
+      target.style.display = 'none';
+      const parent = target.parentElement;
+      if (parent) {
+        parent.innerHTML = '<div class="text-center"><p class="text-muted-foreground">Gagal memuat gambar</p></div>';
+      }
+    }}
+  />
+</div>
+
+              {/* Download Button */}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsProofModalOpen(false)}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Tutup
+                </Button>
+                <Button
+                  onClick={() => window.open(selectedProof.image_url, '_blank')}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Bukti
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
