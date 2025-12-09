@@ -53,7 +53,6 @@ import {
   Plus, 
   MoreHorizontal, 
   Pencil, 
-  Trash2, 
   Percent,
   Building2,
   Globe,
@@ -65,9 +64,12 @@ import {
   Eye,
   AlertTriangle,
   Archive,
-  RotateCcw
+  RotateCcw,
+  Ticket,
+  X
 } from 'lucide-react';
 import { formatRupiah } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // Konfigurasi Pagination
 const ITEMS_PER_PAGE = 5;
@@ -95,16 +97,17 @@ export default function DiscountsPage() {
   const [selectedDiscount, setSelectedDiscount] = useState<DiscountRule | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Form Data
+  // ✅ UBAH: Form Data dengan arrays untuk product_ids dan category_ids
   const [formData, setFormData] = useState({
     discount_name: '',
+    discount_code: '',
     discount_type: 'PERCENTAGE' as 'PERCENTAGE' | 'FIXED_AMOUNT',
     value: '',
     start_date: '',
     end_date: '',
-    applies_to: 'ENTIRE_TRANSACTION' as 'ENTIRE_TRANSACTION' | 'SPECIFIC_CATEGORY' | 'SPECIFIC_PRODUCT',
-    target_id: '',
-    // Aturan Tambahan
+    applies_to: 'ENTIRE_TRANSACTION' as 'ENTIRE_TRANSACTION' | 'SPECIFIC_PRODUCTS' | 'SPECIFIC_CATEGORIES',
+    product_ids: [] as string[],  // ✅ UBAH: Array
+    category_ids: [] as string[], // ✅ UBAH: Array
     min_transaction_amount: '',
     max_transaction_amount: '',
     min_item_quantity: '',
@@ -117,21 +120,17 @@ export default function DiscountsPage() {
     loadData();
   }, [showArchived]);
 
-  // Reset pagination saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
   }, [scopeFilter, showArchived]);
 
-  // Helper Delay
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Helper Format Input (Hanya Angka)
   const handleNumberInput = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
     const val = e.target.value.replace(/\D/g, '');
     setFormData({ ...formData, [field]: val });
   };
 
-  // Helper Tampilan Format Ribuan di Input
   const displayFormatted = (val: string) => {
     if (!val) return '';
     return Number(val).toLocaleString('id-ID');
@@ -180,12 +179,14 @@ export default function DiscountsPage() {
       setSelectedDiscount(discount);
       setFormData({
         discount_name: discount.discount_name,
+        discount_code: discount.discount_code || '',
         discount_type: discount.discount_type,
         value: discount.value.toString(),
         start_date: discount.start_date.split('T')[0],
         end_date: discount.end_date.split('T')[0],
         applies_to: discount.applies_to,
-        target_id: discount.target_id || '',
+        product_ids: discount.product_ids || [],  // ✅ UBAH
+        category_ids: discount.category_ids || [], // ✅ UBAH
         min_transaction_amount: discount.min_transaction_amount?.toString() || '',
         max_transaction_amount: discount.max_transaction_amount?.toString() || '',
         min_item_quantity: discount.min_item_quantity?.toString() || '',
@@ -197,12 +198,14 @@ export default function DiscountsPage() {
       setSelectedDiscount(null);
       setFormData({
         discount_name: '',
+        discount_code: '',
         discount_type: 'PERCENTAGE',
         value: '',
         start_date: '',
         end_date: '',
         applies_to: 'ENTIRE_TRANSACTION',
-        target_id: '',
+        product_ids: [],  // ✅ UBAH
+        category_ids: [], // ✅ UBAH
         min_transaction_amount: '',
         max_transaction_amount: '',
         min_item_quantity: '',
@@ -224,6 +227,26 @@ export default function DiscountsPage() {
     setSelectedDiscount(null);
   };
 
+  // ✅ HANDLER: Toggle checkbox untuk kategori
+  const handleCategoryToggle = (categoryId: string, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      category_ids: checked 
+        ? [...prev.category_ids, categoryId]
+        : prev.category_ids.filter(id => id !== categoryId)
+    }));
+  };
+
+  // ✅ HANDLER: Toggle checkbox untuk produk
+  const handleProductToggle = (productId: string, checked: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      product_ids: checked 
+        ? [...prev.product_ids, productId]
+        : prev.product_ids.filter(id => id !== productId)
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -231,25 +254,43 @@ export default function DiscountsPage() {
     try {
       await delay(2000);
 
+      // ✅ SESUAIKAN: Payload sesuai dokumentasi API
       const dataToSend: any = {
         discount_name: formData.discount_name,
         discount_type: formData.discount_type,
-        value: parseFloat(formData.value),
-        start_date: new Date(formData.start_date).toISOString(),
-        end_date: new Date(`${formData.end_date}T23:59:00`).toISOString(),
+        value: formData.value, // Kirim sebagai string sesuai dokumentasi
+        start_date: formData.start_date, // Format YYYY-MM-DD
+        end_date: formData.end_date,     // Format YYYY-MM-DD
         applies_to: formData.applies_to,
+        is_active: true,
       };
 
-      if (formData.applies_to !== 'ENTIRE_TRANSACTION' && formData.target_id) {
-        dataToSend.target_id = formData.target_id;
+      // Kirim discount_code jika diisi
+      if (formData.discount_code && formData.discount_code.trim() !== '') {
+        dataToSend.discount_code = formData.discount_code.trim().toUpperCase();
       }
 
-      if (formData.min_transaction_amount) dataToSend.min_transaction_amount = parseFloat(formData.min_transaction_amount);
-      if (formData.max_transaction_amount) dataToSend.max_transaction_amount = parseFloat(formData.max_transaction_amount);
+      // ✅ KIRIM: product_ids jika SPECIFIC_PRODUCTS
+      if (formData.applies_to === 'SPECIFIC_PRODUCTS') {
+        dataToSend.product_ids = formData.product_ids;
+      }
+
+      // ✅ KIRIM: category_ids jika SPECIFIC_CATEGORIES
+      if (formData.applies_to === 'SPECIFIC_CATEGORIES') {
+        dataToSend.category_ids = formData.category_ids;
+      }
+
+      // Aturan tambahan (opsional) - kirim sebagai string
+      if (formData.min_transaction_amount) dataToSend.min_transaction_amount = formData.min_transaction_amount;
+      if (formData.max_transaction_amount) dataToSend.max_transaction_amount = formData.max_transaction_amount;
       if (formData.min_item_quantity) dataToSend.min_item_quantity = parseInt(formData.min_item_quantity);
       if (formData.max_item_quantity) dataToSend.max_item_quantity = parseInt(formData.max_item_quantity);
-      if (formData.min_discount_amount) dataToSend.min_discount_amount = parseFloat(formData.min_discount_amount);
-      if (formData.max_discount_amount) dataToSend.max_discount_amount = parseFloat(formData.max_discount_amount);
+      if (formData.min_discount_amount) dataToSend.min_discount_amount = formData.min_discount_amount;
+      if (formData.max_discount_amount) dataToSend.max_discount_amount = formData.max_discount_amount;
+
+      console.log('=== DATA YANG DIKIRIM ===');
+      console.log(JSON.stringify(dataToSend, null, 2));
+      console.log('========================');
 
       if (selectedDiscount) {
         await discountAPI.update(selectedDiscount.discount_rule_id, dataToSend);
@@ -259,6 +300,7 @@ export default function DiscountsPage() {
       await loadData();
       handleCloseModal();
     } catch (err: any) {
+      console.error('Error:', err);
       alert(err.response?.data?.message || 'Gagal menyimpan diskon');
     } finally {
       setIsSubmitting(false);
@@ -292,9 +334,9 @@ export default function DiscountsPage() {
         is_active: true,
         discount_name: selectedDiscount.discount_name,
         discount_type: selectedDiscount.discount_type,
-        value: selectedDiscount.value,
-        start_date: selectedDiscount.start_date,
-        end_date: selectedDiscount.end_date,
+        value: selectedDiscount.value.toString(),
+        start_date: selectedDiscount.start_date.split('T')[0],
+        end_date: selectedDiscount.end_date.split('T')[0],
         applies_to: selectedDiscount.applies_to
       };
       
@@ -326,7 +368,6 @@ export default function DiscountsPage() {
     }
   };
 
-  // 1. Filter Logic
   const filteredDiscounts = discounts.filter(disc => {
     if (scopeFilter === 'general') return !disc.branch_id;
     if (scopeFilter === 'local') return !!disc.branch_id;
@@ -336,7 +377,6 @@ export default function DiscountsPage() {
   const generalCount = discounts.filter(d => !d.branch_id).length;
   const localCount = discounts.filter(d => d.branch_id).length;
 
-  // 2. Pagination Logic
   const totalItems = filteredDiscounts.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -358,16 +398,24 @@ export default function DiscountsPage() {
     });
   };
 
-  const getTargetName = (discount: DiscountRule | null) => {
-    if (!discount || !discount.target_id) return '-';
-    if (discount.applies_to === 'SPECIFIC_CATEGORY') {
-      const cat = categories.find(c => c.category_id === discount.target_id);
-      return cat ? `Kategori: ${cat.category_name}` : 'Kategori Tidak Ditemukan';
+  // ✅ UBAH: Fungsi untuk mendapatkan nama target
+  const getTargetNames = (discount: DiscountRule | null) => {
+    if (!discount) return '-';
+    
+    if (discount.applies_to === 'SPECIFIC_CATEGORIES' && discount.category_ids && discount.category_ids.length > 0) {
+      const names = discount.category_ids
+        .map(id => categories.find(c => c.category_id === id)?.category_name)
+        .filter(Boolean);
+      return names.length > 0 ? names.join(', ') : 'Kategori Tidak Ditemukan';
     }
-    if (discount.applies_to === 'SPECIFIC_PRODUCT') {
-      const prod = products.find(p => p.product_id === discount.target_id);
-      return prod ? `Produk: ${prod.product_name}` : 'Produk Tidak Ditemukan';
+    
+    if (discount.applies_to === 'SPECIFIC_PRODUCTS' && discount.product_ids && discount.product_ids.length > 0) {
+      const names = discount.product_ids
+        .map(id => products.find(p => p.product_id === id)?.product_name)
+        .filter(Boolean);
+      return names.length > 0 ? names.join(', ') : 'Produk Tidak Ditemukan';
     }
+    
     return '-';
   };
 
@@ -390,29 +438,29 @@ export default function DiscountsPage() {
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Diskon</h1>
           <p className="text-muted-foreground">
             Kelola aturan diskon (General & Lokal)
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 @md:flex-row">
           <Button
             variant={showArchived ? "default" : "outline"}
             onClick={() => setShowArchived(!showArchived)}
+            className="w-full @md:w-auto"
           >
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          <Button onClick={() => handleOpenModal()} className="w-full @md:w-auto">
             <Plus className="mr-2 h-4 w-4" />
             Tambah Diskon
           </Button>
         </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -420,7 +468,6 @@ export default function DiscountsPage() {
         </Alert>
       )}
 
-      {/* Info Card */}
       <Alert>
         <Globe className="h-4 w-4" />
         <AlertDescription>
@@ -434,7 +481,7 @@ export default function DiscountsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium whitespace-nowrap">Filter Status:</span>
+            <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -470,6 +517,7 @@ export default function DiscountsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Nama Diskon</TableHead>
+              <TableHead>Kode</TableHead>
               <TableHead>Tipe</TableHead>
               <TableHead>Nilai</TableHead>
               <TableHead>Periode</TableHead>
@@ -480,7 +528,7 @@ export default function DiscountsPage() {
           <TableBody>
             {paginatedDiscounts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12">
+                <TableCell colSpan={7} className="text-center py-12">
                   <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                   <p className="text-muted-foreground">
                     {showArchived ? 'Tidak ada diskon di arsip' : 'Tidak ada diskon'}
@@ -495,6 +543,16 @@ export default function DiscountsPage() {
                       <Tag className="h-4 w-4 text-muted-foreground" />
                       {discount.discount_name}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {discount.discount_code ? (
+                      <Badge variant="secondary" className="font-mono">
+                        <Ticket className="mr-1 h-3 w-3" />
+                        {discount.discount_code}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">Otomatis</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">
@@ -583,7 +641,6 @@ export default function DiscountsPage() {
           </TableBody>
         </Table>
 
-        {/* Pagination Controls */}
         {totalPages > 1 && (
           <div className="py-4">
             <Pagination>
@@ -596,7 +653,6 @@ export default function DiscountsPage() {
                   />
                 </PaginationItem>
                 
-                {/* Generate Page Numbers */}
                 {Array.from({ length: totalPages }).map((_, i) => (
                   <PaginationItem key={i}>
                     <PaginationLink 
@@ -623,102 +679,216 @@ export default function DiscountsPage() {
       </Card>
 
       {/* Detail Modal */}
-      <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Detail Diskon</DialogTitle>
-            <DialogDescription>Informasi lengkap aturan diskon</DialogDescription>
-          </DialogHeader>
-          {selectedDiscount && (
-            <div className="space-y-4 py-2 text-sm max-h-[60vh] overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-muted-foreground mb-1">Nama Diskon</p>
-                  <p className="font-semibold">{selectedDiscount.discount_name}</p>
+<Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>Detail Diskon</DialogTitle>
+      <DialogDescription>Informasi lengkap aturan diskon</DialogDescription>
+    </DialogHeader>
+    {selectedDiscount && (
+      <div className="space-y-4 py-2 text-sm max-h-[60vh] overflow-y-auto">
+        <div className="grid grid-cols-2 gap-4">
+          {/* Nama Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Nama Diskon</p>
+            <p className="font-semibold">{selectedDiscount.discount_name}</p>
+          </div>
+          
+          {/* Status */}
+          <div>
+            <p className="text-muted-foreground mb-1">Status</p>
+            <Badge variant={selectedDiscount.is_active ? 'default' : 'secondary'}>
+              {selectedDiscount.is_active ? 'Aktif' : 'Diarsipkan'}
+            </Badge>
+          </div>
+          
+          {/* Kode Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Kode Diskon</p>
+            {selectedDiscount.discount_code ? (
+              <Badge variant="secondary" className="font-mono">
+                <Ticket className="mr-1 h-3 w-3" />
+                {selectedDiscount.discount_code}
+              </Badge>
+            ) : (
+              <span className="text-muted-foreground">Otomatis</span>
+            )}
+          </div>
+          
+          {/* Cakupan */}
+          <div>
+            <p className="text-muted-foreground mb-1">Cakupan</p>
+            <Badge variant={selectedDiscount.branch_id ? 'secondary' : 'default'}>
+              {selectedDiscount.branch_id ? 'Lokal' : 'General'}
+            </Badge>
+          </div>
+          
+          {/* Tipe Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Tipe</p>
+            <p>{selectedDiscount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal Tetap'}</p>
+          </div>
+          
+          {/* Nilai Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Nilai</p>
+            <p className="font-bold text-lg text-primary">
+              {selectedDiscount.discount_type === 'PERCENTAGE' 
+                ? `${selectedDiscount.value}%` 
+                : formatRupiah(selectedDiscount.value)
+              }
+            </p>
+          </div>
+          
+          {/* Berlaku Untuk */}
+          <div className="col-span-2">
+            <p className="text-muted-foreground mb-1">Berlaku Untuk</p>
+            <p className="font-medium">
+              {selectedDiscount.applies_to === 'ENTIRE_TRANSACTION' ? 'Seluruh Transaksi' :
+               selectedDiscount.applies_to === 'SPECIFIC_CATEGORIES' ? 'Kategori Tertentu' : 'Produk Tertentu'}
+            </p>
+          </div>
+          
+          {/* ✅ PERBAIKAN: Target (Kategori atau Produk) */}
+          {selectedDiscount.applies_to !== 'ENTIRE_TRANSACTION' && (
+            <div className="col-span-2">
+              <p className="text-muted-foreground mb-1">
+                {selectedDiscount.applies_to === 'SPECIFIC_CATEGORIES' ? 'Kategori Terpilih' : 'Produk Terpilih'}
+              </p>
+              
+              {/* Jika Kategori */}
+              {selectedDiscount.applies_to === 'SPECIFIC_CATEGORIES' && (
+                <div className="space-y-2">
+                  {selectedDiscount.category_ids && selectedDiscount.category_ids.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDiscount.category_ids.map((catId) => {
+                        const category = categories.find(c => c.category_id === catId);
+                        return category ? (
+                          <Badge key={catId} variant="outline" className="text-xs">
+                            {category.category_name}
+                          </Badge>
+                        ) : (
+                          <Badge key={catId} variant="destructive" className="text-xs">
+                            ID: {catId.substring(0, 8)}... (Tidak ditemukan)
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Tidak ada kategori dipilih</p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-muted-foreground mb-1">Status</p>
-                  <Badge variant={selectedDiscount.is_active ? 'default' : 'secondary'}>
-                    {selectedDiscount.is_active ? 'Aktif' : 'Diarsipkan'}
-                  </Badge>
+              )}
+              
+              {/* Jika Produk */}
+              {selectedDiscount.applies_to === 'SPECIFIC_PRODUCTS' && (
+                <div className="space-y-2">
+                  {selectedDiscount.product_ids && selectedDiscount.product_ids.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDiscount.product_ids.map((prodId) => {
+                        const product = products.find(p => p.product_id === prodId);
+                        return product ? (
+                          <Badge key={prodId} variant="outline" className="text-xs">
+                            {product.product_name}
+                          </Badge>
+                        ) : (
+                          <Badge key={prodId} variant="destructive" className="text-xs">
+                            ID: {prodId.substring(0, 8)}... (Tidak ditemukan)
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Tidak ada produk dipilih</p>
+                  )}
                 </div>
-                <div>
-                  <p className="text-muted-foreground mb-1">Cakupan</p>
-                  <Badge variant={selectedDiscount.branch_id ? 'secondary' : 'default'}>
-                    {selectedDiscount.branch_id ? 'Lokal' : 'General'}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-muted-foreground mb-1">Tipe</p>
-                  <p>{selectedDiscount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal Tetap'}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground mb-1">Nilai</p>
-                  <p className="font-bold text-lg text-primary">
-                    {selectedDiscount.discount_type === 'PERCENTAGE' 
-                      ? `${selectedDiscount.value}%` 
-                      : formatRupiah(selectedDiscount.value)
-                    }
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-muted-foreground mb-1">Berlaku Untuk</p>
-                  <p className="font-medium">
-                    {selectedDiscount.applies_to === 'ENTIRE_TRANSACTION' ? 'Seluruh Transaksi' :
-                     selectedDiscount.applies_to === 'SPECIFIC_CATEGORY' ? 'Kategori Tertentu' : 'Produk Tertentu'}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-muted-foreground mb-1">Target</p>
-                  <p className="font-medium">{getTargetName(selectedDiscount)}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-muted-foreground mb-1">Periode</p>
-                  <div className="bg-muted p-2 rounded text-center font-mono">
-                    {formatDate(selectedDiscount.start_date)} - {formatDate(selectedDiscount.end_date)}
-                  </div>
-                </div>
-                
-                {/* Detail Rupiah */}
-                <div className="col-span-2 mt-2 pt-2 border-t">
-                  <p className="font-semibold mb-2">Syarat & Ketentuan:</p>
-                  <ul className="grid grid-cols-2 gap-2 text-muted-foreground">
-                    <li>
-                      <span className="block text-xs">Min. Transaksi</span>
-                      <span className="font-medium text-foreground">{selectedDiscount.min_transaction_amount ? formatRupiah(selectedDiscount.min_transaction_amount) : '-'}</span>
-                    </li>
-                    <li>
-                      <span className="block text-xs">Max. Transaksi</span>
-                      <span className="font-medium text-foreground">{selectedDiscount.max_transaction_amount ? formatRupiah(selectedDiscount.max_transaction_amount) : '-'}</span>
-                    </li>
-                    <li>
-                      <span className="block text-xs">Min. Diskon</span>
-                      <span className="font-medium text-foreground">{selectedDiscount.min_discount_amount ? formatRupiah(selectedDiscount.min_discount_amount) : '-'}</span>
-                    </li>
-                    <li>
-                      <span className="block text-xs">Max. Diskon</span>
-                      <span className="font-medium text-foreground">{selectedDiscount.max_discount_amount ? formatRupiah(selectedDiscount.max_discount_amount) : '-'}</span>
-                    </li>
-                    <li>
-                      <span className="block text-xs">Min. Item</span>
-                      <span className="font-medium text-foreground">{selectedDiscount.min_item_quantity ? `${selectedDiscount.min_item_quantity} item` : '-'}</span>
-                    </li>
-                    <li>
-                      <span className="block text-xs">Max. Item</span>
-                      <span className="font-medium text-foreground">{selectedDiscount.max_item_quantity ? `${selectedDiscount.max_item_quantity} item` : '-'}</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
+              )}
             </div>
           )}
-          <DialogFooter>
-            <Button onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          
+          {/* Periode */}
+          <div className="col-span-2">
+            <p className="text-muted-foreground mb-1">Periode Aktif</p>
+            <div className="bg-muted p-2 rounded text-center font-mono text-sm">
+              {formatDate(selectedDiscount.start_date)} - {formatDate(selectedDiscount.end_date)}
+            </div>
+          </div>
+          
+          {/* Syarat & Ketentuan */}
+          <div className="col-span-2 mt-2 pt-2 border-t">
+            <p className="font-semibold mb-2">Syarat & Ketentuan:</p>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Min. Transaksi */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Min. Transaksi</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.min_transaction_amount 
+                    ? formatRupiah(selectedDiscount.min_transaction_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Max. Transaksi */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Max. Transaksi</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.max_transaction_amount 
+                    ? formatRupiah(selectedDiscount.max_transaction_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Min. Diskon */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Min. Diskon</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.min_discount_amount 
+                    ? formatRupiah(selectedDiscount.min_discount_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Max. Diskon */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Max. Diskon</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.max_discount_amount 
+                    ? formatRupiah(selectedDiscount.max_discount_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Min. Item */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Min. Item (Qty)</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.min_item_quantity 
+                    ? `${selectedDiscount.min_item_quantity} item` 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Max. Item */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Max. Item (Qty)</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.max_item_quantity 
+                    ? `${selectedDiscount.max_item_quantity} item` 
+                    : '-'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    <DialogFooter>
+      <Button onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 
-      {/* Form Modal (Create/Edit) */}
+      {/* Form Modal (Create/Edit) - LANJUTAN DI PART 2 */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -726,11 +896,12 @@ export default function DiscountsPage() {
               {selectedDiscount ? 'Edit Diskon' : 'Tambah Diskon Baru'}
             </DialogTitle>
             <DialogDescription>
-              Isi detail aturan diskon di bawah ini.
+              Diskon akan dibuat sebagai General (berlaku untuk semua cabang).
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
+              {/* Nama Diskon */}
               <div className="space-y-2">
                 <Label htmlFor="discount_name">Nama Diskon *</Label>
                 <Input
@@ -742,6 +913,23 @@ export default function DiscountsPage() {
                 />
               </div>
 
+              {/* Kode Diskon */}
+              <div className="space-y-2">
+                <Label htmlFor="discount_code">Kode Diskon (Opsional)</Label>
+                <Input
+                  id="discount_code"
+                  value={formData.discount_code}
+                  onChange={(e) => setFormData({ ...formData, discount_code: e.target.value.toUpperCase() })}
+                  placeholder="Contoh: MERDEKA17"
+                  maxLength={20}
+                  className="font-mono uppercase"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Kosongkan jika diskon diterapkan otomatis tanpa kode
+                </p>
+              </div>
+
+              {/* Tipe & Nilai */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="discount_type">Tipe Diskon *</Label>
@@ -776,7 +964,6 @@ export default function DiscountsPage() {
                       required
                     />
                   ) : (
-                    // INPUT FORMAT RUPIAH
                     <div className="relative">
                       <span className="absolute left-3 top-2.5 text-muted-foreground text-sm">Rp</span>
                       <Input
@@ -792,6 +979,7 @@ export default function DiscountsPage() {
                 </div>
               </div>
 
+              {/* Periode */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="start_date">Mulai *</Label>
@@ -816,11 +1004,12 @@ export default function DiscountsPage() {
                 </div>
               </div>
 
+              {/* Berlaku Untuk */}
               <div className="space-y-2">
                 <Label htmlFor="applies_to">Berlaku Untuk *</Label>
                 <Select
                   value={formData.applies_to}
-                  onValueChange={(value: any) => setFormData({ ...formData, applies_to: value, target_id: '' })}
+                  onValueChange={(value: any) => setFormData({ ...formData, applies_to: value, product_ids: [], category_ids: [] })}
                   required
                 >
                   <SelectTrigger>
@@ -828,54 +1017,83 @@ export default function DiscountsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ENTIRE_TRANSACTION">Seluruh Transaksi</SelectItem>
-                    <SelectItem value="SPECIFIC_CATEGORY">Kategori Tertentu</SelectItem>
-                    <SelectItem value="SPECIFIC_PRODUCT">Produk Tertentu</SelectItem>
+                    <SelectItem value="SPECIFIC_CATEGORIES">Kategori Tertentu</SelectItem>
+                    <SelectItem value="SPECIFIC_PRODUCTS">Produk Tertentu</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Target Selection */}
-              {formData.applies_to === 'SPECIFIC_CATEGORY' && (
+              {/* ✅ UBAH: Target Selection untuk Kategori (Multi-select dengan Checkbox) */}
+              {formData.applies_to === 'SPECIFIC_CATEGORIES' && (
                 <div className="space-y-2">
-                  <Label htmlFor="target_id">Pilih Kategori *</Label>
-                  <Select
-                    value={formData.target_id}
-                    onValueChange={(value) => setFormData({ ...formData, target_id: value })}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih Kategori" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.category_id} value={cat.category_id}>
-                          {cat.category_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Pilih Kategori * ({formData.category_ids.length} dipilih)</Label>
+                  <Card className="p-4 max-h-64 overflow-y-auto">
+                    {categories.filter((cat) => !cat.branch_id).length > 0 ? (
+                      <div className="space-y-2">
+                        {categories
+                          .filter((cat) => !cat.branch_id)
+                          .map((cat) => (
+                            <div key={cat.category_id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={cat.category_id}
+                                checked={formData.category_ids.includes(cat.category_id)}
+                                onCheckedChange={(checked) => handleCategoryToggle(cat.category_id, checked as boolean)}
+                              />
+                              <label
+                                htmlFor={cat.category_id}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {cat.category_name}
+                              </label>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Tidak ada kategori general tersedia
+                      </p>
+                    )}
+                  </Card>
+                  {formData.category_ids.length === 0 && (
+                    <p className="text-xs text-destructive">Minimal pilih 1 kategori</p>
+                  )}
                 </div>
               )}
 
-              {formData.applies_to === 'SPECIFIC_PRODUCT' && (
+              {/* ✅ UBAH: Target Selection untuk Produk (Multi-select dengan Checkbox) */}
+              {formData.applies_to === 'SPECIFIC_PRODUCTS' && (
                 <div className="space-y-2">
-                  <Label htmlFor="target_id">Pilih Produk *</Label>
-                  <Select
-                    value={formData.target_id}
-                    onValueChange={(value) => setFormData({ ...formData, target_id: value })}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih Produk" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map((prod) => (
-                        <SelectItem key={prod.product_id} value={prod.product_id}>
-                          {prod.product_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Pilih Produk * ({formData.product_ids.length} dipilih)</Label>
+                  <Card className="p-4 max-h-64 overflow-y-auto">
+                    {products.filter((prod) => !prod.branch_id).length > 0 ? (
+                      <div className="space-y-2">
+                        {products
+                          .filter((prod) => !prod.branch_id)
+                          .map((prod) => (
+                            <div key={prod.product_id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={prod.product_id}
+                                checked={formData.product_ids.includes(prod.product_id)}
+                                onCheckedChange={(checked) => handleProductToggle(prod.product_id, checked as boolean)}
+                              />
+                              <label
+                                htmlFor={prod.product_id}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {prod.product_name}
+                              </label>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Tidak ada produk general tersedia
+                      </p>
+                    )}
+                  </Card>
+                  {formData.product_ids.length === 0 && (
+                    <p className="text-xs text-destructive">Minimal pilih 1 produk</p>
+                  )}
                 </div>
               )}
 
@@ -938,7 +1156,14 @@ export default function DiscountsPage() {
               <Button type="button" variant="outline" onClick={handleCloseModal}>
                 Batal
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button 
+                type="submit" 
+                disabled={
+                  isSubmitting || 
+                  (formData.applies_to === 'SPECIFIC_CATEGORIES' && formData.category_ids.length === 0) ||
+                  (formData.applies_to === 'SPECIFIC_PRODUCTS' && formData.product_ids.length === 0)
+                }
+              >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {selectedDiscount ? 'Update' : 'Simpan'}
               </Button>
@@ -947,7 +1172,7 @@ export default function DiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Archive (Soft Delete) Confirmation */}
+      {/* Archive Confirmation */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>

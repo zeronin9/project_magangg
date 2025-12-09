@@ -314,7 +314,7 @@ export default function LicensesPage() {
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Manajemen Lisensi</h1>
           <p className="text-muted-foreground">Kelola lisensi perangkat untuk cabang Anda</p>

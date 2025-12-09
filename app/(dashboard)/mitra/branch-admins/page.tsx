@@ -284,7 +284,7 @@ export default function BranchAdminsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Admin Cabang</h1>
           <p className="text-muted-foreground">Kelola admin untuk setiap cabang</p>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 @md:flex">
           {/* Tombol Toggle Arsip */}
           <Button
             variant={showArchived ? "default" : "outline"}

@@ -29,32 +29,35 @@ export interface Category {
   created_at?: string;
 }
 
+// ✅ PERBAIKAN: Ubah product_image_url ke image_url sesuai dokumentasi API
 export interface Product {
   product_id: string;
   product_name: string;
   base_price: number;
   category_id: string;
   category?: Category;
-  product_image_url?: string;
+  image_url?: string | null;  // ✅ UBAH dari product_image_url ke image_url
   branch_id: string | null;
   branch?: Branch | null;
   is_active: boolean;
   created_at?: string;
 }
 
-// ... (interface lainnya tetap)
-
 export interface DiscountRule {
   discount_rule_id: string;
   discount_name: string;
+  discount_code?: string | null;
   discount_type: 'PERCENTAGE' | 'FIXED_AMOUNT';
   value: number;
   start_date: string;
   end_date: string;
-  applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_CATEGORY' | 'SPECIFIC_PRODUCT';
-  target_id?: string | null;
+  applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_PRODUCTS' | 'SPECIFIC_CATEGORIES';  // ✅ UBAH: Plural
   
-  // ✅ UPDATE: Field Rules Baru
+  // ✅ UBAH: Ganti target_id dengan arrays
+  product_ids?: string[];
+  category_ids?: string[];
+  
+  // Field Rules
   min_transaction_amount?: number;
   max_transaction_amount?: number;
   min_item_quantity?: number;
@@ -67,7 +70,7 @@ export interface DiscountRule {
   is_active: boolean;
   created_at?: string;
 }
-// ... (interface lainnya tetap)
+
 export interface License {
   license_id: string;
   activation_code: string;
@@ -80,8 +83,6 @@ export interface License {
   created_at: string;
 }
 
-// ... existing types ...
-// ✅ Tambahkan Interface untuk Riwayat Langganan (Sesuai Doc 7.7)
 export interface PartnerSubscriptionHistory {
   subscription_id: string;
   partner_id: string;
@@ -98,28 +99,6 @@ export interface PartnerSubscriptionHistory {
   };
 }
 
-export interface SubscriptionPlan {
-  plan_id: string;
-  plan_name: string;
-  price: string | number;
-  description?: string;
-  branch_limit: number;
-  device_limit: number;
-  duration_months?: number; // Tambahan field
-  features?: string[];
-}
-
-export interface SubscriptionOrderResponse {
-  status: 'WAITING_TRANSFER' | 'CONFIRMED' | 'EXPIRED';
-  total_amount: string | number;
-  bank_info: {
-    bank_name: string;
-    account_number: string;
-    account_name?: string;
-  };
-  order_id?: string;
-  created_at?: string;
-}
 export interface SubscriptionPlan {
   plan_id: string;
   plan_name: string;
@@ -200,10 +179,9 @@ export interface ItemsReport {
   total_revenue: string;
 }
 
-// ✅ TAMBAHAN: Type untuk API Response
 export interface ApiResponse<T = any> {
   success?: boolean;
   message?: string;
   data?: T;
-  [key: string]: any; // Allow other properties
+  [key: string]: any;
 }

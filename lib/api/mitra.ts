@@ -20,6 +20,13 @@ apiClient.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
+
+    // ✅ PERBAIKAN KRITIS: Hapus Content-Type jika data adalah FormData
+    // Biarkan browser yang auto-set dengan boundary yang benar
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
     return config;
   },
   (error: any) => {
@@ -163,15 +170,14 @@ export const productAPI = {
     return response.data;
   },
 
-  // ✅ FIX: Hapus header manual. Axios akan otomatis set 'multipart/form-data' jika data adalah FormData
-  create: async (data: any) => {
+  // ✅ Create produk dengan FormData (untuk upload gambar)
+  create: async (data: FormData | any) => {
     const response = await apiClient.post('/product', data);
     return response.data;
   },
 
-  // ✅ FIX: Terima 'any' agar bisa kirim JSON (untuk restore) atau FormData (untuk upload)
-  // Jangan set header Content-Type secara manual!
-  update: async (id: string, data: any) => {
+  // ✅ Update produk - bisa FormData (dengan gambar) atau JSON (tanpa gambar)
+  update: async (id: string, data: FormData | any) => {
     const response = await apiClient.put(`/product/${id}`, data);
     return response.data;
   },
@@ -186,8 +192,6 @@ export const productAPI = {
     return response.data;
   },
 };
-
-// ... sisa kode lainnya (categoryAPI, discountAPI, dll)
 
 // ==================== CATEGORY ====================
 export const categoryAPI = {
@@ -222,8 +226,6 @@ export const categoryAPI = {
   },
 };
 
-// ... imports
-
 // ==================== DISCOUNT ====================
 export const discountAPI = {
   getAll: async () => {
@@ -236,7 +238,6 @@ export const discountAPI = {
     return response.data;
   },
 
-  // ✅ UPDATE: Mendukung field rules baru
   create: async (data: any) => {
     const response = await apiClient.post('/discount-rule', data);
     return response.data;
@@ -258,7 +259,6 @@ export const discountAPI = {
   },
 };
 
-// ... kode lainnya
 // ==================== LICENSE ====================
 export const licenseAPI = {
   getAll: async () => {
@@ -311,7 +311,6 @@ export const subscriptionAPI = {
     return response.data;
   },
 
-  // ✅ FIX: Hapus header manual Content-Type
   uploadPaymentProof: async (orderId: string, file: File) => {
     const formData = new FormData();
     formData.append('payment_proof', file);

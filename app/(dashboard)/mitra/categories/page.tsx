@@ -289,14 +289,14 @@ export default function CategoriesPage() {
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Kategori Produk</h1>
           <p className="text-muted-foreground">
             Kelola kategori produk (General & Lokal)
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2 @md:flex">
           <Button
             variant={showArchived ? "default" : "outline"}
             onClick={() => setShowArchived(!showArchived)}
