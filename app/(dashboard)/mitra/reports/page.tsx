@@ -187,25 +187,22 @@ export default function ReportsPage() {
   };
 
   const handleViewProof = (expense: any) => {
-  const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.1.23:3001').replace(/\/+$/, '');
+  // Base URL dari environment variable atau default
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
   
+  // Ambil path gambar dari response API
   let imagePath = expense.proof_image || '';
+  
   console.log('🔍 Original path dari backend:', imagePath);
   
-  // ✅ CLEANING AGRESIF: Hapus semua kemungkinan prefix
-  imagePath = imagePath
-    .replace(/^\/+/, '')           // Hapus / di awal
-    .replace(/^api\//, '')          // Hapus api/ di awal
-    .replace(/^\/api\//, '')        // Hapus /api/ di awal
-    .replace(/\/api\/uploads\//, 'uploads/') // Ganti /api/uploads/ jadi uploads/
-    .replace(/api\/uploads\//, 'uploads/');   // Ganti api/uploads/ jadi uploads/
+  // Bersihkan leading slash jika ada
+  imagePath = imagePath.replace(/^\/+/, '');
   
   console.log('✅ Cleaned path:', imagePath);
   
-  // Pastikan tidak double slash
-  const imageUrl = imagePath.startsWith('http') 
-    ? imagePath 
-    : `${baseUrl}/${imagePath}`;
+  // Gabungkan base URL dengan path
+  // Contoh: http://localhost:3000/uploads/proof_image_expense-123.jpg
+  const imageUrl = `${baseUrl}/${imagePath}`;
   
   console.log('🌐 Final URL:', imageUrl);
   
@@ -218,9 +215,6 @@ export default function ReportsPage() {
   });
   setIsProofModalOpen(true);
 };
-
-
-
 
   const formatCurrency = (value: string | number) => {
     return 'Rp. ' + parseInt(value.toString()).toLocaleString('id-ID');
