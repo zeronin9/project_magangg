@@ -174,7 +174,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
       ];
     }
 
-    // 3. ADMIN CABANG (L1) - FULL MENU
+        // 3. ADMIN CABANG (L1) - UPDATED MENU
     if (role === 'branch_admin') {
       return [
         { 
@@ -187,13 +187,13 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         { 
           href: '/branch/cashiers', 
           icon: '/images/icons/branchadmin.png', 
-          label: 'Kasir & Staf',
+          label: 'Kasir & Operator',
           badge: null,
           exact: false
         },
         { 
-          href: '/branch/shifts', // New Page
-          icon: '/images/icons/Branch.png', // Icon shift/waktu (reused)
+          href: '/branch/shifts',
+          icon: '/images/icons/Branch.png',
           label: 'Jadwal Shift',
           badge: null,
           exact: false
@@ -201,7 +201,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         { 
           href: '/branch/products', 
           icon: '/images/icons/BranchProduk.png',
-          label: 'Produk & Menu',
+          label: 'Produk',
           badge: null,
           exact: false
         },
@@ -215,21 +215,21 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         { 
           href: '/branch/expenses', 
           icon: '/images/icons/report.png', 
-          label: 'Pengeluaran',
-          badge: null,
-          exact: false
-        },
-        { 
-          href: '/branch/voids', // New Page
-          icon: '/images/icons/logout.png', // Placeholder icon for void/cancel
-          label: 'Permintaan Void',
+          label: 'Kas Keluar',
           badge: null,
           exact: false
         },
         { 
           href: '/branch/reports', 
-          icon: '/images/icons/reportbaru.png',
-          label: 'Laporan',
+          icon: '/images/icons/reportbaru1.png',
+          label: 'Laporan Penjualan',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/voids',
+          icon: '/images/icons/logout.png',
+          label: 'Void Request',
           badge: null,
           exact: false
         },
@@ -242,7 +242,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
       ];
     }
-    
+
     return [];
   };
 
