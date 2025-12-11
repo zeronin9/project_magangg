@@ -562,7 +562,7 @@ export default function ProductsPage() {
                           <DropdownMenuItem onClick={() => {
                             setSelectedProduct(product);
                             setIsSoftDeleteOpen(true);
-                          }} className="text-orange-600">
+                          }} className="text-black">
                             <Archive className="mr-2 h-4 w-4" />
                             Arsipkan
                           </DropdownMenuItem>
@@ -795,7 +795,7 @@ export default function ProductsPage() {
               Batal
             </Button>
             <Button 
-              className="bg-orange-600 hover:bg-orange-700 text-white"
+              className="bg-black text-white"
               onClick={handleSoftDelete} 
               disabled={isSubmitting}
             >
@@ -833,23 +833,20 @@ export default function ProductsPage() {
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
+            <DialogTitle className="text-black flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
               <br/>
-              <span className="bg-destructive/10 text-destructive p-1 rounded mt-2 block text-xs">
-                PERINGATAN: Tindakan ini tidak dapat dibatalkan. Gagal jika produk memiliki riwayat transaksi.
-              </span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>

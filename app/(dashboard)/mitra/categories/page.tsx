@@ -431,7 +431,7 @@ export default function CategoriesPage() {
                               setSelectedCategory(category);
                               setIsDeleteModalOpen(true);
                             }}
-                            className="text-orange-600"
+                            className="text-black"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Arsipkan
@@ -597,16 +597,6 @@ export default function CategoriesPage() {
             <p>
               Apakah Anda yakin ingin menghapus kategori <strong>{selectedCategory?.category_name}</strong> secara permanen?
             </p>
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md text-sm">
-              <div className="flex items-center gap-2 font-medium text-destructive mb-1">
-                <AlertTriangle className="h-4 w-4" />
-                PERINGATAN
-              </div>
-              <div className="text-destructive/80">
-                Tindakan ini <strong>tidak dapat dibatalkan</strong>. Data kategori akan hilang dari database. 
-                Gagal jika kategori sedang digunakan oleh produk.
-              </div>
-            </div>
           </div>
         }
         onConfirm={handleHardDelete}

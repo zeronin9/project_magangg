@@ -661,7 +661,7 @@ const handleOpenModal = (discount?: DiscountRule) => {
                                 setSelectedDiscount(discount);
                                 setIsSoftDeleteOpen(true);
                               }}
-                              className="text-orange-600"
+                              className="text-black"
                             >
                               <Archive className="mr-2 h-4 w-4" />
                               Arsipkan
@@ -1246,7 +1246,7 @@ const handleOpenModal = (discount?: DiscountRule) => {
             <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)}>
               Batal
             </Button>
-            <Button variant="default" className="bg-orange-600 hover:bg-orange-700" onClick={handleArchive} disabled={isSubmitting}>
+            <Button variant="default" className="bg-black" onClick={handleArchive} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Arsipkan
             </Button>
@@ -1279,23 +1279,20 @@ const handleOpenModal = (discount?: DiscountRule) => {
       <Dialog open={isHardDeleteModalOpen} onOpenChange={setIsHardDeleteModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
+            <DialogTitle className="flex items-center text-black gap-2">
               <AlertTriangle className="h-5 w-5" />
-              Hapus Permanen?
+              Hapus Permanen? 
             </DialogTitle>
             <DialogDescription>
               Diskon <strong>{selectedDiscount?.discount_name}</strong> akan dihapus selamanya dari database.
               <br/>
-              <span className="text-xs bg-red-50 text-red-600 p-1 rounded mt-2 block">
-                Tindakan ini tidak dapat dibatalkan.
-              </span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHardDeleteModalOpen(false)}>
               Batal
             </Button>
-            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>

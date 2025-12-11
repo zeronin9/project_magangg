@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -54,19 +53,17 @@ import {
   Download,
   AlertCircle,
   Loader2,
-  Calendar,
-  Receipt,
   User,
   CreditCard,
   Package,
   Eye,
   ImageIcon,
-  X
+  X,
+  XCircle
 } from 'lucide-react';
-import Image from 'next/image';
 
 // Konfigurasi Pagination
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 5;
 
 export default function ReportsPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -81,6 +78,7 @@ export default function ReportsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('sales');
+  const [showVoidOnly, setShowVoidOnly] = useState(false);
 
   // Pagination states
   const [salesCurrentPage, setSalesCurrentPage] = useState(1);
@@ -95,6 +93,8 @@ export default function ReportsPage() {
     amount: string;
     date: string;
     user: string;
+    cashier: string;
+    branch: string;
   } | null>(null);
 
   useEffect(() => {
@@ -123,6 +123,7 @@ export default function ReportsPage() {
   const handleGenerateReport = async (type: 'sales' | 'expenses' | 'items') => {
     setIsLoading(true);
     setError('');
+    setShowVoidOnly(false);
     
     // Reset pagination saat generate report baru
     if (type === 'sales') setSalesCurrentPage(1);
@@ -146,19 +147,37 @@ export default function ReportsPage() {
       console.log('📊 Fetching report:', type, 'with params:', params);
 
       if (type === 'sales') {
-        const data = await reportAPI.getSales(params) as any;
-        console.log('✅ Sales Report Data:', data);
+        // Request dengan status COMPLETED untuk laporan utama
+        const completedParams = { ...params, status: 'COMPLETED' };
+        const completedData = await reportAPI.getSales(completedParams) as any;
         
-        // Sort data berdasarkan transaction_time (terlama di atas)
-        if (data.data && Array.isArray(data.data)) {
-          data.data.sort((a: any, b: any) => {
+        // Request SEMUA status untuk filter void
+        const allData = await reportAPI.getSales(params) as any;
+        
+        console.log('✅ Completed Sales Report:', completedData);
+        console.log('📊 All Transactions (for void filter):', allData);
+        console.log('📊 Sample Transaction:', completedData.data?.[0]);
+        
+        if (completedData.data && Array.isArray(completedData.data)) {
+          // Sort berdasarkan transaction_time (terlama di atas)
+          completedData.data.sort((a: any, b: any) => {
             const dateA = new Date(a.transaction_time || 0).getTime();
             const dateB = new Date(b.transaction_time || 0).getTime();
-            return dateA - dateB; // Ascending (terlama dulu)
+            return dateA - dateB;
           });
+
+          // Summary sudah benar dari backend (hanya COMPLETED)
+          console.log('✅ Summary from Backend:', completedData.summary);
+          
+          setSalesReport({
+            data: completedData.data,
+            summary: completedData.summary,
+            all_data: allData.data || [] // Simpan semua data untuk filter void
+          });
+        } else {
+          setSalesReport(completedData);
         }
         
-        setSalesReport(data);
       } else if (type === 'expenses') {
         const data = await reportAPI.getExpenses(params) as any;
         console.log('✅ Expenses Report Data:', data);
@@ -168,13 +187,15 @@ export default function ReportsPage() {
           data.data.sort((a: any, b: any) => {
             const dateA = new Date(a.expense_date || 0).getTime();
             const dateB = new Date(b.expense_date || 0).getTime();
-            return dateA - dateB; // Ascending (terlama dulu)
+            return dateA - dateB;
           });
         }
         
         setExpensesReport(data);
       } else if (type === 'items') {
-        const data = await reportAPI.getItems(params) as any;
+        // Kirim status=COMPLETED untuk item terlaris
+        const itemsParams = { ...params, status: 'COMPLETED' };
+        const data = await reportAPI.getItems(itemsParams) as any;
         console.log('✅ Items Report Data:', data);
         setItemsReport(Array.isArray(data) ? data : []);
       }
@@ -186,38 +207,37 @@ export default function ReportsPage() {
     }
   };
 
+  const handleToggleVoidFilter = () => {
+    setShowVoidOnly(!showVoidOnly);
+    setSalesCurrentPage(1);
+  };
+
   const handleViewProof = (expense: any) => {
-  // Base URL dari environment variable atau default
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-  
-  // Ambil path gambar dari response API
-  let imagePath = expense.proof_image || '';
-  
-  console.log('🔍 Original path dari backend:', imagePath);
-  
-  // Bersihkan leading slash jika ada
-  imagePath = imagePath.replace(/^\/+/, '');
-  
-  console.log('✅ Cleaned path:', imagePath);
-  
-  // Gabungkan base URL dengan path
-  // Contoh: http://localhost:3000/uploads/proof_image_expense-123.jpg
-  const imageUrl = `${baseUrl}/${imagePath}`;
-  
-  console.log('🌐 Final URL:', imageUrl);
-  
-  setSelectedProof({
-    image_url: imageUrl,
-    description: expense.description || '-',
-    amount: expense.amount || '0',
-    date: expense.expense_date || '',
-    user: expense.user?.full_name || '-'
-  });
-  setIsProofModalOpen(true);
-};
+    const baseUrl = process.env.NEXT_PUBLIC_API_GAMBAR_URL;
+    let imagePath = expense.proof_image || '';
+    
+    imagePath = imagePath.replace(/^\/+/, '');
+    const imageUrl = `${baseUrl}/${imagePath}`;
+    
+    // Ekstrak informasi kasir dan operator dari struktur backend
+    const operatorName = expense.user?.full_name || '-';
+    const cashierName = expense.shift?.cashier?.full_name || '-';
+    
+    setSelectedProof({
+      image_url: imageUrl,
+      description: expense.description || '-',
+      amount: expense.amount || '0',
+      date: expense.expense_date || '',
+      user: operatorName,
+      cashier: cashierName,
+      branch: expense.branch?.branch_name || '-'
+    });
+    setIsProofModalOpen(true);
+  };
 
   const formatCurrency = (value: string | number) => {
-    return 'Rp. ' + parseInt(value.toString()).toLocaleString('id-ID');
+    const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+    return 'Rp. ' + Math.round(numValue).toLocaleString('id-ID');
   };
 
   const formatDate = (dateString: string) => {
@@ -255,15 +275,83 @@ export default function ReportsPage() {
     }
   };
 
+  // Helper untuk mendapatkan badge style berdasarkan status
+  const getStatusBadgeStyle = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return {
+          variant: 'default' as const,
+          className: 'bg-black text-white '
+        };
+      case 'VOID_REQUESTED':
+        return {
+          variant: 'outline' as const,
+          className: 'bg-white text-black border-gray-400 '
+        };
+      case 'VOIDED':
+        return {
+          variant: 'destructive' as const,
+          className: 'bg-black text-white'
+        };
+      default:
+        return {
+          variant: 'secondary' as const,
+          className: ''
+        };
+    }
+  };
+
+  // Filter sales data berdasarkan void status
+  const getFilteredSalesData = () => {
+    if (!salesReport) return [];
+    
+    if (showVoidOnly) {
+      // Ambil dari all_data dan filter hanya void
+      const allData = salesReport.all_data || [];
+      return allData.filter((item: any) => 
+        item.status === 'VOID_REQUESTED' || item.status === 'VOIDED'
+      );
+    }
+    
+    // Default: tampilkan data COMPLETED dari backend
+    return salesReport.data || [];
+  };
+
+  // Hitung summary untuk void transactions
+  const getVoidSummary = () => {
+    if (!showVoidOnly || !salesReport) return null;
+    
+    const voidTransactions = getFilteredSalesData();
+    
+    return {
+      total_sales: voidTransactions.reduce((sum: number, item: any) => 
+        sum + parseFloat(item.total_amount || 0), 0
+      ).toString(),
+      transaction_count: voidTransactions.length,
+      total_subtotal: voidTransactions.reduce((sum: number, item: any) => 
+        sum + parseFloat(item.subtotal || 0), 0
+      ).toString(),
+      total_discount: voidTransactions.reduce((sum: number, item: any) => 
+        sum + parseFloat(item.total_discount || 0), 0
+      ).toString(),
+      total_tax: voidTransactions.reduce((sum: number, item: any) => 
+        sum + parseFloat(item.total_tax || 0), 0
+      ).toString()
+    };
+  };
+
   // Pagination data
-  const paginatedSalesData = salesReport?.data ? getPaginatedData(salesReport.data, salesCurrentPage) : [];
-  const salesTotalPages = salesReport?.data ? getTotalPages(salesReport.data.length) : 0;
+  const filteredSalesData = getFilteredSalesData();
+  const paginatedSalesData = filteredSalesData.length > 0 ? getPaginatedData(filteredSalesData, salesCurrentPage) : [];
+  const salesTotalPages = filteredSalesData.length > 0 ? getTotalPages(filteredSalesData.length) : 0;
 
   const paginatedExpensesData = expensesReport?.data ? getPaginatedData(expensesReport.data, expensesCurrentPage) : [];
   const expensesTotalPages = expensesReport?.data ? getTotalPages(expensesReport.data.length) : 0;
 
   const paginatedItemsData = itemsReport.length > 0 ? getPaginatedData(itemsReport, itemsCurrentPage) : [];
   const itemsTotalPages = itemsReport.length > 0 ? getTotalPages(itemsReport.length) : 0;
+
+  const displaySummary = showVoidOnly ? getVoidSummary() : salesReport?.summary;
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
@@ -352,68 +440,88 @@ export default function ReportsPage() {
         <TabsContent value="sales" className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Laporan Penjualan</h3>
-            <Button onClick={() => handleGenerateReport('sales')} disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <FileText className="mr-2 h-4 w-4" />
-              Generate Laporan
-            </Button>
+            <div className="flex gap-2">
+              {salesReport && (
+                <Button 
+                  onClick={handleToggleVoidFilter} 
+                  variant={showVoidOnly ? "destructive" : "outline"}
+                  disabled={isLoading}
+                  className={showVoidOnly 
+                    ? "bg-black text-white hover:bg-black  border-gray-300" 
+                    : "border-gray-300 text-black-600 hover:bg-gray-50"
+                  }
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  {showVoidOnly ? 'Tampilkan Semua' : 'Tampilkan Void'}
+                </Button>
+              )}
+              <Button onClick={() => handleGenerateReport('sales')} disabled={isLoading}>
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <FileText className="mr-2 h-4 w-4" />
+                Generate Laporan
+              </Button>
+            </div>
           </div>
 
           {salesReport && (
             <>
               {/* Summary Cards */}
               <div className="grid gap-4 md:grid-cols-5">
-                <Card>
+                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Total Penjualan</CardTitle>
+                    <CardTitle className="text-sm font-medium">
+                      {showVoidOnly ? 'Total Void' : 'Total Penjualan'}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-black">
-                      {formatCurrency(salesReport.summary?.total_sales || 0)}
+                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
+                      {formatCurrency(displaySummary?.total_sales || 0)}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Jumlah Transaksi</CardTitle>
+                    <CardTitle className="text-sm font-medium">
+                      {showVoidOnly ? 'Jumlah Void' : 'Jumlah Transaksi'}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">
-                      {salesReport.summary?.transaction_count || 0}
+                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
+                      {displaySummary?.transaction_count || 0}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">Total Subtotal</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-black">
-                      {formatCurrency(salesReport.summary?.total_subtotal || 0)}
+                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
+                      {formatCurrency(displaySummary?.total_subtotal || 0)}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">Total Diskon</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-black">
-                      {formatCurrency(salesReport.summary?.total_discount || 0)}
+                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
+                      {formatCurrency(displaySummary?.total_discount || 0)}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">Total Pajak</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-black">
-                      {formatCurrency(salesReport.summary?.total_tax || 0)}
+                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
+                      {formatCurrency(displaySummary?.total_tax || 0)}
                     </div>
                   </CardContent>
                 </Card>
@@ -428,9 +536,9 @@ export default function ReportsPage() {
                       <TableHead>No. Struk</TableHead>
                       <TableHead>Waktu Transaksi</TableHead>
                       <TableHead>Cabang</TableHead>
-                      <TableHead>Kasir</TableHead>
+                      <TableHead className="w-48">Kasir</TableHead>
                       <TableHead>Metode</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead>Total</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -438,6 +546,13 @@ export default function ReportsPage() {
                     {paginatedSalesData.length > 0 ? (
                       paginatedSalesData.map((item: any, index: number) => {
                         const globalIndex = (salesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                        
+                        // Ekstrak informasi kasir dan operator dari struktur backend
+                        const operatorName = item.user?.full_name || '-';
+                        const cashierName = item.shift?.cashier?.full_name || '-';
+                        const showBothRoles = operatorName !== cashierName && cashierName !== '-';
+                        const badgeStyle = getStatusBadgeStyle(item.status);
+                        
                         return (
                           <TableRow key={item.transaction_id || index}>
                             <TableCell className="font-medium text-center">
@@ -452,25 +567,46 @@ export default function ReportsPage() {
                             <TableCell>
                               {item.branch?.branch_name || 'N/A'}
                             </TableCell>
+                            
+                            {/* Kolom Kasir/Operator */}
                             <TableCell className="text-sm">
-                              <div className="flex items-center gap-2">
-                                <User className="h-3 w-3 text-muted-foreground" />
-                                {item.user?.full_name || '-'}
+                              <div className="space-y-1.5">
+                                {/* Nama Kasir */}
+                                <div className="flex items-center gap-2">
+                                  <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
+                                  <div>
+                                    <div className="font-medium text-gray-900 text-sm">
+                                      {cashierName}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Nama Operator (jika berbeda) */}
+                                {showBothRoles && (
+                                  <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
+                                    <div>
+                                      <div className="font-medium text-gray-700 text-xs">
+                                        {operatorName}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </TableCell>
+                            
                             <TableCell>
                               <Badge variant="outline" className="text-xs">
                                 <CreditCard className="mr-1 h-3 w-3" />
                                 {item.payment_method || '-'}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-right font-semibold text-gray-800">
+                            <TableCell className=" font-semibold text-gray-800">
                               {formatCurrency(item.total_amount || 0)}
                             </TableCell>
                             <TableCell>
                               <Badge 
-                                variant={item.status === 'COMPLETED' ? 'default' : 'secondary'}
-                                className="text-xs"
+                                variant={badgeStyle.variant}
+                                className={`text-xs ${badgeStyle.className}`}
                               >
                                 {item.status || '-'}
                               </Badge>
@@ -482,7 +618,9 @@ export default function ReportsPage() {
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-12">
                           <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                          <p className="text-muted-foreground">Tidak ada data transaksi</p>
+                          <p className="text-muted-foreground">
+                            {showVoidOnly ? 'Tidak ada transaksi void' : 'Tidak ada data transaksi'}
+                          </p>
                         </TableCell>
                       </TableRow>
                     )}
@@ -533,7 +671,7 @@ export default function ReportsPage() {
                       </PaginationContent>
                     </Pagination>
                     <div className="text-center text-sm text-muted-foreground mt-2">
-                      Halaman {salesCurrentPage} dari {salesTotalPages} ({salesReport.data.length} total transaksi)
+                      Halaman {salesCurrentPage} dari {salesTotalPages} ({filteredSalesData.length} total transaksi)
                     </div>
                   </div>
                 )}
@@ -566,7 +704,6 @@ export default function ReportsPage() {
 
           {expensesReport && (
             <>
-              {/* Summary Cards */}
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardHeader className="pb-3">
@@ -591,79 +728,104 @@ export default function ReportsPage() {
                 </Card>
               </div>
 
-              {/* Data Table dengan Pagination */}
               <Card>
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">No</TableHead>
-                      <TableHead>Tanggal</TableHead>
-                      <TableHead>Deskripsi</TableHead>
-                      <TableHead>Cabang</TableHead>
-                      <TableHead>Input Oleh</TableHead>
-                      <TableHead className="text-right">Jumlah</TableHead>
-                      <TableHead className="text-center">Bukti</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {paginatedExpensesData.length > 0 ? (
-                      paginatedExpensesData.map((item: any, index: number) => {
-                        const globalIndex = (expensesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                        return (
-                          <TableRow key={item.expense_id || index}>
-                            <TableCell className="font-medium text-center">
-                              {globalIndex}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {item.expense_date ? formatDateOnly(item.expense_date) : '-'}
-                            </TableCell>
-                            <TableCell className="max-w-xs">
-                              <div className="truncate" title={item.description}>
-                                {item.description || '-'}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {item.branch?.branch_name || 'N/A'}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              <div className="flex items-center gap-2">
-                                <User className="h-3 w-3 text-muted-foreground" />
-                                {item.user?.full_name || '-'}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-semibold text-black">
-                              {formatCurrency(item.amount || 0)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {item.proof_image ? (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleViewProof(item)}
-                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                >
-                                  <Eye className="mr-1 h-4 w-4" />
-                                  Lihat Bukti
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Tidak ada bukti</span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12">
-                          <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                          <p className="text-muted-foreground">Tidak ada data pengeluaran</p>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead className="w-16">No</TableHead>
+      <TableHead>Tanggal</TableHead>
+      <TableHead>Deskripsi</TableHead>
+      <TableHead>Cabang</TableHead>
+      <TableHead className="w-48">Input Oleh</TableHead>
+      <TableHead>Jumlah</TableHead>
+      <TableHead className="text-center">Bukti</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    {paginatedExpensesData.length > 0 ? (
+      paginatedExpensesData.map((item: any, index: number) => {
+        const globalIndex = (expensesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+        
+        // Ekstrak informasi kasir dan operator dari struktur backend
+        const operatorName = item.user?.full_name || '-'; // User yang input pengeluaran
+        const cashierName = item.shift?.cashier?.full_name || '-'; // Kasir pemilik shift
+        const showBothRoles = operatorName !== cashierName && cashierName !== '-';
+        
+        return (
+          <TableRow key={item.expense_id || index}>
+            <TableCell className="font-medium text-center">
+              {globalIndex}
+            </TableCell>
+            <TableCell className="text-sm">
+              {item.expense_date ? formatDateOnly(item.expense_date) : '-'}
+            </TableCell>
+            <TableCell className="max-w-xs">
+              <div className="truncate" title={item.description}>
+                {item.description || '-'}
+              </div>
+            </TableCell>
+            <TableCell>
+              {item.branch?.branch_name || 'N/A'}
+            </TableCell>
+            
+            {/* Kolom Input Oleh - Sama seperti di tabel penjualan */}
+            <TableCell className="text-sm">
+              <div className="space-y-1.5">
+                {/* Nama Kasir (Shift Owner) */}
+                <div className="flex items-center gap-2">
+                  <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
+                  <div>
+                    <div className="font-medium text-gray-900 text-sm">
+                      {cashierName}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Nama Operator (jika berbeda dari kasir) */}
+                {showBothRoles && (
+                  <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
+                    <div>
+                      <div className="font-medium text-gray-700 text-xs">
+                        {operatorName}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TableCell>
+            
+            <TableCell className=" font-semibold text-black">
+              {formatCurrency(item.amount || 0)}
+            </TableCell>
+            <TableCell className="text-center">
+              {item.proof_image ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleViewProof(item)}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                >
+                  <Eye className="mr-1 h-4 w-4" />
+                  Lihat Bukti
+                </Button>
+              ) : (
+                <span className="text-xs text-muted-foreground">Tidak ada bukti</span>
+              )}
+            </TableCell>
+          </TableRow>
+        );
+      })
+    ) : (
+      <TableRow>
+        <TableCell colSpan={7} className="text-center py-12">
+          <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+          <p className="text-muted-foreground">Tidak ada data pengeluaran</p>
+        </TableCell>
+      </TableRow>
+    )}
+  </TableBody>
+</Table>
 
-                {/* Pagination untuk Expenses */}
                 {expensesTotalPages > 1 && (
                   <div className="py-4">
                     <Pagination>
@@ -785,7 +947,6 @@ export default function ReportsPage() {
                 </TableBody>
               </Table>
 
-              {/* Pagination untuk Items */}
               {itemsTotalPages > 1 && (
                 <div className="py-4">
                   <Pagination>
@@ -850,20 +1011,18 @@ export default function ReportsPage() {
       </Tabs>
 
       {/* Modal Bukti Pengeluaran */}
-<Dialog open={isProofModalOpen} onOpenChange={setIsProofModalOpen}>
-  <DialogContent className="max-w-3xl">
-    <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">
-        <ImageIcon className="h-5 w-5" />
-        Bukti Pengeluaran
-      </DialogTitle>
-      <DialogDescription>
-        Lihat detail dan foto bukti pengeluaran operasional
-      </DialogDescription>
-    </DialogHeader>
-              
+      <Dialog open={isProofModalOpen} onOpenChange={setIsProofModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              Bukti Pengeluaran
+            </DialogTitle>
+            <DialogDescription>
+              Lihat detail dan foto bukti pengeluaran operasional
+            </DialogDescription>
+                
           {selectedProof && (
-            <div className="space-y-4">
+            <div className="space-y-4 py-4">
               {/* Info Pengeluaran */}
               <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                 <div>
@@ -872,7 +1031,7 @@ export default function ReportsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Jumlah</p>
-                  <p className="font-bold text-lg text-red-600">
+                  <p className="font-bold text-lg text-black">
                     {formatCurrency(selectedProof.amount)}
                   </p>
                 </div>
@@ -881,31 +1040,67 @@ export default function ReportsPage() {
                   <p className="font-medium">{formatDateOnly(selectedProof.date)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Input Oleh</p>
-                  <p className="font-medium">{selectedProof.user}</p>
+                  <p className="text-sm text-muted-foreground">Cabang</p>
+                  <p className="font-medium">{selectedProof.branch}</p>
+                </div>
+              </div>
+
+              {/* Info Kasir/Operator */}
+              <div className="p-4 bg-gray-100  rounded-lg">
+                <p className="text-sm font-medium text-black mb-3">Informasi Petugas</p>
+                
+                <div className="space-y-3">
+                  {/* Kasir */}
+                  <div className="flex items-start gap-3">
+                    <User className="h-4 w-4 text-black flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">Kasir:</span>
+                        <span className="font-semibold text-gray-900">{selectedProof.cashier}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Operator (jika berbeda) */}
+                  {selectedProof.user !== selectedProof.cashier && selectedProof.user !== '-' && (
+                    <>
+                      <div className="flex items-start gap-3">
+                        <User className="h-4 w-4 text-black flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground">Operator:</span>
+                            <span className="font-semibold text-gray-900">{selectedProof.user}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
               {/* Gambar Bukti */}
-<div className="relative w-full h-[400px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
-  {/* eslint-disable-next-line @next/next/no-img-element */}
-  <img
-    src={selectedProof.image_url}
-    alt="Bukti Pengeluaran"
-    className="max-w-full max-h-full object-contain rounded"
-    onError={(e) => {
-      const target = e.target as HTMLImageElement;
-      target.style.display = 'none';
-      const parent = target.parentElement;
-      if (parent) {
-        parent.innerHTML = '<div class="text-center"><p class="text-muted-foreground">Gagal memuat gambar</p></div>';
-      }
-    }}
-  />
-</div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-900">Foto Bukti</p>
+                <div className="relative w-full h-[400px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selectedProof.image_url}
+                    alt="Bukti Pengeluaran"
+                    className="max-w-full max-h-full object-contain rounded"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = '<div class="text-center"><p class="text-muted-foreground">Gagal memuat gambar</p></div>';
+                      }
+                    }}
+                  />
+                </div>
+              </div>
 
-              {/* Download Button */}
-              <div className="flex justify-end gap-2">
+              {/* Action Buttons - Sticky di bawah */}
+              <div className="flex justify-end gap-2 pt-4 border-t sticky  bg-white">
                 <Button
                   variant="outline"
                   onClick={() => setIsProofModalOpen(false)}
