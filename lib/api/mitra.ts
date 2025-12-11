@@ -210,7 +210,8 @@ export const categoryAPI = {
     return response.data;
   },
 
-  update: async (id: string, data: { category_name: string }) => {
+  // ✅ PERBAIKAN: Tambahkan is_active ke type definition
+  update: async (id: string, data: { category_name: string; is_active?: boolean }) => {
     const response = await apiClient.put(`/category/${id}`, data);
     return response.data;
   },

@@ -695,7 +695,7 @@ export default function LicensesPage() {
             >
               Batal
             </Button>
-            <Button variant="destructive" onClick={handleDeletePending} disabled={isSubmitting}>
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleDeletePending} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus
             </Button>

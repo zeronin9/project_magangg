@@ -466,7 +466,7 @@ export default function ReportsPage() {
           {salesReport && (
             <>
               {/* Summary Cards */}
-              <div className="grid gap-4 md:grid-cols-5">
+              <div className="grid gap-4 md:grid-cols-2">
                 <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">
@@ -493,38 +493,6 @@ export default function ReportsPage() {
                   </CardContent>
                 </Card>
 
-                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Total Subtotal</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
-                      {formatCurrency(displaySummary?.total_subtotal || 0)}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Total Diskon</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
-                      {formatCurrency(displaySummary?.total_discount || 0)}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className={showVoidOnly ? "border-gray-200 bg-white" : ""}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Total Pajak</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className={`text-2xl font-bold ${showVoidOnly ? 'text-black' : 'text-black'}`}>
-                      {formatCurrency(displaySummary?.total_tax || 0)}
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
 
               {/* Data Table dengan Pagination */}
@@ -938,7 +906,7 @@ export default function ReportsPage() {
                             <div className="font-bold text-xl text-black">
                               {item.quantity_sold || 0}
                             </div>
-                            <div className="text-xs text-muted-foreground">pcs</div>
+                            <div className="text-xs text-muted-foreground">item</div>
                           </div>
                         </TableCell>
                       </TableRow>

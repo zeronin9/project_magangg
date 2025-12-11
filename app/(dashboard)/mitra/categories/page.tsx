@@ -50,7 +50,6 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
 import { 
   Plus, 
   MoreHorizontal, 
@@ -209,7 +208,8 @@ export default function CategoriesPage() {
     try {
       await delay(3000);
       await categoryAPI.update(selectedCategory.category_id, { 
-        category_name: selectedCategory.category_name
+        category_name: selectedCategory.category_name,
+        is_active: true
       });
       await loadData();
       setIsRestoreOpen(false);
@@ -258,7 +258,7 @@ export default function CategoriesPage() {
 
   // Helper untuk pindah halaman
   const handlePageChange = (page: number, e: React.MouseEvent) => {
-    e.preventDefault(); // Mencegah reload karena PaginationLink adalah <a>
+    e.preventDefault();
     if (page > 0 && page <= totalPages) {
       setCurrentPage(page);
     }
@@ -433,7 +433,7 @@ export default function CategoriesPage() {
                             }}
                             className="text-black"
                           >
-                            <Trash2 className="mr-2 h-4 w-4" />
+                            <Archive className="mr-2 h-4 w-4" />
                             Arsipkan
                           </DropdownMenuItem>
                         ) : (
@@ -442,7 +442,7 @@ export default function CategoriesPage() {
                               setSelectedCategory(category);
                               setIsRestoreOpen(true);
                             }}
-                            className="text-green-600"
+                            className="text-black"
                           >
                             <RotateCcw className="mr-2 h-4 w-4" />
                             Aktifkan Kembali
@@ -456,7 +456,7 @@ export default function CategoriesPage() {
                           }}
                           className="text-destructive focus:text-destructive"
                         >
-                          <AlertTriangle className="mr-2 h-4 w-4" />
+                          <Trash2 className="mr-2 h-4 w-4" />
                           Hapus Permanen
                         </DropdownMenuItem>
                       </DropdownMenuContent>
@@ -481,7 +481,6 @@ export default function CategoriesPage() {
                   />
                 </PaginationItem>
                 
-                {/* Generate Page Numbers */}
                 {Array.from({ length: totalPages }).map((_, i) => (
                   <PaginationItem key={i}>
                     <PaginationLink 
@@ -547,62 +546,88 @@ export default function CategoriesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Soft Delete Confirmation */}
-      <CustomAlertDialog
-        open={isDeleteModalOpen}
-        onOpenChange={setIsDeleteModalOpen}
-        title="Arsipkan Kategori?"
-        description={
-          <div className="space-y-2">
-            <p>
+      {/* Soft Delete (Archive) Confirmation */}
+      <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Arsipkan Kategori?</DialogTitle>
+            <DialogDescription>
               Apakah Anda yakin ingin mengarsipkan kategori <strong>{selectedCategory?.category_name}</strong>?
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Kategori akan dinonaktifkan. Anda dapat melihatnya kembali dengan filter "Tampilkan Arsip".
-            </p>
-          </div>
-        }
-        onConfirm={handleSoftDelete}
-        confirmText="Arsipkan"
-        variant="warning"
-      />
+              <br/>
+              Kategori akan dinonaktifkan namun data tetap tersimpan. Anda dapat melihatnya kembali dengan filter &quot;Tampilkan Arsip&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button 
+              className="bg-black text-white hover:bg-gray-900" 
+              onClick={handleSoftDelete} 
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Arsipkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Restore Confirmation */}
-      <CustomAlertDialog
-        open={isRestoreOpen}
-        onOpenChange={setIsRestoreOpen}
-        title="Aktifkan Kembali?"
-        description={
-          <div className="space-y-2">
-            <p>
+      <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aktifkan Kembali?</DialogTitle>
+            <DialogDescription>
               Apakah Anda yakin ingin mengaktifkan kembali kategori <strong>{selectedCategory?.category_name}</strong>?
-            </p>
-            <p className="text-sm text-muted-foreground">
+              <br/>
               Kategori akan muncul kembali di daftar aktif dan dapat digunakan.
-            </p>
-          </div>
-        }
-        onConfirm={handleRestore}
-        confirmText="Aktifkan"
-        variant="default"
-      />
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button 
+              className="bg-black text-white" 
+              onClick={handleRestore} 
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Aktifkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Hard Delete Confirmation */}
-      <CustomAlertDialog
-        open={isHardDeleteModalOpen}
-        onOpenChange={setIsHardDeleteModalOpen}
-        title="Hapus Permanen?"
-        description={
-          <div className="space-y-3">
-            <p>
+      <Dialog open={isHardDeleteModalOpen} onOpenChange={setIsHardDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-black flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Hapus Permanen?
+            </DialogTitle>
+            <DialogDescription>
               Apakah Anda yakin ingin menghapus kategori <strong>{selectedCategory?.category_name}</strong> secara permanen?
-            </p>
-          </div>
-        }
-        onConfirm={handleHardDelete}
-        confirmText="Hapus Permanen"
-        variant="destructive"
-      />
+              <br/>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHardDeleteModalOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button 
+              className="bg-black text-white" 
+              onClick={handleHardDelete} 
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus Permanen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
