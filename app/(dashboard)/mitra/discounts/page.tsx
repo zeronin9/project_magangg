@@ -673,7 +673,7 @@ const handleOpenModal = (discount?: DiscountRule) => {
                               setSelectedDiscount(discount);
                               setIsRestoreOpen(true);
                             }}
-                            className="text-green-600"
+                            className="text-black"
                           >
                             <RotateCcw className="mr-2 h-4 w-4" />
                             Aktifkan Kembali
@@ -1267,7 +1267,7 @@ const handleOpenModal = (discount?: DiscountRule) => {
             <Button variant="outline" onClick={() => setIsRestoreOpen(false)}>
               Batal
             </Button>
-            <Button variant="default" className="bg-green-600 hover:bg-green-700" onClick={handleRestore} disabled={isSubmitting}>
+            <Button variant="default" className="bg-black" onClick={handleRestore} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Aktifkan
             </Button>

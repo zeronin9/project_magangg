@@ -388,7 +388,7 @@ export default function BranchAdminsPage() {
                                 setSelectedAdmin(admin);
                                 setIsRestoreOpen(true);
                               }}
-                              className="text-green-600"
+                              className="text-black"
                             >
                               <RotateCcw className="mr-2 h-4 w-4" />
                               Aktifkan Kembali
