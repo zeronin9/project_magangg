@@ -184,30 +184,16 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           exact: true
         },
         { 
-          href: '/branch/cashier-accounts', 
+          href: '/branch/cashier-management', 
           icon: '/images/icons/branchadmin.png', 
           label: 'Akun Kasir',
           badge: null,
           exact: false
         },
         { 
-          href: '/branch/pin-operators', 
-          icon: '/images/icons/Branch.png', 
-          label: 'Operator PIN',
-          badge: null,
-          exact: false
-        },
-        { 
           href: '/branch/shift-schedules',
-          icon: '/images/icons/catalog.png',
+          icon: '/images/icons/clock.png',
           label: 'Jadwal Shift',
-          badge: null,
-          exact: false
-        },
-        { 
-          href: '/branch/products', 
-          icon: '/images/icons/BranchProduk.png',
-          label: 'Produk',
           badge: null,
           exact: false
         },
@@ -215,6 +201,13 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           href: '/branch/categories', 
           icon: '/images/icons/catalog.png',
           label: 'Kategori',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/products', 
+          icon: '/images/icons/BranchProduk.png',
+          label: 'Produk',
           badge: null,
           exact: false
         },
@@ -227,14 +220,14 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
         { 
           href: '/branch/expenses', 
-          icon: '/images/icons/report.png', 
+          icon: '/images/icons/kas2.png', 
           label: 'Kas Keluar',
           badge: null,
           exact: false
         },
         { 
           href: '/branch/void-requests',
-          icon: '/images/icons/logout.png',
+          icon: '/images/icons/void1.png',
           label: 'Permintaan Void',
           badge: null,
           exact: false
@@ -255,8 +248,8 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
         { 
           href: '/branch/settings', 
-          icon: '/images/icons/Cabang1.png',
-          label: 'Pengaturan',
+          icon: '/images/icons/pajak.png',
+          label: 'Pajak & Pembayaran',
           badge: null,
           exact: false
         },
@@ -280,7 +273,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
             isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <div className="relative w-5 h-5 flex-shrink-0">
+          <div className="relative w-5 h-5 ">
             <Image
               src={item.icon}
               alt={item.label}
@@ -288,11 +281,13 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
               height={20}
               className={cn(
                 "object-contain transition-all duration-200",
+                item.label === 'Permintaan Void' && "p-0.5",
                 item.label === 'Laporan' && "p-0.5",
                 isActive ? "opacity-100 scale-110" : "opacity-60 group-hover:opacity-80 group-hover:scale-105"
               )}
             />
           </div>
+          
           
           {!isCollapsed && (
             <>
@@ -431,7 +426,7 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           )}
           onClick={handleLogout}
         >
-          <LogOut className="h-4 w-4 flex-shrink-0" />
+          <img src="/images/icons/logout.png" alt="" className='h-5 w-4' />
           {!isCollapsed && <span className="ml-2 text-sm font-medium">Keluar</span>}
         </Button>
       </div>
