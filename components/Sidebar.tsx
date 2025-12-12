@@ -173,7 +173,6 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
       ];
     }
-
         // 3. ADMIN CABANG (L1) - UPDATED MENU
     if (role === 'branch_admin') {
       return [
@@ -185,15 +184,22 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           exact: true
         },
         { 
-          href: '/branch/cashiers', 
+          href: '/branch/cashier-accounts', 
           icon: '/images/icons/branchadmin.png', 
-          label: 'Kasir & Operator',
+          label: 'Akun Kasir',
           badge: null,
           exact: false
         },
         { 
-          href: '/branch/shifts',
-          icon: '/images/icons/Branch.png',
+          href: '/branch/pin-operators', 
+          icon: '/images/icons/Branch.png', 
+          label: 'Operator PIN',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/shift-schedules',
+          icon: '/images/icons/catalog.png',
           label: 'Jadwal Shift',
           badge: null,
           exact: false
@@ -206,9 +212,16 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           exact: false
         },
         { 
+          href: '/branch/categories', 
+          icon: '/images/icons/catalog.png',
+          label: 'Kategori',
+          badge: null,
+          exact: false
+        },
+        { 
           href: '/branch/discounts', 
           icon: '/images/icons/discount.png',
-          label: 'Diskon & Promo',
+          label: 'Diskon',
           badge: null,
           exact: false
         },
@@ -220,16 +233,23 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
           exact: false
         },
         { 
-          href: '/branch/reports', 
-          icon: '/images/icons/reportbaru1.png',
-          label: 'Laporan Penjualan',
+          href: '/branch/void-requests',
+          icon: '/images/icons/logout.png',
+          label: 'Permintaan Void',
           badge: null,
           exact: false
         },
         { 
-          href: '/branch/voids',
-          icon: '/images/icons/logout.png',
-          label: 'Void Request',
+          href: '/branch/reports', 
+          icon: '/images/icons/reportbaru1.png',
+          label: 'Laporan',
+          badge: null,
+          exact: false
+        },
+        { 
+          href: '/branch/licenses', 
+          icon: '/images/icons/licenses.png',
+          label: 'Lisensi',
           badge: null,
           exact: false
         },
@@ -242,7 +262,6 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
       ];
     }
-
     return [];
   };
 
