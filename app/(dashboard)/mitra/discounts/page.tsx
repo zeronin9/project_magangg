@@ -974,7 +974,7 @@ const handleOpenModal = (discount?: DiscountRule) => {
 
               {/* Kode Diskon */}
 <div className="space-y-2">
-  <Label htmlFor="discount_code">Kode Diskon *</Label>
+  <Label htmlFor="discount_code">Kode Diskon</Label>
   <Input
     id="discount_code"
     value={formData.discount_code}
@@ -982,7 +982,6 @@ const handleOpenModal = (discount?: DiscountRule) => {
     placeholder="Masukkan kode unik"
     maxLength={20}
     className="font-mono uppercase"
-    required
   />
   <p className="text-xs text-muted-foreground">
     Masukkan kode unik untuk diskon ini
