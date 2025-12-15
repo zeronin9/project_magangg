@@ -72,6 +72,10 @@ export default function ReportsPage() {
     start: '',
     end: '',
   });
+  const [initialDateRange, setInitialDateRange] = useState({
+    start: '',
+    end: '',
+  });
   const [salesReport, setSalesReport] = useState<any>(null);
   const [expensesReport, setExpensesReport] = useState<any>(null);
   const [itemsReport, setItemsReport] = useState<any[]>([]);
@@ -79,6 +83,7 @@ export default function ReportsPage() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('sales');
   const [showVoidOnly, setShowVoidOnly] = useState(false);
+  const [hasInitialLoad, setHasInitialLoad] = useState(false);
 
   // Pagination states
   const [salesCurrentPage, setSalesCurrentPage] = useState(1);
@@ -100,16 +105,35 @@ export default function ReportsPage() {
   useEffect(() => {
     loadBranches();
     
-    // Set default date range (current month)
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    // Set default date range (hari ini sampai besok)
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const startDate = today.toISOString().split('T')[0];
+    const endDate = tomorrow.toISOString().split('T')[0];
     
     setDateRange({
-      start: firstDay.toISOString().split('T')[0],
-      end: lastDay.toISOString().split('T')[0],
+      start: startDate,
+      end: endDate,
+    });
+
+    setInitialDateRange({
+      start: startDate,
+      end: endDate,
     });
   }, []);
+
+  // Auto-generate laporan saat pertama kali load (setelah dateRange ter-set)
+  useEffect(() => {
+    if (dateRange.start && dateRange.end && !hasInitialLoad) {
+      setHasInitialLoad(true);
+      // Generate semua laporan secara otomatis
+      handleGenerateReport('sales', true);
+      handleGenerateReport('expenses', true);
+      handleGenerateReport('items', true);
+    }
+  }, [dateRange.start, dateRange.end, hasInitialLoad]);
 
   const loadBranches = async () => {
     try {
@@ -120,10 +144,14 @@ export default function ReportsPage() {
     }
   };
 
-  const handleGenerateReport = async (type: 'sales' | 'expenses' | 'items') => {
+  const handleGenerateReport = async (type: 'sales' | 'expenses' | 'items', isAutoLoad = false) => {
     setIsLoading(true);
     setError('');
-    setShowVoidOnly(false);
+    
+    // Hanya reset void filter jika bukan auto load
+    if (!isAutoLoad) {
+      setShowVoidOnly(false);
+    }
     
     // Reset pagination saat generate report baru
     if (type === 'sales') setSalesCurrentPage(1);
@@ -340,6 +368,12 @@ export default function ReportsPage() {
     };
   };
 
+  // Cek apakah tanggal berubah dari default
+  const hasDateChanged = () => {
+    return dateRange.start !== initialDateRange.start || 
+           dateRange.end !== initialDateRange.end;
+  };
+
   // Pagination data
   const filteredSalesData = getFilteredSalesData();
   const paginatedSalesData = filteredSalesData.length > 0 ? getPaginatedData(filteredSalesData, salesCurrentPage) : [];
@@ -378,7 +412,7 @@ export default function ReportsPage() {
           <CardDescription>Pilih periode dan cabang untuk melihat laporan</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <div className="space-y-2">
               <Label htmlFor="branch">Cabang</Label>
               <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
@@ -414,6 +448,20 @@ export default function ReportsPage() {
                 value={dateRange.end}
                 onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
               />
+            </div>
+
+            {/* Tombol Generate Laporan - Sejajar dengan Tanggal Selesai */}
+            <div className="space-y-2">
+              <Label className="invisible">Action</Label>
+              <Button 
+                onClick={() => handleGenerateReport(activeTab as 'sales' | 'expenses' | 'items')} 
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <FileText className="mr-2 h-4 w-4" />
+                Generate Laporan
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -455,11 +503,6 @@ export default function ReportsPage() {
                   {showVoidOnly ? 'Tampilkan Semua' : 'Tampilkan Void'}
                 </Button>
               )}
-              <Button onClick={() => handleGenerateReport('sales')} disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <FileText className="mr-2 h-4 w-4" />
-                Generate Laporan
-              </Button>
             </div>
           </div>
 
@@ -663,11 +706,6 @@ export default function ReportsPage() {
         <TabsContent value="expenses" className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Laporan Pengeluaran</h3>
-            <Button onClick={() => handleGenerateReport('expenses')} disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <FileText className="mr-2 h-4 w-4" />
-              Generate Laporan
-            </Button>
           </div>
 
           {expensesReport && (
@@ -698,101 +736,101 @@ export default function ReportsPage() {
 
               <Card>
                 <Table>
-  <TableHeader>
-    <TableRow>
-      <TableHead className="w-16">No</TableHead>
-      <TableHead>Tanggal</TableHead>
-      <TableHead>Deskripsi</TableHead>
-      <TableHead>Cabang</TableHead>
-      <TableHead className="w-48">Input Oleh</TableHead>
-      <TableHead>Jumlah</TableHead>
-      <TableHead className="text-center">Bukti</TableHead>
-    </TableRow>
-  </TableHeader>
-  <TableBody>
-    {paginatedExpensesData.length > 0 ? (
-      paginatedExpensesData.map((item: any, index: number) => {
-        const globalIndex = (expensesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
-        
-        // Ekstrak informasi kasir dan operator dari struktur backend
-        const operatorName = item.user?.full_name || '-'; // User yang input pengeluaran
-        const cashierName = item.shift?.cashier?.full_name || '-'; // Kasir pemilik shift
-        const showBothRoles = operatorName !== cashierName && cashierName !== '-';
-        
-        return (
-          <TableRow key={item.expense_id || index}>
-            <TableCell className="font-medium text-center">
-              {globalIndex}
-            </TableCell>
-            <TableCell className="text-sm">
-              {item.expense_date ? formatDateOnly(item.expense_date) : '-'}
-            </TableCell>
-            <TableCell className="max-w-xs">
-              <div className="truncate" title={item.description}>
-                {item.description || '-'}
-              </div>
-            </TableCell>
-            <TableCell>
-              {item.branch?.branch_name || 'N/A'}
-            </TableCell>
-            
-            {/* Kolom Input Oleh - Sama seperti di tabel penjualan */}
-            <TableCell className="text-sm">
-              <div className="space-y-1.5">
-                {/* Nama Kasir (Shift Owner) */}
-                <div className="flex items-center gap-2">
-                  <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
-                  <div>
-                    <div className="font-medium text-gray-900 text-sm">
-                      {cashierName}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Nama Operator (jika berbeda dari kasir) */}
-                {showBothRoles && (
-                  <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
-                    <div>
-                      <div className="font-medium text-gray-700 text-xs">
-                        {operatorName}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </TableCell>
-            
-            <TableCell className=" font-semibold text-black">
-              {formatCurrency(item.amount || 0)}
-            </TableCell>
-            <TableCell className="text-center">
-              {item.proof_image ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleViewProof(item)}
-                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                >
-                  <Eye className="mr-1 h-4 w-4" />
-                  Lihat Bukti
-                </Button>
-              ) : (
-                <span className="text-xs text-muted-foreground">Tidak ada bukti</span>
-              )}
-            </TableCell>
-          </TableRow>
-        );
-      })
-    ) : (
-      <TableRow>
-        <TableCell colSpan={7} className="text-center py-12">
-          <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-          <p className="text-muted-foreground">Tidak ada data pengeluaran</p>
-        </TableCell>
-      </TableRow>
-    )}
-  </TableBody>
-</Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16">No</TableHead>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Deskripsi</TableHead>
+                      <TableHead>Cabang</TableHead>
+                      <TableHead className="w-48">Input Oleh</TableHead>
+                      <TableHead>Jumlah</TableHead>
+                      <TableHead className="text-center">Bukti</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedExpensesData.length > 0 ? (
+                      paginatedExpensesData.map((item: any, index: number) => {
+                        const globalIndex = (expensesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                        
+                        // Ekstrak informasi kasir dan operator dari struktur backend
+                        const operatorName = item.user?.full_name || '-'; // User yang input pengeluaran
+                        const cashierName = item.shift?.cashier?.full_name || '-'; // Kasir pemilik shift
+                        const showBothRoles = operatorName !== cashierName && cashierName !== '-';
+                        
+                        return (
+                          <TableRow key={item.expense_id || index}>
+                            <TableCell className="font-medium text-center">
+                              {globalIndex}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {item.expense_date ? formatDateOnly(item.expense_date) : '-'}
+                            </TableCell>
+                            <TableCell className="max-w-xs">
+                              <div className="truncate" title={item.description}>
+                                {item.description || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {item.branch?.branch_name || 'N/A'}
+                            </TableCell>
+                            
+                            {/* Kolom Input Oleh - Sama seperti di tabel penjualan */}
+                            <TableCell className="text-sm">
+                              <div className="space-y-1.5">
+                                {/* Nama Kasir (Shift Owner) */}
+                                <div className="flex items-center gap-2">
+                                  <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
+                                  <div>
+                                    <div className="font-medium text-gray-900 text-sm">
+                                      {cashierName}
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Nama Operator (jika berbeda dari kasir) */}
+                                {showBothRoles && (
+                                  <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
+                                    <div>
+                                      <div className="font-medium text-gray-700 text-xs">
+                                        {operatorName}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            
+                            <TableCell className=" font-semibold text-black">
+                              {formatCurrency(item.amount || 0)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {item.proof_image ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewProof(item)}
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Eye className="mr-1 h-4 w-4" />
+                                  Lihat Bukti
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Tidak ada bukti</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-12">
+                          <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+                          <p className="text-muted-foreground">Tidak ada data pengeluaran</p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
 
                 {expensesTotalPages > 1 && (
                   <div className="py-4">
@@ -861,11 +899,6 @@ export default function ReportsPage() {
         <TabsContent value="items" className="space-y-4">
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-semibold">Item Terlaris</h3>
-            <Button onClick={() => handleGenerateReport('items')} disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <FileText className="mr-2 h-4 w-4" />
-              Generate Laporan
-            </Button>
           </div>
 
           {itemsReport.length > 0 ? (
@@ -981,75 +1014,22 @@ export default function ReportsPage() {
       {/* Modal Bukti Pengeluaran */}
       <Dialog open={isProofModalOpen} onOpenChange={setIsProofModalOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ImageIcon className="h-5 w-5" />
               Bukti Pengeluaran
             </DialogTitle>
             <DialogDescription>
-              Lihat detail dan foto bukti pengeluaran operasional
+              Lihat foto bukti pengeluaran operasional
             </DialogDescription>
+          </DialogHeader>
                 
           {selectedProof && (
             <div className="space-y-4 py-4">
-              {/* Info Pengeluaran */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
-                <div>
-                  <p className="text-sm text-muted-foreground">Deskripsi</p>
-                  <p className="font-medium">{selectedProof.description}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Jumlah</p>
-                  <p className="font-bold text-lg text-black">
-                    {formatCurrency(selectedProof.amount)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Tanggal</p>
-                  <p className="font-medium">{formatDateOnly(selectedProof.date)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Cabang</p>
-                  <p className="font-medium">{selectedProof.branch}</p>
-                </div>
-              </div>
-
-              {/* Info Kasir/Operator */}
-              <div className="p-4 bg-gray-100  rounded-lg">
-                <p className="text-sm font-medium text-black mb-3">Informasi Petugas</p>
-                
-                <div className="space-y-3">
-                  {/* Kasir */}
-                  <div className="flex items-start gap-3">
-                    <User className="h-4 w-4 text-black flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">Kasir:</span>
-                        <span className="font-semibold text-gray-900">{selectedProof.cashier}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Operator (jika berbeda) */}
-                  {selectedProof.user !== selectedProof.cashier && selectedProof.user !== '-' && (
-                    <>
-                      <div className="flex items-start gap-3">
-                        <User className="h-4 w-4 text-black flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-muted-foreground">Operator:</span>
-                            <span className="font-semibold text-gray-900">{selectedProof.user}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
               {/* Gambar Bukti */}
               <div className="space-y-2">
                 <p className="text-sm font-medium text-gray-900">Foto Bukti</p>
-                <div className="relative w-full h-[400px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
+                <div className="relative w-full h-full bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={selectedProof.image_url}

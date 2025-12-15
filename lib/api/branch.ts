@@ -1,6 +1,6 @@
 // lib/api/branch.ts
 
-import { apiClient } from '../api';  // ✅ PERBAIKAN: Import dari parent directory
+import { apiClient } from '../api';
 
 // ==================== CASHIER LOGIN ACCOUNTS (L0 - Generic Login) ====================
 export const cashierAccountAPI = {
@@ -10,7 +10,8 @@ export const cashierAccountAPI = {
   create: (data: { full_name: string; username: string; password: string }) =>
     apiClient.post('/cashier/login-account', data),
   
-  update: (id: string, data: { full_name?: string; password?: string }) =>
+  // ✅ PERBAIKAN: Tambahkan username ke tipe data update
+  update: (id: string, data: { full_name?: string; username?: string; password?: string }) =>
     apiClient.put(`/cashier/login-account/${id}`, data),
   
   softDelete: (id: string) =>
@@ -18,6 +19,10 @@ export const cashierAccountAPI = {
   
   hardDelete: (id: string) =>
     apiClient.delete(`/cashier/login-account/permanent/${id}`),
+  
+  // ✅ TAMBAHAN: Fungsi khusus untuk restore (reaktivasi)
+  restore: (id: string, data: { full_name: string; username?: string }) =>
+    apiClient.put(`/cashier/login-account/${id}`, data),
 };
 
 // ==================== PIN OPERATORS ====================
@@ -36,6 +41,10 @@ export const pinOperatorAPI = {
   
   hardDelete: (id: string) =>
     apiClient.delete(`/cashier/pin-operator/permanent/${id}`),
+  
+  // ✅ TAMBAHAN: Fungsi khusus untuk restore
+  restore: (id: string, data: { full_name: string }) =>
+    apiClient.put(`/cashier/pin-operator/${id}`, data),
 };
 
 // ==================== SHIFT SCHEDULES ====================
@@ -67,7 +76,6 @@ export const branchProductAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/product/permanent/${id}`),
   
-  // Override Product General
   setOverride: (productId: string, formData: FormData) =>
     apiClient.post(`/branch-product-setting/${productId}`, formData),
 };
@@ -113,7 +121,6 @@ export const branchDiscountAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/discount-rule/permanent/${id}`),
   
-  // Override Discount General
   setOverride: (discountRuleId: string, data: { is_active_at_branch: boolean; value?: number }) =>
     apiClient.post(`/branch-discount-setting/${discountRuleId}`, data),
 };

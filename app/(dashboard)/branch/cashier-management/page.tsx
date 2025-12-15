@@ -206,23 +206,39 @@ function CashierAccountsTab() {
 
     try {
       if (selectedAccount) {
-        const payload: any = { full_name: formData.full_name };
-        if (formData.password) {
+        // ✅ EDIT: Kirim full_name, username (jika berubah), dan password (opsional)
+        const payload: any = { 
+          full_name: formData.full_name,
+        };
+        
+        // ✅ KIRIM username jika berbeda dari yang lama
+        if (formData.username !== selectedAccount.username) {
+          payload.username = formData.username;
+        }
+        
+        // ✅ KIRIM password jika diisi
+        if (formData.password && formData.password.trim() !== '') {
           payload.password = formData.password;
         }
+
+        console.log('📤 UPDATE Payload:', payload);
         await cashierAccountAPI.update(selectedAccount.user_id, payload);
       } else {
-        if (!formData.password) {
+        // ✅ CREATE: Validasi password wajib
+        if (!formData.password || formData.password.trim() === '') {
           alert('Password wajib diisi untuk akun baru');
           setIsSubmitting(false);
           return;
         }
+        
+        console.log('📤 CREATE Payload:', formData);
         await cashierAccountAPI.create(formData);
       }
 
       await loadData();
       handleCloseModal();
     } catch (err: any) {
+      console.error('❌ Error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan akun kasir';
       alert(errorMessage);
     } finally {
@@ -235,12 +251,14 @@ function CashierAccountsTab() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
+      console.log('🗑️ Soft Delete:', selectedAccount.user_id);
       await cashierAccountAPI.softDelete(selectedAccount.user_id);
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedAccount(null);
     } catch (err: any) {
+      console.error('❌ Soft Delete Error:', err);
       alert(err.response?.data?.message || 'Gagal menonaktifkan akun kasir');
     } finally {
       setIsSubmitting(false);
@@ -252,15 +270,23 @@ function CashierAccountsTab() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
-      await cashierAccountAPI.update(selectedAccount.user_id, {
+      await delay(1000);
+      
+      // ✅ KIRIM UPDATE untuk mengaktifkan kembali
+      // Backend akan otomatis set is_active=true saat update
+      const payload = {
         full_name: selectedAccount.full_name,
-      });
+        username: selectedAccount.username,
+      };
+      
+      console.log('🔄 RESTORE Payload:', payload);
+      await cashierAccountAPI.restore(selectedAccount.user_id, payload);
 
       await loadData();
       setIsRestoreOpen(false);
       setSelectedAccount(null);
     } catch (err: any) {
+      console.error('❌ Restore Error:', err);
       alert(err.response?.data?.message || 'Gagal mengaktifkan akun kasir');
     } finally {
       setIsSubmitting(false);
@@ -272,12 +298,14 @@ function CashierAccountsTab() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
+      console.log('💀 Hard Delete:', selectedAccount.user_id);
       await cashierAccountAPI.hardDelete(selectedAccount.user_id);
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedAccount(null);
     } catch (err: any) {
+      console.error('❌ Hard Delete Error:', err);
       const errorMessage = err.response?.data?.message || 'Gagal menghapus akun kasir permanen';
       alert(errorMessage);
     } finally {
@@ -391,12 +419,12 @@ function CashierAccountsTab() {
                   {paginatedAccounts.map((account) => (
                     <TableRow key={account.user_id} className={showArchived ? 'opacity-60' : ''}>
                       <TableCell className="font-medium">{account.full_name}</TableCell>
-                      <TableCell>{account.username}</TableCell>
+                      <TableCell className="font-mono text-sm">{account.username}</TableCell>
                       <TableCell>
                         {showArchived ? (
                           <Badge variant="secondary">Diarsipkan</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-black">
+                          <Badge variant="default" className="bg-green-600">
                             Aktif
                           </Badge>
                         )}
@@ -430,19 +458,21 @@ function CashierAccountsTab() {
                                 </DropdownMenuItem>
                               </>
                             ) : (
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedAccount(account);
-                                  setIsRestoreOpen(true);
-                                }}
-                                className="text-green-600"
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                                Aktifkan Kembali
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedAccount(account);
+                                    setIsRestoreOpen(true);
+                                  }}
+                                  className="text-green-600 font-medium"
+                                >
+                                  <RotateCcw className="mr-2 h-4 w-4" />
+                                  Aktifkan Kembali
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
                             )}
 
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedAccount(account);
@@ -505,7 +535,7 @@ function CashierAccountsTab() {
             <DialogTitle>{selectedAccount ? 'Edit Akun Kasir' : 'Tambah Akun Kasir Baru'}</DialogTitle>
             <DialogDescription>
               {selectedAccount
-                ? 'Perbarui informasi akun kasir. Password boleh dikosongkan jika tidak ingin diubah.'
+                ? 'Perbarui informasi akun kasir. Username dan password boleh dikosongkan jika tidak ingin diubah.'
                 : 'Buat akun login baru untuk tablet kasir'}
             </DialogDescription>
           </DialogHeader>
@@ -530,10 +560,14 @@ function CashierAccountsTab() {
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   placeholder="Contoh: kasir_melawai_1"
                   required
-                  disabled={!!selectedAccount}
-                  className={selectedAccount ? 'bg-muted' : ''}
+                  className="font-mono"
                 />
-                {selectedAccount && <p className="text-xs text-muted-foreground">Username tidak dapat diubah</p>}
+                {selectedAccount && (
+                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    Hati-hati saat mengubah username, pastikan tidak bentrok dengan akun lain
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -601,9 +635,12 @@ function CashierAccountsTab() {
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Aktifkan Kembali?</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <RotateCcw className="h-5 w-5" />
+              Aktifkan Kembali?
+            </DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengaktifkan kembali akun <strong>{selectedAccount?.full_name}</strong>?
+              Apakah Anda yakin ingin mengaktifkan kembali akun <strong>{selectedAccount?.full_name}</strong> ({selectedAccount?.username})?
               <br />
               Akun akan bisa digunakan untuk login kembali.
             </DialogDescription>
@@ -612,9 +649,9 @@ function CashierAccountsTab() {
             <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button onClick={handleRestore} disabled={isSubmitting}>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={handleRestore} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Aktifkan
+              Aktifkan Kembali
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -624,7 +661,7 @@ function CashierAccountsTab() {
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2">
+            <DialogTitle className="text-destructive flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
@@ -632,13 +669,19 @@ function CashierAccountsTab() {
               Apakah Anda yakin ingin menghapus <strong>{selectedAccount?.full_name}</strong> secara permanen?
               <br />
               <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
+              <br />
+              {selectedAccount && (
+                <span className="text-xs text-muted-foreground mt-2 block">
+                  Note: Jika akun memiliki history, gunakan Arsipkan saja.
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button className="bg-black hover:bg-gray-800" variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>
@@ -773,7 +816,7 @@ function PinOperatorsTab() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await pinOperatorAPI.softDelete(selectedOperator.cashier_id);
       await loadData();
       setIsSoftDeleteOpen(false);
@@ -790,8 +833,8 @@ function PinOperatorsTab() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
-      await pinOperatorAPI.update(selectedOperator.cashier_id, {
+      await delay(1000);
+      await pinOperatorAPI.restore(selectedOperator.cashier_id, {
         full_name: selectedOperator.full_name,
       });
 
@@ -810,7 +853,7 @@ function PinOperatorsTab() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await pinOperatorAPI.hardDelete(selectedOperator.cashier_id);
       await loadData();
       setIsHardDeleteOpen(false);
@@ -968,19 +1011,21 @@ function PinOperatorsTab() {
                                 </DropdownMenuItem>
                               </>
                             ) : (
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedOperator(operator);
-                                  setIsRestoreOpen(true);
-                                }}
-                                className="text-green-600"
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                                Aktifkan Kembali
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedOperator(operator);
+                                    setIsRestoreOpen(true);
+                                  }}
+                                  className="text-green-600 font-medium"
+                                >
+                                  <RotateCcw className="mr-2 h-4 w-4" />
+                                  Aktifkan Kembali
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
                             )}
 
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedOperator(operator);
@@ -1055,7 +1100,7 @@ function PinOperatorsTab() {
                   id="operator_full_name"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  placeholder="Contoh: Siti Staff"
+                  placeholder="Contoh: Siti Kasir"
                   required
                 />
               </div>
@@ -1073,6 +1118,7 @@ function PinOperatorsTab() {
                     placeholder={selectedOperator ? 'Masukkan PIN baru (opsional)' : 'Masukkan PIN'}
                     maxLength={6}
                     required={!selectedOperator}
+                    className="font-mono"
                   />
                   <Button
                     type="button"
@@ -1127,7 +1173,10 @@ function PinOperatorsTab() {
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Aktifkan Kembali?</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <RotateCcw className="h-5 w-5" />
+              Aktifkan Kembali?
+            </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin mengaktifkan kembali operator <strong>{selectedOperator?.full_name}</strong>?
               <br />
@@ -1138,9 +1187,9 @@ function PinOperatorsTab() {
             <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button onClick={handleRestore} disabled={isSubmitting}>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={handleRestore} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Aktifkan
+              Aktifkan Kembali
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1150,7 +1199,7 @@ function PinOperatorsTab() {
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2">
+            <DialogTitle className="text-destructive flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
@@ -1164,12 +1213,7 @@ function PinOperatorsTab() {
             <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button
-              className="bg-black hover:bg-gray-800"
-              variant="destructive"
-              onClick={handleHardDelete}
-              disabled={isSubmitting}
-            >
+            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>
