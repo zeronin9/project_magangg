@@ -100,7 +100,7 @@ export default function DiscountDetailPage() {
       const foundDiscount = discountsList.find(d => d.discount_rule_id === discountId);
       
       if (!foundDiscount) {
-        setError('Diskon tidak ditemukan');
+        setError('Promo tidak ditemukan');
         return;
       }
 
@@ -128,7 +128,7 @@ export default function DiscountDetailPage() {
       await discountAPI.softDelete(discount.discount_rule_id);
       router.push('/mitra/discounts');
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal mengarsipkan diskon');
+      alert(err.response?.data?.message || 'Gagal mengarsipkan promo');
     } finally {
       setIsSubmitting(false);
     }
@@ -154,7 +154,7 @@ export default function DiscountDetailPage() {
       await loadData();
       setIsRestoreOpen(false);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal mengaktifkan kembali diskon');
+      alert(err.response?.data?.message || 'Gagal mengaktifkan kembali promo');
     } finally {
       setIsSubmitting(false);
     }
@@ -222,7 +222,7 @@ export default function DiscountDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Detail Diskon</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Detail Promo</h1>
           </div>
         </div>
         <Alert variant="destructive">
@@ -239,58 +239,22 @@ export default function DiscountDetailPage() {
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={() => router.push('/mitra/discounts')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+        <div className="flex flex-col gap-4">
+        <Button
+          variant="ghost"
+          className="w-fit -ml-4"
+          onClick={() => router.back()}
+          disabled={isSubmitting}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Kembali ke Daftar Promo
+        </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Detail Diskon</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Detail Promo</h1>
             <p className="text-muted-foreground">
-              Informasi lengkap aturan diskon
+              Informasi lengkap aturan Promo
             </p>
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          {discount.is_active ? (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/mitra/discounts/${discount.discount_rule_id}/edit`)}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setIsSoftDeleteOpen(true)}
-              >
-                <Archive className="mr-2 h-4 w-4" />
-                Arsipkan
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => setIsRestoreOpen(true)}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Aktifkan Kembali
-            </Button>
-          )}
-          <Button
-            variant="destructive"
-            onClick={() => setIsHardDeleteModalOpen(true)}
-            className="bg-black hover:bg-gray-800"
-          >
-            <AlertTriangle className="mr-2 h-4 w-4" />
-            Hapus Permanen
-          </Button>
         </div>
       </div>
 
@@ -306,7 +270,7 @@ export default function DiscountDetailPage() {
         <Alert>
           <Archive className="h-4 w-4" />
           <AlertDescription>
-            <strong>Diskon Diarsipkan:</strong> Diskon ini tidak aktif dan tidak dapat digunakan dalam transaksi.
+            <strong>Promo Diarsipkan:</strong> Promo ini tidak aktif dan tidak dapat digunakan dalam transaksi.
           </AlertDescription>
         </Alert>
       )}
@@ -322,12 +286,12 @@ export default function DiscountDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Nama Diskon</p>
+              <p className="text-sm text-muted-foreground mb-1">Nama Promo</p>
               <p className="font-semibold text-lg">{discount.discount_name}</p>
             </div>
 
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Kode Diskon</p>
+              <p className="text-sm text-muted-foreground mb-1">Kode Promo</p>
               {discount.discount_code ? (
                 <Badge variant="secondary" className="font-mono text-sm">
                   <Ticket className="mr-1 h-3 w-3" />
@@ -364,23 +328,23 @@ export default function DiscountDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Nilai Diskon */}
+        {/* Nilai promo */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Percent className="h-5 w-5" />
-              Nilai Diskon
+              Nilai Promo
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-1">Tipe Diskon</p>
+              <p className="text-sm text-muted-foreground mb-1">Tipe Promo</p>
               <p className="font-medium">
                 {discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal Tetap'}
               </p>
             </div>
 
-            <div className="bg-primary/5 p-4 rounded-lg border-2 border-primary/20">
+            <div className="bg-gray-50 p-4 rounded-lg ">
               <p className="text-sm text-muted-foreground mb-1">Nilai Potongan</p>
               <p className="font-bold text-3xl text-primary">
                 {discount.discount_type === 'PERCENTAGE' 
@@ -408,19 +372,19 @@ export default function DiscountDetailPage() {
                   <Calendar className="h-4 w-4" />
                   <span>Waktu Mulai</span>
                 </div>
-                <div className="bg-green-50 dark:bg-green-950 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
+                <div className="bg-gray-50 p-4 rounded-lg">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Tanggal</p>
-                      <p className="font-bold text-lg text-green-700 dark:text-green-300">
+                      <p className="font-bold text-lg text-black dark:text-black">
                         {formatDate(discount.start_date)}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground mb-1">Jam</p>
                       <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4 text-green-700 dark:text-green-300" />
-                        <p className="font-bold text-lg text-green-700 dark:text-green-300">
+                        <Clock className="h-4 w-4 text-black" />
+                        <p className="font-bold text-lg text-black">
                           {formatTime(discount.start_date)}
                         </p>
                       </div>
@@ -435,19 +399,19 @@ export default function DiscountDetailPage() {
                   <Calendar className="h-4 w-4" />
                   <span>Waktu Selesai</span>
                 </div>
-                <div className="bg-red-50 dark:bg-red-950 p-4 rounded-lg border-2 border-red-200 dark:border-red-800">
+                <div className="bg-gray-50 p-4 rounded-lg ">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Tanggal</p>
-                      <p className="font-bold text-lg text-red-700 dark:text-red-300">
+                      <p className="font-bold text-lg text-black ">
                         {formatDate(discount.end_date)}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-muted-foreground mb-1">Jam</p>
                       <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4 text-red-700 dark:text-red-300" />
-                        <p className="font-bold text-lg text-red-700 dark:text-red-300">
+                        <Clock className="h-4 w-4 text-black " />
+                        <p className="font-bold text-lg text-black">
                           {formatTime(discount.end_date)}
                         </p>
                       </div>
@@ -457,18 +421,18 @@ export default function DiscountDetailPage() {
               </div>
             </div>
 
-            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg border border-blue-200 dark:border-blue-800 mt-4">
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+            <div className="bg-gray-50 p-3 rounded-lg ">
+              <p className="text-sm font-medium text-black ">
                 <strong>Durasi:</strong> {Math.ceil((new Date(discount.end_date).getTime() - new Date(discount.start_date).getTime()) / (1000 * 60 * 60 * 24))} hari
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Target Diskon */}
+        {/* Target promo */}
         <Card className="md:col-span-2">
           <CardHeader>
-            <CardTitle>Target Diskon</CardTitle>
+            <CardTitle>Target Promo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -535,7 +499,7 @@ export default function DiscountDetailPage() {
         <CardHeader>
           <CardTitle>Syarat & Ketentuan</CardTitle>
           <CardDescription>
-            Aturan tambahan yang berlaku untuk diskon ini
+            Aturan tambahan yang berlaku untuk promo ini
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -559,7 +523,7 @@ export default function DiscountDetailPage() {
             </div>
             
             <div className="bg-muted/50 p-4 rounded-lg">
-              <p className="text-xs text-muted-foreground mb-1">Min. Diskon</p>
+              <p className="text-xs text-muted-foreground mb-1">Min. Promo</p>
               <p className="font-semibold text-sm">
                 {discount.min_discount_amount 
                   ? formatRupiah(discount.min_discount_amount) 
@@ -568,7 +532,7 @@ export default function DiscountDetailPage() {
             </div>
             
             <div className="bg-muted/50 p-4 rounded-lg">
-              <p className="text-xs text-muted-foreground mb-1">Max. Diskon</p>
+              <p className="text-xs text-muted-foreground mb-1">Max. Promo</p>
               <p className="font-semibold text-sm">
                 {discount.max_discount_amount 
                   ? formatRupiah(discount.max_discount_amount) 
@@ -601,11 +565,11 @@ export default function DiscountDetailPage() {
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Arsipkan Diskon?</DialogTitle>
+            <DialogTitle>Arsipkan Promo?</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengarsipkan diskon <strong>{discount.discount_name}</strong>?
+              Apakah Anda yakin ingin mengarsipkan promo <strong>{discount.discount_name}</strong>?
               <br/>
-              Diskon akan dinonaktifkan (Soft Delete).
+              Promo akan dinonaktifkan (Soft Delete).
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -626,7 +590,7 @@ export default function DiscountDetailPage() {
           <DialogHeader>
             <DialogTitle>Aktifkan Kembali?</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengaktifkan kembali diskon <strong>{discount.discount_name}</strong>?
+              Apakah Anda yakin ingin mengaktifkan kembali promo <strong>{discount.discount_name}</strong>?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -650,7 +614,7 @@ export default function DiscountDetailPage() {
               Hapus Permanen? 
             </DialogTitle>
             <DialogDescription>
-              Diskon <strong>{discount.discount_name}</strong> akan dihapus selamanya dari database.
+              Promo <strong>{discount.discount_name}</strong> akan dihapus selamanya dari database.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

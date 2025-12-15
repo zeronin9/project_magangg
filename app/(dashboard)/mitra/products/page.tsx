@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { productAPI, categoryAPI, branchAPI } from '@/lib/api/mitra';
 import { Product, Category, Branch } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -19,13 +18,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -36,7 +28,6 @@ import {
 import {
   Pagination,
   PaginationContent,
-  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -53,7 +44,6 @@ import {
   AlertCircle,
   Loader2,
   Filter,
-  Upload,
   Archive,
   AlertTriangle,
   RotateCcw,
@@ -76,6 +66,7 @@ const getImageUrl = (path: string | null | undefined) => {
 const ITEMS_PER_PAGE = 10;
 
 export default function ProductsPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -88,22 +79,12 @@ export default function ProductsPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   // Modal States
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imageError, setImageError] = useState('');
-  
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const [formData, setFormData] = useState({
-    product_name: '',
-    base_price: '',
-    category_id: '',
-    image_url: null as File | null,  // ✅ PERBAIKAN: Ubah dari product_image ke image_url
-  });
 
   useEffect(() => {
     loadData();
@@ -140,7 +121,6 @@ export default function ProductsPage() {
           : null;
         const category = categoriesList.find(c => c.category_id === product.category_id);
         
-        // ✅ PERBAIKAN: Gunakan image_url sesuai response API
         return {
           ...product,
           image_url: product.image_url,  
@@ -159,138 +139,9 @@ export default function ProductsPage() {
     }
   };
 
-  const handleOpenModal = (product?: Product) => {
-    setImageError('');
-    if (product) {
-      setSelectedProduct(product);
-      setFormData({
-        product_name: product.product_name,
-        base_price: product.base_price.toString(),
-        category_id: product.category_id ,
-        image_url: null,  // ✅ PERBAIKAN: Ubah dari product_image ke image_url
-      });
-      // ✅ PERBAIKAN: Gunakan image_url
-      setImagePreview(getImageUrl(product.image_url) || '');
-    } else {
-      setSelectedProduct(null);
-      setFormData({
-        product_name: '',
-        base_price: '',
-        category_id: '',
-        image_url: null,  // ✅ PERBAIKAN
-      });
-      setImagePreview('');
-    }
-    setIsModalOpen(true);
+  const handleEditProduct = (product: Product) => {
+    router.push(`/mitra/products/${product.product_id}/edit`);
   };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedProduct(null);
-    setFormData({
-      product_name: '',
-      base_price: '',
-      category_id: '',
-      image_url: null,  // ✅ PERBAIKAN
-    });
-    setImagePreview('');
-    setImageError('');
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    // ✅ Validasi MIME type di frontend juga
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-    
-    if (!allowedTypes.includes(file.type)) {
-      setImageError('Format file tidak valid! Gunakan JPEG, JPG, PNG, atau GIF.');
-      e.target.value = '';
-      setFormData({ ...formData, image_url: null });
-      if (selectedProduct && selectedProduct.image_url) {
-        setImagePreview(getImageUrl(selectedProduct.image_url) || '');
-      } else {
-        setImagePreview('');
-      }
-      return;
-    }
-
-    if (file.size > 1024 * 1024) {
-      setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
-      e.target.value = '';
-      setFormData({ ...formData, image_url: null });
-      if (selectedProduct && selectedProduct.image_url) {
-        setImagePreview(getImageUrl(selectedProduct.image_url) || '');
-      } else {
-        setImagePreview('');
-      }
-      return;
-    }
-
-    // ✅ Log untuk debugging
-    console.log('File selected:', {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      lastModified: new Date(file.lastModified)
-    });
-
-    setImageError('');
-    setFormData({ ...formData, image_url: file });
-    
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  }
-};
-
-  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setFormData({ ...formData, base_price: value });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (imageError) return;
-
-  setIsSubmitting(true);
-
-  try {
-    const formDataToSend = new FormData();
-    formDataToSend.append('product_name', formData.product_name);
-    formDataToSend.append('base_price', formData.base_price);
-    formDataToSend.append('category_id', formData.category_id);
-    
-    if (formData.image_url) {
-      // ✅ Log file info sebelum kirim
-      console.log('Uploading file:', {
-        name: formData.image_url.name,
-        type: formData.image_url.type,
-        size: formData.image_url.size
-      });
-      
-      formDataToSend.append('product_image', formData.image_url);
-    }
-
-    if (selectedProduct) {
-      await productAPI.update(selectedProduct.product_id, formDataToSend);
-    } else {
-      await productAPI.create(formDataToSend);
-    }
-    
-    await loadData();
-    handleCloseModal();
-  } catch (err: any) {
-    console.error('Error response:', err.response?.data);
-    const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan produk';
-    alert(errorMessage);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
 
   const handleSoftDelete = async () => {
     if (!selectedProduct) return;
@@ -317,7 +168,6 @@ export default function ProductsPage() {
     try {
       await delay(3000); 
 
-      // ✅ PERBAIKAN: Untuk restore, kirim JSON (tidak perlu FormData)
       const payload = {
         is_active: true,
         product_name: selectedProduct.product_name,
@@ -422,7 +272,7 @@ export default function ProductsPage() {
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          <Button onClick={() => router.push('/mitra/products/new')}>
             <Plus className="mr-2 h-4 w-4" />
             Tambah Produk
           </Button>
@@ -497,7 +347,6 @@ export default function ProductsPage() {
             <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${showArchived ? 'opacity-75 bg-muted/40' : ''}`}>
               {/* Product Image */}
               <div className="aspect-[4/3] bg-muted relative">
-                {/* ✅ PERBAIKAN: Gunakan image_url */}
                 {product.image_url ? (
                   <Image
                     src={getImageUrl(product.image_url)}
@@ -554,7 +403,7 @@ export default function ProductsPage() {
                       
                       {!showArchived ? (
                         <>
-                          <DropdownMenuItem onClick={() => handleOpenModal(product)}>
+                          <DropdownMenuItem onClick={() => handleEditProduct(product)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
@@ -651,134 +500,6 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Form Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedProduct ? 'Edit Produk' : 'Tambah Produk Baru'}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedProduct 
-                ? 'Perbarui informasi produk'
-                : 'Produk akan dibuat sebagai General (berlaku untuk semua cabang)'
-              }
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              {/* Image Upload */}
-              <div className="space-y-2">
-                <Label>Gambar Produk</Label>
-                
-                {imageError && (
-                  <Alert variant="destructive" className="mb-2 py-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="text-xs font-medium">{imageError}</AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex flex-col gap-4">
-                  {imagePreview && (
-                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
-                      <Image
-                        src={imagePreview}
-                        alt="Preview"
-                        fill
-                        className="object-cover"
-                        unoptimized={true}
-                      />
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    {/* ✅ PERBAIKAN: Ubah id dari product_image ke image_url */}
-                    <Input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/gif"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      id="image_url"
-                    />
-                    <Label
-                      htmlFor="image_url"
-                      className="flex-1 cursor-pointer"
-                    >
-                      <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'}`}>
-                        <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
-                        <span className={`text-sm ${imageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                          {imagePreview ? 'Ganti Gambar' : 'Upload Gambar (Max 1MB)'}
-                        </span>
-                      </div>
-                    </Label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="product_name">Nama Produk *</Label>
-                <Input
-                  id="product_name"
-                  value={formData.product_name}
-                  onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                  placeholder="Masukkan nama produk"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="base_price">Harga *</Label>
-                <Input
-                  id="base_price"
-                  type="text"
-                  value={formData.base_price ? `Rp. ${Number(formData.base_price).toLocaleString('id-ID')}` : ''}
-                  onChange={handlePriceChange}
-                  placeholder="Masukkan harga"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="category_id">Kategori *</Label>
-<Select
-  value={formData.category_id}
-  onValueChange={(value) => setFormData({ ...formData, category_id: value })}
-  required
->
-  <SelectTrigger>
-    <SelectValue placeholder="Pilih Kategori" />
-  </SelectTrigger>
-  <SelectContent>
-    {categories.filter((category) => !category.branch_id).length > 0 ? (
-      categories
-        .filter((category) => !category.branch_id)
-        .map((category) => (
-          <SelectItem key={category.category_id} value={category.category_id}>
-            {category.category_name}
-          </SelectItem>
-        ))
-    ) : (
-      <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-        Tidak ada kategori general tersedia
-      </div>
-    )}
-  </SelectContent>
-</Select>
-
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting || !!imageError}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedProduct ? 'Update' : 'Simpan'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Soft Delete Confirmation */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
@@ -795,7 +516,7 @@ export default function ProductsPage() {
               Batal
             </Button>
             <Button 
-              className="bg-black text-white"
+              className="bg-black text-white hover:bg-gray-800"
               onClick={handleSoftDelete} 
               disabled={isSubmitting}
             >
@@ -840,6 +561,7 @@ export default function ProductsPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
               <br/>
+              <span className="text-destructive font-medium">Aksi ini tidak dapat dibatalkan!</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

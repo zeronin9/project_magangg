@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { branchAdminAPI, branchAPI } from '@/lib/api/mitra';
 import { BranchAdmin, Branch } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -18,13 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -57,6 +49,7 @@ import {
 } from 'lucide-react';
 
 export default function BranchAdminsPage() {
+  const router = useRouter();
   const [admins, setAdmins] = useState<BranchAdmin[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,19 +59,12 @@ export default function BranchAdminsPage() {
   const [showArchived, setShowArchived] = useState(false);
 
   // Modal States
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedAdmin, setSelectedAdmin] = useState<BranchAdmin | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    full_name: '',
-    username: '',
-    password: '',
-    branch_id: '',
-  });
 
   // Reload data saat filter arsip berubah
   useEffect(() => {
@@ -91,7 +77,6 @@ export default function BranchAdminsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      // Panggil API dengan parameter showAll jika showArchived true
       const [adminsData, branchesData] = await Promise.all([
         branchAdminAPI.getAll(showArchived),
         branchAPI.getAll(),
@@ -118,81 +103,15 @@ export default function BranchAdminsPage() {
     }
   };
 
-  const handleOpenModal = (admin?: BranchAdmin) => {
-    if (admin) {
-      setSelectedAdmin(admin);
-      setFormData({
-        full_name: admin.full_name,
-        username: admin.username,
-        password: '',
-        branch_id: admin.branch_id,
-      });
-    } else {
-      setSelectedAdmin(null);
-      setFormData({
-        full_name: '',
-        username: '',
-        password: '',
-        branch_id: '',
-      });
-    }
-    setIsModalOpen(true);
+  const handleEditAdmin = (admin: BranchAdmin) => {
+    router.push(`/mitra/branch-admins/${admin.user_id}/edit`);
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedAdmin(null);
-    setFormData({
-      full_name: '',
-      username: '',
-      password: '',
-      branch_id: '',
-    });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      // ✅ Tambahkan Delay 3 Detik
-      await delay(3000);
-
-      if (selectedAdmin) {
-        // Edit Mode
-        const updateData: any = {
-          full_name: formData.full_name,
-          branch_id: formData.branch_id 
-        };
-        
-        if (formData.username !== selectedAdmin.username) {
-          updateData.username = formData.username;
-        }
-
-        if (formData.password) {
-          updateData.password = formData.password;
-        }
-        await branchAdminAPI.update(selectedAdmin.user_id, updateData);
-      } else {
-        // Create Mode
-        await branchAdminAPI.create(formData);
-      }
-      await loadData();
-      handleCloseModal();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menyimpan admin cabang');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Soft Delete Handler
   const handleSoftDelete = async () => {
     if (!selectedAdmin) return;
     
     setIsSubmitting(true);
     try {
-      // ✅ Tambahkan Delay 3 Detik
       await delay(3000);
 
       await branchAdminAPI.softDelete(selectedAdmin.user_id);
@@ -206,18 +125,15 @@ export default function BranchAdminsPage() {
     }
   };
 
-  // Restore Handler (Aktifkan Kembali)
   const handleRestore = async () => {
     if (!selectedAdmin) return;
     
     setIsSubmitting(true);
     try {
-      // ✅ Tambahkan Delay 3 Detik
       await delay(3000);
 
-      // Menggunakan endpoint update untuk mengaktifkan kembali (is_active: true)
       await branchAdminAPI.update(selectedAdmin.user_id, { 
-        full_name: selectedAdmin.full_name, // Kirim data existing agar tidak error
+        full_name: selectedAdmin.full_name,
         is_active: true 
       });
       await loadData();
@@ -230,13 +146,11 @@ export default function BranchAdminsPage() {
     }
   };
 
-  // Hard Delete Handler
   const handleHardDelete = async () => {
     if (!selectedAdmin) return;
     
     setIsSubmitting(true);
     try {
-      // ✅ Tambahkan Delay 3 Detik
       await delay(3000);
 
       await branchAdminAPI.hardDelete(selectedAdmin.user_id);
@@ -285,7 +199,6 @@ export default function BranchAdminsPage() {
           <p className="text-muted-foreground">Kelola admin untuk setiap cabang</p>
         </div>
         <div className="grid grid-cols-2 gap-2 @md:flex">
-          {/* Tombol Toggle Arsip */}
           <Button
             variant={showArchived ? "default" : "outline"}
             onClick={() => setShowArchived(!showArchived)}
@@ -293,7 +206,7 @@ export default function BranchAdminsPage() {
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          <Button onClick={() => router.push('/mitra/branch-admins/new')}>
             <Plus className="mr-2 h-4 w-4" />
             Tambah Admin
           </Button>
@@ -366,7 +279,7 @@ export default function BranchAdminsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Aksi</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handleOpenModal(admin)}>
+                          <DropdownMenuItem onClick={() => handleEditAdmin(admin)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
@@ -388,7 +301,7 @@ export default function BranchAdminsPage() {
                                 setSelectedAdmin(admin);
                                 setIsRestoreOpen(true);
                               }}
-                              className="text-black"
+                              className="text-green-600"
                             >
                               <RotateCcw className="mr-2 h-4 w-4" />
                               Aktifkan Kembali
@@ -416,85 +329,6 @@ export default function BranchAdminsPage() {
         </Table>
       </Card>
 
-      {/* Form Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedAdmin ? 'Edit Admin Cabang' : 'Tambah Admin Cabang'}
-            </DialogTitle>
-            <DialogDescription>
-              Lengkapi informasi admin cabang di bawah ini
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="full_name">Nama Lengkap *</Label>
-                <Input
-                  id="full_name"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  required
-                  placeholder="Masukkan nama lengkap"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="username">Username *</Label>
-                <Input
-                  id="username"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  required
-                  placeholder="Masukkan username"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">
-                  Password {selectedAdmin && '(Kosongkan jika tidak ingin mengubah)'}
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required={!selectedAdmin}
-                  placeholder="Masukkan password"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="branch_id">Cabang *</Label>
-                <Select
-                  value={formData.branch_id}
-                  onValueChange={(value) => setFormData({ ...formData, branch_id: value })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih Cabang" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map((branch) => (
-                      <SelectItem key={branch.branch_id} value={branch.branch_id}>
-                        {branch.branch_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedAdmin ? 'Update' : 'Simpan'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Soft Delete Confirmation */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
@@ -511,7 +345,7 @@ export default function BranchAdminsPage() {
               Batal
             </Button>
             <Button 
-              className="bg-black text-white" 
+              className="bg-black text-white hover:bg-gray-800" 
               onClick={handleSoftDelete} 
               disabled={isSubmitting}
             >
@@ -549,14 +383,14 @@ export default function BranchAdminsPage() {
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2 ">
+            <DialogTitle className="text-black flex items-center gap-2">
               <AlertTriangle className="text-black h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus admin <strong>{selectedAdmin?.full_name}</strong> secara permanen?
               <br/>
-              
+              <span className="text-destructive font-medium">Aksi ini tidak dapat dibatalkan!</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

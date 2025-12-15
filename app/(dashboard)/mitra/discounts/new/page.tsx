@@ -160,7 +160,7 @@ export default function NewDiscountPage() {
       router.push('/mitra/discounts');
     } catch (err: any) {
       console.error('Error:', err);
-      setError(err.response?.data?.message || 'Gagal menyimpan diskon');
+      setError(err.response?.data?.message || 'Gagal menyimpan Promo');
     } finally {
       setIsSubmitting(false);
     }
@@ -179,18 +179,20 @@ export default function NewDiscountPage() {
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button 
-          variant="outline" 
-          size="icon"
+      <div className="flex flex-col gap-4">
+        <Button
+          variant="ghost"
+          className="w-fit -ml-4"
           onClick={() => router.back()}
+          disabled={isSubmitting}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Kembali ke Daftar Promo
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tambah Diskon Baru</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Tambah Promo Baru</h1>
           <p className="text-muted-foreground">
-            Buat aturan diskon baru untuk produk Anda
+            Buat aturan promo baru untuk produk Anda
           </p>
         </div>
       </div>
@@ -211,17 +213,17 @@ export default function NewDiscountPage() {
               Informasi Dasar
             </CardTitle>
             <CardDescription>
-              Tentukan nama dan kode diskon
+              Tentukan nama dan kode Promo
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="discount_name">Nama Diskon *</Label>
+              <Label htmlFor="discount_name">Nama Promo *</Label>
               <Input
                 id="discount_name"
                 value={formData.discount_name}
                 onChange={(e) => setFormData({ ...formData, discount_name: e.target.value })}
-                placeholder="Contoh: Diskon Akhir Tahun"
+                placeholder="Masukkan nama Promo"
                 required
               />
             </div>
@@ -229,29 +231,29 @@ export default function NewDiscountPage() {
             <div className="space-y-2">
               <Label htmlFor="discount_code" className="flex items-center gap-2">
                 <Ticket className="h-4 w-4" />
-                Kode Diskon (Opsional)
+                Kode Promo (Opsional)
               </Label>
               <Input
                 id="discount_code"
                 value={formData.discount_code}
                 onChange={(e) => setFormData({ ...formData, discount_code: e.target.value.toUpperCase() })}
-                placeholder="Contoh: NEWYEAR2025"
+                placeholder="Masukkan kode Promo"
                 maxLength={20}
                 className="font-mono uppercase"
               />
               <p className="text-xs text-muted-foreground">
-                Kosongkan jika ingin diskon diterapkan otomatis
+                Kosongkan jika ingin Promo diterapkan otomatis
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* Tipe dan Nilai Diskon */}
+        {/* Tipe dan Nilai Promo */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Percent className="h-5 w-5" />
-              Tipe dan Nilai Diskon
+              Tipe dan Nilai Promo
             </CardTitle>
             <CardDescription>
               Tentukan jenis dan besaran potongan
@@ -260,7 +262,7 @@ export default function NewDiscountPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="discount_type">Tipe Diskon *</Label>
+                <Label htmlFor="discount_type">Tipe Promo *</Label>
                 <Select
                   value={formData.discount_type}
                   onValueChange={(value: any) => setFormData({ ...formData, discount_type: value, value: '' })}
@@ -278,7 +280,7 @@ export default function NewDiscountPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="value">
-                  Nilai Diskon * {formData.discount_type === 'PERCENTAGE' ? '(%)' : '(Rp)'}
+                  Nilai Promo * {formData.discount_type === 'PERCENTAGE' ? '(%)' : '(Rp)'}
                 </Label>
                 {formData.discount_type === 'PERCENTAGE' ? (
                   <Input
@@ -288,7 +290,7 @@ export default function NewDiscountPage() {
                     max="100"
                     value={formData.value}
                     onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                    placeholder="Contoh: 10"
+                    placeholder="Masukkan persentase potongan"
                     required
                   />
                 ) : (
@@ -296,7 +298,7 @@ export default function NewDiscountPage() {
                     id="value"
                     value={formData.value ? `Rp. ${Number(formData.value).toLocaleString('id-ID')}` : ''}
                     onChange={(e) => handleNumberInput(e, 'value')}
-                    placeholder="Contoh: 50000"
+                    placeholder="Masukkan nominal potongan"
                     required
                   />
                 )}
@@ -313,7 +315,7 @@ export default function NewDiscountPage() {
               Periode Aktif
             </CardTitle>
             <CardDescription>
-              Tentukan masa berlaku diskon (tanggal dan waktu)
+              Tentukan masa berlaku Promo (tanggal dan waktu)
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -392,12 +394,12 @@ export default function NewDiscountPage() {
           </CardContent>
         </Card>
 
-        {/* Target Diskon */}
+        {/* Target Promo */}
         <Card>
           <CardHeader>
-            <CardTitle>Target Diskon</CardTitle>
+            <CardTitle>Target Promo</CardTitle>
             <CardDescription>
-              Tentukan diskon berlaku untuk apa
+              Tentukan Promo berlaku untuk apa
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -510,7 +512,7 @@ export default function NewDiscountPage() {
                 <Input
                   value={displayFormatted(formData.min_transaction_amount)}
                   onChange={(e) => handleNumberInput(e, 'min_transaction_amount')}
-                  placeholder="Contoh: 100000"
+                  placeholder="Masukkan nominal minimal"
                 />
               </div>
               
@@ -519,7 +521,7 @@ export default function NewDiscountPage() {
                 <Input
                   value={displayFormatted(formData.max_transaction_amount)}
                   onChange={(e) => handleNumberInput(e, 'max_transaction_amount')}
-                  placeholder="Contoh: 1000000"
+                  placeholder="Masukkan nominal maksimal"
                 />
               </div>
               
@@ -528,7 +530,7 @@ export default function NewDiscountPage() {
                 <Input
                   value={displayFormatted(formData.min_item_quantity)}
                   onChange={(e) => handleNumberInput(e, 'min_item_quantity')}
-                  placeholder="Contoh: 2"
+                  placeholder="Masukkan jumlah minimal"
                 />
               </div>
               
@@ -537,7 +539,7 @@ export default function NewDiscountPage() {
                 <Input
                   value={displayFormatted(formData.max_item_quantity)}
                   onChange={(e) => handleNumberInput(e, 'max_item_quantity')}
-                  placeholder="Contoh: 10"
+                  placeholder="Masukkan jumlah maksimal"
                 />
               </div>
               
@@ -546,7 +548,7 @@ export default function NewDiscountPage() {
                 <Input
                   value={displayFormatted(formData.min_discount_amount)}
                   onChange={(e) => handleNumberInput(e, 'min_discount_amount')}
-                  placeholder="Contoh: 5000"
+                  placeholder="Masukkan nominal minimal potongan"
                 />
               </div>
               
@@ -555,7 +557,7 @@ export default function NewDiscountPage() {
                 <Input
                   value={displayFormatted(formData.max_discount_amount)}
                   onChange={(e) => handleNumberInput(e, 'max_discount_amount')}
-                  placeholder="Contoh: 100000"
+                  placeholder="Masukkan nominal maksimal potongan"
                 />
               </div>
             </div>
@@ -582,7 +584,7 @@ export default function NewDiscountPage() {
           >
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             <Save className="mr-2 h-4 w-4" />
-            Simpan Diskon
+            Simpan Promo
           </Button>
         </div>
       </form>

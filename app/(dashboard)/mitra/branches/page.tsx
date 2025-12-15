@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { branchAPI } from '@/lib/api/mitra';
 import { Branch } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -50,12 +49,12 @@ import {
 } from 'lucide-react';
 
 export default function BranchesPage() {
+  const router = useRouter();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
   // Modal States
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
@@ -63,11 +62,6 @@ export default function BranchesPage() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [formData, setFormData] = useState({
-    branch_name: '',
-    address: '',
-    phone_number: '',
-  });
 
   useEffect(() => {
     loadBranches();
@@ -89,62 +83,8 @@ export default function BranchesPage() {
     }
   };
 
-  const handleOpenModal = (branch?: Branch) => {
-    if (branch) {
-      setSelectedBranch(branch);
-      setFormData({
-        branch_name: branch.branch_name,
-        address: branch.address || '',
-        phone_number: branch.phone_number || '',
-      });
-    } else {
-      setSelectedBranch(null);
-      setFormData({
-        branch_name: '',
-        address: '',
-        phone_number: '',
-      });
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedBranch(null);
-    setFormData({
-      branch_name: '',
-      address: '',
-      phone_number: '',
-    });
-    setError('');
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-
-    try {
-      // ✅ Tambahkan Delay 3 Detik sebelum eksekusi API
-      await delay(3000);
-
-      if (selectedBranch) {
-        await branchAPI.update(selectedBranch.branch_id, formData);
-      } else {
-        await branchAPI.create(formData);
-      }
-      await loadBranches();
-      handleCloseModal();
-    } catch (err: any) {
-      if (err.response?.status === 403) {
-        setError('Gagal: Anda telah mencapai batas jumlah cabang untuk paket ini. Silakan upgrade paket Anda.');
-        setIsModalOpen(false);
-      } else {
-        alert(err.response?.data?.message || 'Gagal menyimpan cabang');
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleEditBranch = (branch: Branch) => {
+    router.push(`/mitra/branches/${branch.branch_id}/edit`);
   };
 
   const handleSoftDelete = async () => {
@@ -152,7 +92,6 @@ export default function BranchesPage() {
     
     setIsSubmitting(true);
     try {
-      // ✅ Tambahkan Delay 3 Detik
       await delay(3000);
 
       await branchAPI.softDelete(selectedBranch.branch_id);
@@ -173,7 +112,6 @@ export default function BranchesPage() {
     setError('');
 
     try {
-      // ✅ Tambahkan Delay 3 Detik
       await delay(3000);
 
       await branchAPI.update(selectedBranch.branch_id, { is_active: true });
@@ -197,7 +135,6 @@ export default function BranchesPage() {
     
     setIsSubmitting(true);
     try {
-      // ✅ Tambahkan Delay 3 Detik
       await delay(3000);
 
       await branchAPI.hardDelete(selectedBranch.branch_id);
@@ -252,7 +189,7 @@ export default function BranchesPage() {
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          <Button onClick={() => router.push('/mitra/branches/new')}>
             <Plus className="mr-2 h-4 w-4" />
             Tambah Cabang
           </Button>
@@ -284,7 +221,9 @@ export default function BranchesPage() {
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-12">
                   <Building2 className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">Tidak ada cabang</p>
+                  <p className="text-muted-foreground">
+                    {showArchived ? 'Tidak ada cabang yang diarsipkan' : 'Belum ada cabang'}
+                  </p>
                 </TableCell>
               </TableRow>
             ) : (
@@ -297,9 +236,11 @@ export default function BranchesPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin className="h-3 w-3" />
-                      {branch.address || '-'}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground max-w-md truncate">
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      <span className="truncate" title={branch.address || '-'}>
+                        {branch.address || '-'}
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -323,7 +264,7 @@ export default function BranchesPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Aksi</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleOpenModal(branch)}>
+                        <DropdownMenuItem onClick={() => handleEditBranch(branch)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
@@ -372,61 +313,6 @@ export default function BranchesPage() {
         </Table>
       </Card>
 
-      {/* Form Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedBranch ? 'Edit Cabang' : 'Tambah Cabang Baru'}
-            </DialogTitle>
-            <DialogDescription>
-              Lengkapi informasi cabang di bawah ini
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="branch_name">Nama Cabang *</Label>
-                <Input
-                  id="branch_name"
-                  value={formData.branch_name}
-                  onChange={(e) => setFormData({ ...formData, branch_name: e.target.value })}
-                  placeholder="Masukkan nama cabang"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="address">Alamat</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Masukkan alamat cabang"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone_number">Nomor Telepon</Label>
-                <Input
-                  id="phone_number"
-                  value={formData.phone_number}
-                  onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                  placeholder="Masukkan nomor telepon"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedBranch ? 'Update' : 'Simpan'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* Soft Delete (Archive) Confirmation */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
@@ -443,7 +329,7 @@ export default function BranchesPage() {
               Batal
             </Button>
             <Button 
-              className="bg-black text-white" 
+              className="bg-black text-white hover:bg-gray-800" 
               onClick={handleSoftDelete} 
               disabled={isSubmitting}
             >
@@ -488,7 +374,7 @@ export default function BranchesPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus cabang <strong>{selectedBranch?.branch_name}</strong> secara permanen?
               <br/>
-              
+              <span className="text-destructive font-medium">Aksi ini tidak dapat dibatalkan!</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

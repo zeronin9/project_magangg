@@ -528,7 +528,7 @@ export default function CategoriesPage() {
                   id="category_name"
                   value={formData.category_name}
                   onChange={(e) => setFormData({ ...formData, category_name: e.target.value })}
-                  placeholder="Contoh: Minuman, Makanan, Snack"
+                  placeholder="Masukkan nama kategori"
                   required
                 />
               </div>
