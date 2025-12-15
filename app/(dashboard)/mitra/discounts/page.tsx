@@ -552,6 +552,502 @@ export default function DiscountsPage() {
         )}
       </Card>
 
+<<<<<<< HEAD
+=======
+      {/* Detail Modal */}
+<Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>Detail Diskon</DialogTitle>
+      <DialogDescription>Informasi lengkap aturan diskon</DialogDescription>
+    </DialogHeader>
+    {selectedDiscount && (
+      <div className="space-y-4 py-2 text-sm max-h-[60vh] overflow-y-auto">
+        <div className="grid grid-cols-2 gap-4">
+          {/* Nama Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Nama Diskon</p>
+            <p className="font-semibold">{selectedDiscount.discount_name}</p>
+          </div>
+          
+          {/* Status */}
+          <div>
+            <p className="text-muted-foreground mb-1">Status</p>
+            <Badge variant={selectedDiscount.is_active ? 'default' : 'secondary'}>
+              {selectedDiscount.is_active ? 'Aktif' : 'Diarsipkan'}
+            </Badge>
+          </div>
+          
+          {/* Kode Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Kode Diskon</p>
+            {selectedDiscount.discount_code ? (
+              <Badge variant="secondary" className="font-mono">
+                <Ticket className="mr-1 h-3 w-3" />
+                {selectedDiscount.discount_code}
+              </Badge>
+            ) : (
+              <span className="text-muted-foreground">Otomatis</span>
+            )}
+          </div>
+          
+          {/* Cakupan */}
+          <div>
+            <p className="text-muted-foreground mb-1">Cakupan</p>
+            <Badge variant={selectedDiscount.branch_id ? 'secondary' : 'default'}>
+              {selectedDiscount.branch_id ? 'Lokal' : 'General'}
+            </Badge>
+          </div>
+          
+          {/* Tipe Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Tipe</p>
+            <p>{selectedDiscount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal Tetap'}</p>
+          </div>
+          
+          {/* Nilai Diskon */}
+          <div>
+            <p className="text-muted-foreground mb-1">Nilai</p>
+            <p className="font-bold text-lg text-primary">
+              {selectedDiscount.discount_type === 'PERCENTAGE' 
+                ? `${selectedDiscount.value}%` 
+                : formatRupiah(selectedDiscount.value)
+              }
+            </p>
+          </div>
+          
+          {/* Berlaku Untuk */}
+          <div className="col-span-2">
+            <p className="text-muted-foreground mb-1">Berlaku Untuk</p>
+            <p className="font-medium">
+              {selectedDiscount.applies_to === 'ENTIRE_TRANSACTION' ? 'Seluruh Transaksi' :
+               selectedDiscount.applies_to === 'SPECIFIC_CATEGORIES' ? 'Kategori Tertentu' : 'Produk Tertentu'}
+            </p>
+          </div>
+          
+          {/* ✅ PERBAIKAN: Target (Kategori atau Produk) */}
+          {selectedDiscount.applies_to !== 'ENTIRE_TRANSACTION' && (
+            <div className="col-span-2">
+              <p className="text-muted-foreground mb-1">
+                {selectedDiscount.applies_to === 'SPECIFIC_CATEGORIES' ? 'Kategori Terpilih' : 'Produk Terpilih'}
+              </p>
+              
+              {/* Jika Kategori */}
+              {selectedDiscount.applies_to === 'SPECIFIC_CATEGORIES' && (
+                <div className="space-y-2">
+                  {selectedDiscount.category_ids && selectedDiscount.category_ids.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDiscount.category_ids.map((catId) => {
+                        const category = categories.find(c => c.category_id === catId);
+                        return category ? (
+                          <Badge key={catId} variant="outline" className="text-xs">
+                            {category.category_name}
+                          </Badge>
+                        ) : (
+                          <Badge key={catId} variant="destructive" className="text-xs">
+                            ID: {catId.substring(0, 8)}... (Tidak ditemukan)
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Tidak ada kategori dipilih</p>
+                  )}
+                </div>
+              )}
+              
+              {/* Jika Produk */}
+              {selectedDiscount.applies_to === 'SPECIFIC_PRODUCTS' && (
+                <div className="space-y-2">
+                  {selectedDiscount.product_ids && selectedDiscount.product_ids.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedDiscount.product_ids.map((prodId) => {
+                        const product = products.find(p => p.product_id === prodId);
+                        return product ? (
+                          <Badge key={prodId} variant="outline" className="text-xs">
+                            {product.product_name}
+                          </Badge>
+                        ) : (
+                          <Badge key={prodId} variant="destructive" className="text-xs">
+                            ID: {prodId.substring(0, 8)}... (Tidak ditemukan)
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Tidak ada produk dipilih</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Periode */}
+          <div className="col-span-2">
+            <p className="text-muted-foreground mb-1">Periode Aktif</p>
+            <div className="bg-muted p-2 rounded text-center font-mono text-sm">
+              {formatDate(selectedDiscount.start_date)} - {formatDate(selectedDiscount.end_date)}
+            </div>
+          </div>
+          
+          {/* Syarat & Ketentuan */}
+          <div className="col-span-2 mt-2 pt-2 border-t">
+            <p className="font-semibold mb-2">Syarat & Ketentuan:</p>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Min. Transaksi */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Min. Transaksi</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.min_transaction_amount 
+                    ? formatRupiah(selectedDiscount.min_transaction_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Max. Transaksi */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Max. Transaksi</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.max_transaction_amount 
+                    ? formatRupiah(selectedDiscount.max_transaction_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Min. Diskon */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Min. Diskon</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.min_discount_amount 
+                    ? formatRupiah(selectedDiscount.min_discount_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Max. Diskon */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Max. Diskon</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.max_discount_amount 
+                    ? formatRupiah(selectedDiscount.max_discount_amount) 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Min. Item */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Min. Item (Qty)</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.min_item_quantity 
+                    ? `${selectedDiscount.min_item_quantity} item` 
+                    : '-'}
+                </span>
+              </div>
+              
+              {/* Max. Item */}
+              <div className="bg-muted/50 p-2 rounded">
+                <span className="block text-xs text-muted-foreground">Max. Item (Qty)</span>
+                <span className="font-medium text-sm">
+                  {selectedDiscount.max_item_quantity 
+                    ? `${selectedDiscount.max_item_quantity} item` 
+                    : '-'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    <DialogFooter>
+      <Button onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+      {/* Form Modal (Create/Edit) - LANJUTAN DI PART 2 */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedDiscount ? 'Edit Diskon' : 'Tambah Diskon Baru'}
+            </DialogTitle>
+            <DialogDescription>
+              Diskon akan dibuat sebagai General (berlaku untuk semua cabang).
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="grid gap-4 py-4">
+              {/* Nama Diskon */}
+              <div className="space-y-2">
+                <Label htmlFor="discount_name">Nama Diskon *</Label>
+                <Input
+                  id="discount_name"
+                  value={formData.discount_name}
+                  onChange={(e) => setFormData({ ...formData, discount_name: e.target.value })}
+                  placeholder="Masukkan nama diskon"
+                  required
+                />
+              </div>
+
+              {/* Kode Diskon */}
+<div className="space-y-2">
+  <Label htmlFor="discount_code">Kode Diskon</Label>
+  <Input
+    id="discount_code"
+    value={formData.discount_code}
+    onChange={(e) => setFormData({ ...formData, discount_code: e.target.value.toUpperCase() })}
+    placeholder="Masukkan kode unik"
+    maxLength={20}
+    className="font-mono uppercase"
+  />
+  <p className="text-xs text-muted-foreground">
+    Masukkan kode unik untuk diskon ini
+  </p>
+</div>
+
+              {/* Tipe & Nilai */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="discount_type">Tipe Diskon *</Label>
+                  <Select
+                    value={formData.discount_type}
+                    onValueChange={(value: any) => setFormData({ ...formData, discount_type: value, value: '' })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PERCENTAGE">Persentase (%)</SelectItem>
+                      <SelectItem value="FIXED_AMOUNT">Nominal (Rp)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="value">
+                    Nilai * {formData.discount_type === 'PERCENTAGE' ? '(%)' : '(Rp)'}
+                  </Label>
+                  {formData.discount_type === 'PERCENTAGE' ? (
+                    <Input
+                      id="value"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={formData.value}
+                      onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                      placeholder="Masukkan nilai diskon"
+                      required
+                    />
+                  ) : (
+                    <div className="relative">
+  <Input
+    id="value"
+    value={formData.value ? `Rp. ${Number(formData.value).toLocaleString('id-ID')}` : ''}
+    onChange={(e) => handleNumberInput(e, 'value')}
+    placeholder="Masukkan nilai potongan"
+    required
+  />
+</div>
+
+                  )}
+                </div>
+              </div>
+
+              {/* Periode */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="start_date">Mulai *</Label>
+                  <Input
+                    id="start_date"
+                    type="date"
+                    value={formData.start_date}
+                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="end_date">Selesai *</Label>
+                  <Input
+                    id="end_date"
+                    type="date"
+                    value={formData.end_date}
+                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Berlaku Untuk */}
+              <div className="space-y-2">
+                <Label htmlFor="applies_to">Berlaku Untuk *</Label>
+                <Select
+                  value={formData.applies_to}
+                  onValueChange={(value: any) => setFormData({ ...formData, applies_to: value, product_ids: [], category_ids: [] })}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ENTIRE_TRANSACTION">Seluruh Transaksi</SelectItem>
+                    <SelectItem value="SPECIFIC_CATEGORIES">Kategori Tertentu</SelectItem>
+                    <SelectItem value="SPECIFIC_PRODUCTS">Produk Tertentu</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* ✅ UBAH: Target Selection untuk Kategori (Multi-select dengan Checkbox) */}
+              {formData.applies_to === 'SPECIFIC_CATEGORIES' && (
+                <div className="space-y-2">
+                  <Label>Pilih Kategori * ({formData.category_ids.length} dipilih)</Label>
+                  <Card className="p-4 max-h-64 overflow-y-auto">
+                    {categories.filter((cat) => !cat.branch_id).length > 0 ? (
+                      <div className="space-y-2">
+                        {categories
+                          .filter((cat) => !cat.branch_id)
+                          .map((cat) => (
+                            <div key={cat.category_id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={cat.category_id}
+                                checked={formData.category_ids.includes(cat.category_id)}
+                                onCheckedChange={(checked) => handleCategoryToggle(cat.category_id, checked as boolean)}
+                              />
+                              <label
+                                htmlFor={cat.category_id}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {cat.category_name}
+                              </label>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Tidak ada kategori general tersedia
+                      </p>
+                    )}
+                  </Card>
+                  {formData.category_ids.length === 0 && (
+                    <p className="text-xs text-destructive">Minimal pilih 1 kategori</p>
+                  )}
+                </div>
+              )}
+
+              {/* ✅ UBAH: Target Selection untuk Produk (Multi-select dengan Checkbox) */}
+              {formData.applies_to === 'SPECIFIC_PRODUCTS' && (
+                <div className="space-y-2">
+                  <Label>Pilih Produk * ({formData.product_ids.length} dipilih)</Label>
+                  <Card className="p-4 max-h-64 overflow-y-auto">
+                    {products.filter((prod) => !prod.branch_id).length > 0 ? (
+                      <div className="space-y-2">
+                        {products
+                          .filter((prod) => !prod.branch_id)
+                          .map((prod) => (
+                            <div key={prod.product_id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={prod.product_id}
+                                checked={formData.product_ids.includes(prod.product_id)}
+                                onCheckedChange={(checked) => handleProductToggle(prod.product_id, checked as boolean)}
+                              />
+                              <label
+                                htmlFor={prod.product_id}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {prod.product_name}
+                              </label>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Tidak ada produk general tersedia
+                      </p>
+                    )}
+                  </Card>
+                  {formData.product_ids.length === 0 && (
+                    <p className="text-xs text-destructive">Minimal pilih 1 produk</p>
+                  )}
+                </div>
+              )}
+
+              {/* Advanced Rules Section */}
+              <div className="border-t pt-4 mt-2">
+                <p className="font-medium mb-3 text-sm">Aturan Tambahan (Opsional)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Min. Transaksi (Rp)</Label>
+                    <Input
+                      value={displayFormatted(formData.min_transaction_amount)}
+                      onChange={(e) => handleNumberInput(e, 'min_transaction_amount')}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Max. Transaksi (Rp)</Label>
+                    <Input
+                      value={displayFormatted(formData.max_transaction_amount)}
+                      onChange={(e) => handleNumberInput(e, 'max_transaction_amount')}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Min. Item (Qty)</Label>
+                    <Input
+                      value={displayFormatted(formData.min_item_quantity)}
+                      onChange={(e) => handleNumberInput(e, 'min_item_quantity')}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Max. Item (Qty)</Label>
+                    <Input
+                      value={displayFormatted(formData.max_item_quantity)}
+                      onChange={(e) => handleNumberInput(e, 'max_item_quantity')}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Min. Diskon (Rp)</Label>
+                    <Input
+                      value={displayFormatted(formData.min_discount_amount)}
+                      onChange={(e) => handleNumberInput(e, 'min_discount_amount')}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Max. Diskon (Rp)</Label>
+                    <Input
+                      value={displayFormatted(formData.max_discount_amount)}
+                      onChange={(e) => handleNumberInput(e, 'max_discount_amount')}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={handleCloseModal}>
+                Batal
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={
+                  isSubmitting || 
+                  (formData.applies_to === 'SPECIFIC_CATEGORIES' && formData.category_ids.length === 0) ||
+                  (formData.applies_to === 'SPECIFIC_PRODUCTS' && formData.product_ids.length === 0)
+                }
+              >
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {selectedDiscount ? 'Update' : 'Simpan'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+>>>>>>> f9f50d2d58665f814313d421fc316cbd3d085a17
       {/* Archive Confirmation */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
