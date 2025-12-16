@@ -440,20 +440,6 @@ export default function BranchDiscountsPage() {
         </div>
       </Card>
 
-      {/* Search */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Cari nama diskon..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Table */}
       <Card>
         <CardHeader>
@@ -520,7 +506,7 @@ export default function BranchDiscountsPage() {
                         {discount.is_active === false ? (
                           <Badge variant="secondary">Diarsipkan</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default" className="bg-black">
                             Aktif
                           </Badge>
                         )}
@@ -837,7 +823,6 @@ export default function BranchDiscountsPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus diskon <strong>{selectedDiscount?.discount_name}</strong> secara permanen?
               <br />
-              <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

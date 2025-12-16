@@ -326,26 +326,14 @@ export default function ExpensesPage() {
       </Alert>
 
       {/* Summary Card */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 ">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Pengeluaran</CardTitle>
+            <CardTitle className="text-sm text-black font-medium text-muted-foreground">Total Pengeluaran</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{formatRupiah(totalExpenses)}</div>
+            <div className="text-2xl font-bold text-black">{formatRupiah(totalExpenses)}</div>
             <p className="text-xs text-muted-foreground mt-1">{filteredExpenses.length} transaksi</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Cari deskripsi pengeluaran..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -391,7 +379,7 @@ export default function ExpensesPage() {
                         )}
                       </TableCell>
                       <TableCell className="font-medium">{expense.description}</TableCell>
-                      <TableCell className="font-bold text-destructive">{formatRupiah(Number(expense.amount))}</TableCell>
+                      <TableCell className="font-bold text-black">{formatRupiah(Number(expense.amount))}</TableCell>
                       <TableCell>
                         {expense.proof_image ? (
                           <Button
@@ -499,7 +487,7 @@ export default function ExpensesPage() {
                   type="text"
                   value={formData.amount ? `Rp. ${Number(formData.amount).toLocaleString('id-ID')}` : ''}
                   onChange={handleAmountChange}
-                  placeholder="Masukkan jumlah"
+                  placeholder="Masukkan jumlah pengeluaran"
                   required
                 />
               </div>
@@ -511,7 +499,7 @@ export default function ExpensesPage() {
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Contoh: Beli galon air"
+                  placeholder="Masukkan deskripsi pengeluaran"
                   required
                 />
               </div>
@@ -626,7 +614,6 @@ export default function ExpensesPage() {
               Apakah Anda yakin ingin menghapus pengeluaran <strong>{selectedExpense?.description}</strong> sebesar{' '}
               <strong>{formatRupiah(Number(selectedExpense?.amount || 0))}</strong>?
               <br />
-              <strong className="text-destructive">Data dan bukti gambar akan dihapus permanen!</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

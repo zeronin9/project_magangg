@@ -257,20 +257,6 @@ export default function ShiftSchedulesPage() {
         </AlertDescription>
       </Alert>
 
-      {/* Search */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Cari nama shift..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Table */}
       <Card>
         <CardHeader>
@@ -313,7 +299,7 @@ export default function ShiftSchedulesPage() {
                         {shift.is_active === false ? (
                           <Badge variant="secondary">Non-Aktif</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default" className="bg-black">
                             Aktif
                           </Badge>
                         )}
@@ -410,7 +396,7 @@ export default function ShiftSchedulesPage() {
                   id="shift_name"
                   value={formData.shift_name}
                   onChange={(e) => setFormData({ ...formData, shift_name: e.target.value })}
-                  placeholder="Contoh: Shift Pagi"
+                  placeholder="Masukkan nama shift"
                   required
                 />
               </div>

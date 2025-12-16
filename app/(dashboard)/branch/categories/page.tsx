@@ -339,20 +339,6 @@ export default function BranchCategoriesPage() {
         </div>
       </Card>
 
-      {/* Search */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Cari nama kategori..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="max-w-sm"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Table */}
       <Card>
         <CardHeader>
@@ -407,7 +393,7 @@ export default function BranchCategoriesPage() {
                         {category.is_active === false ? (
                           <Badge variant="secondary">Diarsipkan</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default" className="bg-black">
                             Aktif
                           </Badge>
                         )}
@@ -535,7 +521,7 @@ export default function BranchCategoriesPage() {
                   id="category_name"
                   value={formData.category_name}
                   onChange={(e) => setFormData({ ...formData, category_name: e.target.value })}
-                  placeholder="Contoh: Promo Warga Lokal"
+                  placeholder="Masukkan nama kategori"
                   required
                 />
               </div>
@@ -608,7 +594,6 @@ export default function BranchCategoriesPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus kategori <strong>{selectedCategory?.category_name}</strong> secara permanen?
               <br />
-              <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

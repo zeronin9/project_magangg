@@ -916,7 +916,6 @@ export default function BranchProductsPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
               <br />
-              <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

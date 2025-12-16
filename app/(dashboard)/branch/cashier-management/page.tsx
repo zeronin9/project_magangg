@@ -281,7 +281,6 @@ function CashierAccountsTab() {
       
       // Karena tidak ada endpoint restore khusus, gunakan UPDATE
       // PUT /cashier/login-account/:id dengan is_active=true
-      // Backend harus support field is_active di body atau set otomatis saat update
       const payload = {
         full_name: selectedAccount.full_name,
         is_active: true, // Kirim flag ini ke backend
@@ -387,7 +386,9 @@ function CashierAccountsTab() {
       {/* Table */}
       <Card>
         <CardHeader>
+          <div className="flex gap-2">
           <CardTitle>Daftar Akun Kasir</CardTitle>
+          </div>
           <CardDescription>
             Total {accounts.length} akun {showArchived ? 'diarsipkan' : 'aktif'}
           </CardDescription>
@@ -420,7 +421,7 @@ function CashierAccountsTab() {
                         {showArchived ? (
                           <Badge variant="secondary">Diarsipkan</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default" className="bg-black">
                             Aktif
                           </Badge>
                         )}
@@ -460,7 +461,7 @@ function CashierAccountsTab() {
                                     setSelectedAccount(account);
                                     setIsRestoreOpen(true);
                                   }}
-                                  className="text-green-600 font-medium"
+                                  className="text-black font-medium"
                                 >
                                   <RotateCcw className="mr-2 h-4 w-4" />
                                   Aktifkan Kembali
@@ -631,7 +632,7 @@ function CashierAccountsTab() {
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-green-600">
+            <DialogTitle className="flex items-center gap-2 text-black">
               <RotateCcw className="h-5 w-5" />
               Aktifkan Kembali?
             </DialogTitle>
@@ -645,7 +646,7 @@ function CashierAccountsTab() {
             <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={handleRestore} disabled={isSubmitting}>
+            <Button className="bg-black" onClick={handleRestore} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Aktifkan Kembali
             </Button>
@@ -657,27 +658,19 @@ function CashierAccountsTab() {
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
+            <DialogTitle className="text-black flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedAccount?.full_name}</strong> secara permanen?
-              <br />
-              <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
-              <br />
-              {selectedAccount && (
-                <span className="text-xs text-muted-foreground mt-2 block">
-                  Note: Jika akun memiliki history, gunakan Arsipkan saja.
-                </span>
-              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>
@@ -730,22 +723,14 @@ const loadData = async () => {
     setError('');
     
     // GET /cashier/pin-operator
-    const response = await pinOperatorAPI.getAll();
+    // UPDATE: Menambahkan parameter true untuk mengambil semua data (termasuk arsip)
+    const response = await pinOperatorAPI.getAll(true);
     const operatorsData = Array.isArray(response.data) ? response.data : [];
-
-    // 🔍 DEBUG: Tampilkan semua data yang diterima
-    console.log('🔍 RAW API Response (PIN Operators):', operatorsData);
-    console.log('🔍 Total data dari API:', operatorsData.length);
-    console.log('🔍 Data aktif:', operatorsData.filter((o: any) => o.is_active !== false).length);
-    console.log('🔍 Data non-aktif:', operatorsData.filter((o: any) => o.is_active === false).length);
 
     // Filter berdasarkan is_active
     const filteredList = showArchived
       ? operatorsData.filter((o: any) => o.is_active === false)
       : operatorsData.filter((o: any) => o.is_active !== false);
-
-    console.log('🔍 Filtered List:', filteredList);
-    console.log('🔍 Show Archived:', showArchived);
 
     setOperators(filteredList);
   } catch (err: any) {
@@ -993,7 +978,7 @@ const loadData = async () => {
                         {operator.is_active === false ? (
                           <Badge variant="secondary">Diarsipkan</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-green-600">
+                          <Badge variant="default" className="bg-black">
                             Aktif
                           </Badge>
                         )}
@@ -1033,7 +1018,7 @@ const loadData = async () => {
                                     setSelectedOperator(operator);
                                     setIsRestoreOpen(true);
                                   }}
-                                  className="text-green-600 font-medium"
+                                  className="text-black font-medium"
                                 >
                                   <RotateCcw className="mr-2 h-4 w-4" />
                                   Aktifkan Kembali
@@ -1189,7 +1174,7 @@ const loadData = async () => {
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-green-600">
+            <DialogTitle className="flex items-center gap-2 text-black">
               <RotateCcw className="h-5 w-5" />
               Aktifkan Kembali?
             </DialogTitle>
@@ -1203,7 +1188,7 @@ const loadData = async () => {
             <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button className="bg-green-600 hover:bg-green-700" onClick={handleRestore} disabled={isSubmitting}>
+            <Button className="bg-black" onClick={handleRestore} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Aktifkan Kembali
             </Button>
@@ -1215,21 +1200,20 @@ const loadData = async () => {
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-destructive flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
+            <DialogTitle className="text-black flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 " />
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedOperator?.full_name}</strong> secara permanen?
               <br />
-              <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>
