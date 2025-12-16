@@ -27,13 +27,15 @@ export const cashierAccountAPI = {
 
 // ==================== PIN OPERATORS ====================
 export const pinOperatorAPI = {
-  getAll: () =>
-    apiClient.get('/cashier/pin-operator'),
+  // ✅ PERBAIKAN: Tambahkan parameter showAll seperti cashierAccountAPI
+  getAll: (showAll = false) =>
+    apiClient.get(`/cashier/pin-operator${showAll ? '?show_all=true' : ''}`),
   
   create: (data: { full_name: string; pin: string }) =>
     apiClient.post('/cashier/pin-operator', data),
   
-  update: (id: string, data: { full_name?: string; pin?: string }) =>
+  // ✅ PERBAIKAN: Tambahkan is_active untuk support restore
+  update: (id: string, data: { full_name?: string; pin?: string; is_active?: boolean }) =>
     apiClient.put(`/cashier/pin-operator/${id}`, data),
   
   softDelete: (id: string) =>
@@ -41,10 +43,6 @@ export const pinOperatorAPI = {
   
   hardDelete: (id: string) =>
     apiClient.delete(`/cashier/pin-operator/permanent/${id}`),
-  
-  // ✅ TAMBAHAN: Fungsi khusus untuk restore
-  restore: (id: string, data: { full_name: string }) =>
-    apiClient.put(`/cashier/pin-operator/${id}`, data),
 };
 
 // ==================== SHIFT SCHEDULES ====================
