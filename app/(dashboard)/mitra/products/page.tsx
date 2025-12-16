@@ -561,7 +561,6 @@ export default function ProductsPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
               <br/>
-              <span className="text-destructive font-medium">Aksi ini tidak dapat dibatalkan!</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

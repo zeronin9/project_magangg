@@ -374,7 +374,6 @@ export default function BranchesPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus cabang <strong>{selectedBranch?.branch_name}</strong> secara permanen?
               <br/>
-              <span className="text-destructive font-medium">Aksi ini tidak dapat dibatalkan!</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

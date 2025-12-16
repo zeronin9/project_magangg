@@ -93,7 +93,7 @@ export default function NewBranchPage() {
 
       {/* Form Card */}
       <Card className="">
-        <form onSubmit={handleSubmit} className="p-6 md:p-8">
+        <form onSubmit={handleSubmit} className="p-6 md:p-8" id="branch-form">
           <div className="space-y-6">
             {/* Branch Information Section */}
             <div className="space-y-4">
@@ -172,32 +172,29 @@ export default function NewBranchPage() {
                 </p>
               </div>
             </div>
-
-            <div className="border-t pt-6" />
-
-            {/* Form Actions */}
-            <div className="flex flex-col-reverse sm:flex-row gap-3">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => router.back()} 
-                disabled={isSubmitting}
-                className="flex-1"
-              >
-                Batal
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isSubmitting || !formData.branch_name}
-                className="flex-1"
-              >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isSubmitting ? 'Menyimpan...' : 'Simpan Cabang'}
-              </Button>
-            </div>
           </div>
         </form>
       </Card>
+
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-4 sticky bottom-0 bg-background py-4 border-t">
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={() => router.back()} 
+          disabled={isSubmitting}
+        >
+          Batal
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isSubmitting || !formData.branch_name}
+          form="branch-form"
+        >
+          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isSubmitting ? 'Menyimpan...' : 'Simpan Cabang'}
+        </Button>
+      </div>
     </div>
   );
 }

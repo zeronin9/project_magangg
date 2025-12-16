@@ -293,7 +293,7 @@ export default function EditProductPage() {
 
       {/* Form Card */}
       <Card className="">
-        <form onSubmit={handleSubmit} className="p-6 md:p-8">
+        <form onSubmit={handleSubmit} className="p-6 md:p-8" id="edit-product-form">
           <div className="space-y-6">
             {/* Image Upload */}
             <div className="space-y-3">
@@ -446,32 +446,29 @@ export default function EditProductPage() {
                 Hanya kategori general yang dapat dipilih untuk produk general
               </p>
             </div>
-
-            <div className="border-t pt-6" />
-
-            {/* Form Actions */}
-            <div className="flex flex-col-reverse sm:flex-row gap-3">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={handleCancel} 
-                disabled={isSubmitting}
-                className="flex-1"
-              >
-                Batal
-              </Button>
-              <Button 
-                type="submit" 
-                disabled={isSubmitting || !!imageError || !formData.product_name || !formData.base_price || !formData.category_id}
-                className="flex-1"
-              >
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
-              </Button>
-            </div>
           </div>
         </form>
       </Card>
+
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-4 sticky bottom-0 bg-background py-4 border-t">
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={handleCancel} 
+          disabled={isSubmitting}
+        >
+          Batal
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isSubmitting || !!imageError || !formData.product_name || !formData.base_price || !formData.category_id}
+          form="edit-product-form"
+        >
+          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+        </Button>
+      </div>
     </div>
   );
 }

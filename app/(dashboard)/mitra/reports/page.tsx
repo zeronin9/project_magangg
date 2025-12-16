@@ -460,7 +460,7 @@ export default function ReportsPage() {
               >
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 <FileText className="mr-2 h-4 w-4" />
-                Generate Laporan
+                Apply
               </Button>
             </div>
           </div>

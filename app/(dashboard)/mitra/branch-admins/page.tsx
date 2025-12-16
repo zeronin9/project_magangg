@@ -390,7 +390,6 @@ export default function BranchAdminsPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus admin <strong>{selectedAdmin?.full_name}</strong> secara permanen?
               <br/>
-              <span className="text-destructive font-medium">Aksi ini tidak dapat dibatalkan!</span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
