@@ -123,7 +123,6 @@ function CashierAccountsTab() {
   // Filter & Pagination
   const [showArchived, setShowArchived] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,16 +146,20 @@ function CashierAccountsTab() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showArchived]);
+  }, [showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadData = async () => {
     try {
       setIsLoading(true);
+      setError('');
+      
+      // GET /cashier/login-account?show_all=true
       const response = await cashierAccountAPI.getAll(true);
       const accountsData = Array.isArray(response.data) ? response.data : [];
 
+      // Filter berdasarkan is_active
       const filteredList = showArchived
         ? accountsData.filter((a: any) => a.is_active === false)
         : accountsData.filter((a: any) => a.is_active !== false);
@@ -206,17 +209,12 @@ function CashierAccountsTab() {
 
     try {
       if (selectedAccount) {
-        // ✅ EDIT: Kirim full_name, username (jika berubah), dan password (opsional)
+        // PUT /cashier/login-account/:id
         const payload: any = { 
           full_name: formData.full_name,
         };
         
-        // ✅ KIRIM username jika berbeda dari yang lama
-        if (formData.username !== selectedAccount.username) {
-          payload.username = formData.username;
-        }
-        
-        // ✅ KIRIM password jika diisi
+        // Password opsional saat edit
         if (formData.password && formData.password.trim() !== '') {
           payload.password = formData.password;
         }
@@ -224,15 +222,21 @@ function CashierAccountsTab() {
         console.log('📤 UPDATE Payload:', payload);
         await cashierAccountAPI.update(selectedAccount.user_id, payload);
       } else {
-        // ✅ CREATE: Validasi password wajib
+        // POST /cashier/login-account
         if (!formData.password || formData.password.trim() === '') {
           alert('Password wajib diisi untuk akun baru');
           setIsSubmitting(false);
           return;
         }
         
-        console.log('📤 CREATE Payload:', formData);
-        await cashierAccountAPI.create(formData);
+        const payload = {
+          full_name: formData.full_name,
+          username: formData.username,
+          password: formData.password,
+        };
+        
+        console.log('📤 CREATE Payload:', payload);
+        await cashierAccountAPI.create(payload);
       }
 
       await loadData();
@@ -252,8 +256,11 @@ function CashierAccountsTab() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      
+      // DELETE /cashier/login-account/:id (Soft Delete)
       console.log('🗑️ Soft Delete:', selectedAccount.user_id);
       await cashierAccountAPI.softDelete(selectedAccount.user_id);
+      
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedAccount(null);
@@ -272,15 +279,16 @@ function CashierAccountsTab() {
     try {
       await delay(1000);
       
-      // ✅ KIRIM UPDATE untuk mengaktifkan kembali
-      // Backend akan otomatis set is_active=true saat update
+      // Karena tidak ada endpoint restore khusus, gunakan UPDATE
+      // PUT /cashier/login-account/:id dengan is_active=true
+      // Backend harus support field is_active di body atau set otomatis saat update
       const payload = {
         full_name: selectedAccount.full_name,
-        username: selectedAccount.username,
+        is_active: true, // Kirim flag ini ke backend
       };
       
       console.log('🔄 RESTORE Payload:', payload);
-      await cashierAccountAPI.restore(selectedAccount.user_id, payload);
+      await cashierAccountAPI.update(selectedAccount.user_id, payload);
 
       await loadData();
       setIsRestoreOpen(false);
@@ -299,8 +307,11 @@ function CashierAccountsTab() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      
+      // DELETE /cashier/login-account/permanent/:id
       console.log('💀 Hard Delete:', selectedAccount.user_id);
       await cashierAccountAPI.hardDelete(selectedAccount.user_id);
+      
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedAccount(null);
@@ -313,21 +324,12 @@ function CashierAccountsTab() {
     }
   };
 
-  // Filter berdasarkan search
-  const filteredAccounts = accounts.filter((account) => {
-    const searchLower = searchQuery.toLowerCase();
-    return (
-      account.full_name.toLowerCase().includes(searchLower) ||
-      account.username.toLowerCase().includes(searchLower)
-    );
-  });
-
   // Pagination
-  const totalItems = filteredAccounts.length;
+  const totalItems = accounts.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedAccounts = filteredAccounts.slice(startIndex, endIndex);
+  const paginatedAccounts = accounts.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
@@ -369,13 +371,7 @@ function CashierAccountsTab() {
       </Alert>
 
       {/* Actions Bar */}
-      <div className="flex flex-col gap-2 @sm:flex-row @sm:items-center @sm:justify-between">
-        <Input
-          placeholder="Cari nama atau username..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="max-w-sm"
-        />
+      <div className="flex flex-col gap-2 @sm:flex-row @sm:items-center @sm:justify-end">
         <div className="flex gap-2">
           <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
             <Archive className="mr-2 h-4 w-4" />
@@ -393,7 +389,7 @@ function CashierAccountsTab() {
         <CardHeader>
           <CardTitle>Daftar Akun Kasir</CardTitle>
           <CardDescription>
-            Total {filteredAccounts.length} akun {showArchived ? 'diarsipkan' : 'aktif'}
+            Total {accounts.length} akun {showArchived ? 'diarsipkan' : 'aktif'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -401,7 +397,7 @@ function CashierAccountsTab() {
             <div className="text-center py-12">
               <Users className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {searchQuery ? 'Tidak ada hasil pencarian' : showArchived ? 'Tidak ada akun di arsip' : 'Belum ada akun kasir'}
+                {showArchived ? 'Tidak ada akun di arsip' : 'Belum ada akun kasir'}
               </p>
             </div>
           ) : (
@@ -535,7 +531,7 @@ function CashierAccountsTab() {
             <DialogTitle>{selectedAccount ? 'Edit Akun Kasir' : 'Tambah Akun Kasir Baru'}</DialogTitle>
             <DialogDescription>
               {selectedAccount
-                ? 'Perbarui informasi akun kasir. Username dan password boleh dikosongkan jika tidak ingin diubah.'
+                ? 'Perbarui informasi akun kasir. Password boleh dikosongkan jika tidak ingin diubah.'
                 : 'Buat akun login baru untuk tablet kasir'}
             </DialogDescription>
           </DialogHeader>
@@ -559,13 +555,13 @@ function CashierAccountsTab() {
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   placeholder="Contoh: kasir_melawai_1"
-                  required
+                  required={!selectedAccount}
+                  disabled={!!selectedAccount}
                   className="font-mono"
                 />
                 {selectedAccount && (
-                  <p className="text-xs text-amber-600 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" />
-                    Hati-hati saat mengubah username, pastikan tidak bentrok dengan akun lain
+                  <p className="text-xs text-muted-foreground">
+                    Username tidak dapat diubah setelah dibuat
                   </p>
                 )}
               </div>
@@ -701,7 +697,6 @@ function PinOperatorsTab() {
   // Filter & Pagination
   const [showArchived, setShowArchived] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -720,27 +715,46 @@ function PinOperatorsTab() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showArchived]);
+  }, [showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const response = await pinOperatorAPI.getAll();
-      const operatorsData = Array.isArray(response.data) ? response.data : [];
+  // Di PinOperatorsTab
+const loadData = async () => {
+  try {
+    setIsLoading(true);
+    setError('');
+    
+    // GET /cashier/pin-operator
+    const response = await pinOperatorAPI.getAll();
+    const operatorsData = Array.isArray(response.data) ? response.data : [];
 
-      setOperators(operatorsData);
-    } catch (err: any) {
-      setError(err.message || 'Gagal memuat data operator PIN');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    // 🔍 DEBUG: Tampilkan semua data yang diterima
+    console.log('🔍 RAW API Response (PIN Operators):', operatorsData);
+    console.log('🔍 Total data dari API:', operatorsData.length);
+    console.log('🔍 Data aktif:', operatorsData.filter((o: any) => o.is_active !== false).length);
+    console.log('🔍 Data non-aktif:', operatorsData.filter((o: any) => o.is_active === false).length);
+
+    // Filter berdasarkan is_active
+    const filteredList = showArchived
+      ? operatorsData.filter((o: any) => o.is_active === false)
+      : operatorsData.filter((o: any) => o.is_active !== false);
+
+    console.log('🔍 Filtered List:', filteredList);
+    console.log('🔍 Show Archived:', showArchived);
+
+    setOperators(filteredList);
+  } catch (err: any) {
+    console.error('❌ Error loading operators:', err);
+    setError(err.message || 'Gagal memuat data operator PIN');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleOpenModal = (operator?: PinOperator) => {
     if (operator) {
@@ -787,18 +801,26 @@ function PinOperatorsTab() {
 
     try {
       if (selectedOperator) {
+        // PUT /cashier/pin-operator/:id
         const payload: any = { full_name: formData.full_name };
         if (formData.pin) {
           payload.pin = formData.pin;
         }
         await pinOperatorAPI.update(selectedOperator.cashier_id, payload);
       } else {
+        // POST /cashier/pin-operator
         if (!formData.pin) {
           alert('PIN wajib diisi untuk operator baru');
           setIsSubmitting(false);
           return;
         }
-        await pinOperatorAPI.create(formData);
+        
+        const payload = {
+          full_name: formData.full_name,
+          pin: formData.pin,
+        };
+        
+        await pinOperatorAPI.create(payload);
       }
 
       await loadData();
@@ -817,7 +839,10 @@ function PinOperatorsTab() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      
+      // DELETE /cashier/pin-operator/:id
       await pinOperatorAPI.softDelete(selectedOperator.cashier_id);
+      
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedOperator(null);
@@ -834,9 +859,14 @@ function PinOperatorsTab() {
     setIsSubmitting(true);
     try {
       await delay(1000);
-      await pinOperatorAPI.restore(selectedOperator.cashier_id, {
+      
+      // PUT /cashier/pin-operator/:id dengan is_active=true
+      const payload = {
         full_name: selectedOperator.full_name,
-      });
+        is_active: true,
+      };
+      
+      await pinOperatorAPI.update(selectedOperator.cashier_id, payload);
 
       await loadData();
       setIsRestoreOpen(false);
@@ -854,7 +884,10 @@ function PinOperatorsTab() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      
+      // DELETE /cashier/pin-operator/permanent/:id
       await pinOperatorAPI.hardDelete(selectedOperator.cashier_id);
+      
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedOperator(null);
@@ -866,19 +899,12 @@ function PinOperatorsTab() {
     }
   };
 
-  // Filter
-  const filteredOperators = operators.filter((operator) => {
-    const matchesSearch = operator.full_name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesArchive = showArchived ? !operator.is_active : operator.is_active !== false;
-    return matchesSearch && matchesArchive;
-  });
-
   // Pagination
-  const totalItems = filteredOperators.length;
+  const totalItems = operators.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedOperators = filteredOperators.slice(startIndex, endIndex);
+  const paginatedOperators = operators.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
@@ -920,13 +946,7 @@ function PinOperatorsTab() {
       </Alert>
 
       {/* Actions Bar */}
-      <div className="flex flex-col gap-2 @sm:flex-row @sm:items-center @sm:justify-between">
-        <Input
-          placeholder="Cari nama operator..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="max-w-sm"
-        />
+      <div className="flex flex-col gap-2 @sm:flex-row @sm:items-center @sm:justify-end">
         <div className="flex gap-2">
           <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
             <Archive className="mr-2 h-4 w-4" />
@@ -944,7 +964,7 @@ function PinOperatorsTab() {
         <CardHeader>
           <CardTitle>Daftar Operator PIN</CardTitle>
           <CardDescription>
-            Total {filteredOperators.length} operator {showArchived ? 'diarsipkan' : 'aktif'}
+            Total {operators.length} operator {showArchived ? 'diarsipkan' : 'aktif'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -952,11 +972,7 @@ function PinOperatorsTab() {
             <div className="text-center py-12">
               <UserCog className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {searchQuery
-                  ? 'Tidak ada hasil pencarian'
-                  : showArchived
-                  ? 'Tidak ada operator di arsip'
-                  : 'Belum ada operator PIN'}
+                {showArchived ? 'Tidak ada operator di arsip' : 'Belum ada operator PIN'}
               </p>
             </div>
           ) : (
@@ -971,7 +987,7 @@ function PinOperatorsTab() {
                 </TableHeader>
                 <TableBody>
                   {paginatedOperators.map((operator) => (
-                    <TableRow key={operator.cashier_id} className={showArchived ? 'opacity-60' : ''}>
+                    <TableRow key={operator.cashier_id} className={showArchived ? 'opacity-60 bg-muted/30' : ''}>
                       <TableCell className="font-medium">{operator.full_name}</TableCell>
                       <TableCell>
                         {operator.is_active === false ? (
@@ -992,7 +1008,7 @@ function PinOperatorsTab() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Aksi</DropdownMenuLabel>
 
-                            {operator.is_active !== false ? (
+                            {!showArchived ? (
                               <>
                                 <DropdownMenuItem onClick={() => handleOpenModal(operator)}>
                                   <Pencil className="mr-2 h-4 w-4" />
