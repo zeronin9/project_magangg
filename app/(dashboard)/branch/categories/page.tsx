@@ -90,24 +90,43 @@ export default function BranchCategoriesPage() {
     category_name: '',
   });
 
+  // ✅ PERBAIKAN: Hapus showArchived dari dependency agar tidak fetch ulang
+  // Kita fetch semua data di awal, filtering dilakukan di client-side
   useEffect(() => {
     loadData();
-  }, [showArchived]);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, showArchived, scopeFilter]);
 
+  // ✅ PERBAIKAN: Delay diatur ke 3000ms (3 detik)
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const response = await branchCategoryAPI.getAll();
-      const categoriesData = Array.isArray(response.data) ? response.data : [];
+      setError('');
 
-      setCategories(categoriesData);
+      // ✅ LOGIKA BARU: Fetch 'general' & 'local' secara terpisah lalu gabung.
+      // Alasannya: Endpoint default backend memfilter is_active=true.
+      // Endpoint ?type=... di backend TIDAK memfilter is_active, jadi kita bisa dapat data arsip.
+      const [generalRes, localRes] = await Promise.all([
+        branchCategoryAPI.getAll('general'),
+        branchCategoryAPI.getAll('local')
+      ]);
+
+      const generalData = Array.isArray(generalRes.data) ? generalRes.data : [];
+      const localData = Array.isArray(localRes.data) ? localRes.data : [];
+
+      // Gabungkan dan urutkan berdasarkan nama
+      const allData = [...generalData, ...localData].sort((a, b) => 
+        a.category_name.localeCompare(b.category_name)
+      );
+
+      setCategories(allData);
     } catch (err: any) {
+      console.error(err);
       setError(err.message || 'Gagal memuat data kategori');
     } finally {
       setIsLoading(false);
@@ -142,6 +161,9 @@ export default function BranchCategoriesPage() {
     setIsSubmitting(true);
 
     try {
+      // ✅ Delay 3 detik
+      await delay(3000);
+
       if (selectedCategory) {
         await branchCategoryAPI.update(selectedCategory.category_id, formData);
       } else {
@@ -163,8 +185,11 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      // ✅ Delay 3 detik
+      await delay(3000);
+      
       await branchCategoryAPI.softDelete(selectedCategory.category_id);
+      
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedCategory(null);
@@ -180,7 +205,8 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      // ✅ Delay 3 detik
+      await delay(3000);
 
       await branchCategoryAPI.update(selectedCategory.category_id, {
         category_name: selectedCategory.category_name,
@@ -202,8 +228,11 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      // ✅ Delay 3 detik
+      await delay(3000);
+      
       await branchCategoryAPI.hardDelete(selectedCategory.category_id);
+      
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedCategory(null);
@@ -218,7 +247,9 @@ export default function BranchCategoriesPage() {
   // Filter
   const filteredCategories = categories.filter((category) => {
     const matchesSearch = category.category_name.toLowerCase().includes(searchQuery.toLowerCase());
+    // Logika arsip: Jika showArchived true -> tampilkan non-aktif. Jika false -> tampilkan aktif.
     const matchesArchive = showArchived ? category.is_active === false : category.is_active !== false;
+    
     const matchesScope =
       scopeFilter === 'all'
         ? true

@@ -50,8 +50,10 @@ import {
   Clock,
   AlertCircle,
   Loader2,
-  ToggleLeft,
-  ToggleRight,
+  Archive, // Icon Arsip
+  RotateCcw, // Icon Restore
+  Trash2, // Icon Hapus Permanen
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ShiftSchedule {
@@ -76,6 +78,9 @@ export default function ShiftSchedulesPage() {
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false); // Modal Arsip
+  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false); // Modal Hard Delete
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false); // Modal Restore
   const [selectedShift, setSelectedShift] = useState<ShiftSchedule | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -94,6 +99,7 @@ export default function ShiftSchedulesPage() {
     setCurrentPage(1);
   }, [searchQuery, showInactive]);
 
+  // ✅ DELAY 3 DETIK (3000ms)
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadData = async () => {
@@ -144,6 +150,9 @@ export default function ShiftSchedulesPage() {
     setIsSubmitting(true);
 
     try {
+      // ✅ Delay 3 detik sebelum eksekusi
+      await delay(3000);
+
       if (selectedShift) {
         await shiftScheduleAPI.update(selectedShift.shift_schedule_id, formData);
       } else {
@@ -160,20 +169,71 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  const handleToggleActive = async (shift: ShiftSchedule) => {
+  // ✅ IMPLEMENTASI SOFT DELETE (Sesuai Doc 4.4)
+  const handleSoftDelete = async () => {
+    if (!selectedShift) return;
     setIsSubmitting(true);
+
     try {
-      await delay(1500);
-      await shiftScheduleAPI.update(shift.shift_schedule_id, {
-        shift_name: shift.shift_name,
-        start_time: shift.start_time,
-        end_time: shift.end_time,
-        is_active: !shift.is_active,
+      await delay(3000); // Delay 3 detik
+      console.log('🗑️ Soft Delete:', selectedShift.shift_schedule_id);
+      
+      // Panggil endpoint DELETE /:id
+      await shiftScheduleAPI.softDelete(selectedShift.shift_schedule_id);
+
+      await loadData();
+      setIsSoftDeleteOpen(false);
+      setSelectedShift(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal menonaktifkan shift');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ✅ IMPLEMENTASI RESTORE / UPDATE ACTIVE (Sesuai Doc 4.3)
+  const handleRestore = async () => {
+    if (!selectedShift) return;
+    setIsSubmitting(true);
+
+    try {
+      await delay(3000); // Delay 3 detik
+      
+      // Gunakan endpoint UPDATE untuk set is_active: true
+      await shiftScheduleAPI.update(selectedShift.shift_schedule_id, {
+        is_active: true
       });
 
       await loadData();
+      setIsRestoreOpen(false);
+      setSelectedShift(null);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal mengubah status shift');
+      alert(err.response?.data?.message || 'Gagal mengaktifkan shift');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ✅ IMPLEMENTASI HARD DELETE (Sesuai Doc 4.5)
+  const handleHardDelete = async () => {
+    if (!selectedShift) return;
+    setIsSubmitting(true);
+
+    try {
+      await delay(3000); // Delay 3 detik
+      console.log('💀 Hard Delete:', selectedShift.shift_schedule_id);
+
+      // Panggil endpoint DELETE /permanent/:id
+      await shiftScheduleAPI.hardDelete(selectedShift.shift_schedule_id);
+
+      await loadData();
+      setIsHardDeleteOpen(false);
+      setSelectedShift(null);
+    } catch (err: any) {
+      console.error('❌ Hard Delete Error:', err);
+      // Menangani error jika data sudah pernah dipakai (Foreign Key constraint)
+      const errorMessage = err.response?.data?.message || 'Gagal menghapus shift secara permanen';
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -230,8 +290,8 @@ export default function ShiftSchedulesPage() {
         </div>
         <div className="grid grid-cols-2 gap-2 @md:flex">
           <Button variant={showInactive ? 'default' : 'outline'} onClick={() => setShowInactive(!showInactive)}>
-            {showInactive ? <ToggleRight className="mr-2 h-4 w-4" /> : <ToggleLeft className="mr-2 h-4 w-4" />}
-            {showInactive ? 'Tampilkan Aktif' : 'Tampilkan Non-Aktif'}
+            <Archive className="mr-2 h-4 w-4" />
+            {showInactive ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
           <Button onClick={() => handleOpenModal()}>
             <Plus className="mr-2 h-4 w-4" />
@@ -291,7 +351,7 @@ export default function ShiftSchedulesPage() {
                 </TableHeader>
                 <TableBody>
                   {paginatedShifts.map((shift) => (
-                    <TableRow key={shift.shift_schedule_id}>
+                    <TableRow key={shift.shift_schedule_id} className={shift.is_active === false ? 'opacity-60 bg-muted/30' : ''}>
                       <TableCell className="font-medium">{shift.shift_name}</TableCell>
                       <TableCell>{shift.start_time}</TableCell>
                       <TableCell>{shift.end_time}</TableCell>
@@ -314,26 +374,51 @@ export default function ShiftSchedulesPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Aksi</DropdownMenuLabel>
 
-                            <DropdownMenuItem onClick={() => handleOpenModal(shift)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit
+                            {!showInactive ? (
+                              <>
+                                <DropdownMenuItem onClick={() => handleOpenModal(shift)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedShift(shift);
+                                    setIsSoftDeleteOpen(true);
+                                  }}
+                                  className="text-black"
+                                >
+                                  <Archive className="mr-2 h-4 w-4" />
+                                  Arsipkan (Soft Delete)
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedShift(shift);
+                                    setIsRestoreOpen(true);
+                                  }}
+                                  className="text-green-600 font-medium"
+                                >
+                                  <RotateCcw className="mr-2 h-4 w-4" />
+                                  Aktifkan Kembali
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                setSelectedShift(shift);
+                                setIsHardDeleteOpen(true);
+                              }}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Hapus Permanen
                             </DropdownMenuItem>
 
-                            <DropdownMenuSeparator />
-
-                            <DropdownMenuItem onClick={() => handleToggleActive(shift)}>
-                              {shift.is_active === false ? (
-                                <>
-                                  <ToggleRight className="mr-2 h-4 w-4" />
-                                  Aktifkan
-                                </>
-                              ) : (
-                                <>
-                                  <ToggleLeft className="mr-2 h-4 w-4" />
-                                  Non-Aktifkan
-                                </>
-                              )}
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -379,7 +464,7 @@ export default function ShiftSchedulesPage() {
         </div>
       )}
 
-      {/* Form Modal */}
+      {/* Form Modal (Create/Edit) */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -433,6 +518,83 @@ export default function ShiftSchedulesPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Soft Delete Confirmation Modal */}
+      <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Arsipkan Jadwal Shift?</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin mengarsipkan jadwal <strong>{selectedShift?.shift_name}</strong>?
+              <br />
+              Jadwal tidak akan muncul di pilihan kasir (Soft Delete).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button className="bg-black text-white" onClick={handleSoftDelete} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Arsipkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore Confirmation Modal */}
+      <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <RotateCcw className="h-5 w-5" />
+              Aktifkan Kembali?
+            </DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin mengaktifkan kembali jadwal <strong>{selectedShift?.shift_name}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button className="bg-green-600 hover:bg-green-700" onClick={handleRestore} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Aktifkan Kembali
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hard Delete Confirmation Modal */}
+      <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Hapus Permanen?
+            </DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin menghapus jadwal <strong>{selectedShift?.shift_name}</strong> secara permanen?
+              <br />
+              <strong className="text-destructive">Aksi ini tidak dapat dibatalkan!</strong>
+              <br />
+              <span className="text-xs text-muted-foreground mt-2 block">
+                Note: Jika jadwal pernah dipakai oleh kasir, penghapusan akan gagal. Gunakan Arsip (Soft Delete) sebagai gantinya.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus Permanen
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

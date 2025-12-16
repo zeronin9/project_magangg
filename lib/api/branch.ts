@@ -55,6 +55,14 @@ export const shiftScheduleAPI = {
   
   update: (id: string, data: { shift_name?: string; start_time?: string; end_time?: string; is_active?: boolean }) =>
     apiClient.put(`/shift-schedule/${id}`, data),
+
+  // ✅ BARU: Sesuai Doc 4.4 Soft Delete
+  softDelete: (id: string) =>
+    apiClient.delete(`/shift-schedule/${id}`),
+
+  // ✅ BARU: Sesuai Doc 4.5 Hard Delete
+  hardDelete: (id: string) =>
+    apiClient.delete(`/shift-schedule/permanent/${id}`),
 };
 
 // ==================== PRODUCTS ====================
@@ -80,8 +88,10 @@ export const branchProductAPI = {
 
 // ==================== CATEGORIES ====================
 export const branchCategoryAPI = {
-  getAll: () =>
-    apiClient.get('/category'),
+  // ✅ PERBAIKAN: Gunakan parameter 'type' sesuai backend
+  // Backend support: ?type=local | ?type=general
+  getAll: (type?: 'local' | 'general') =>
+    apiClient.get(`/category${type ? `?type=${type}` : ''}`),
   
   create: (data: { category_name: string }) =>
     apiClient.post('/category', data),
