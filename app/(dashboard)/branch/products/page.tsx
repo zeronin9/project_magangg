@@ -72,6 +72,7 @@ interface MenuProduct {
   price: string;
   image_url: string | null;
   category: string;
+  description?: string; // Menambahkan description
   is_available: boolean;
 }
 
@@ -91,6 +92,7 @@ interface Product {
   base_price: number;
   category_id: string;
   image_url?: string;
+  description?: string; // Menambahkan description
   branch_id?: string | null;
   is_active: boolean;
   category?: {
@@ -130,7 +132,7 @@ export default function BranchProductsPage() {
   const [error, setError] = useState('');
 
   const [showArchived, setShowArchived] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'overridden'>('all');
+  const [scopeFilter, setScopeFilter] = useState<'general' | 'local' | 'overridden'>('overridden');
   const [currentPage, setCurrentPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -306,8 +308,10 @@ export default function BranchProductsPage() {
       // Dari menu product
       setOverrideData({
         sale_price: product.price,
-        branch_product_name: '',
-        branch_description: '',
+        // Gunakan nama produk asli jika belum di-override
+        branch_product_name: product.name,
+        // Gunakan deskripsi asli jika ada
+        branch_description: product.description || '',
         is_available_at_branch: product.is_available,
         branch_product_image: null,
       });
@@ -323,14 +327,18 @@ export default function BranchProductsPage() {
       
       setOverrideData({
         sale_price: existingOverride?.sale_price?.toString() || product.base_price.toString(),
-        branch_product_name: existingOverride?.branch_product_name || '',
-        branch_description: existingOverride?.branch_description || '',
+        // Gunakan override name JIKA ADA, jika tidak gunakan nama produk asli
+        branch_product_name: existingOverride?.branch_product_name || product.product_name,
+        // Gunakan override description JIKA ADA, jika tidak gunakan deskripsi produk asli
+        branch_description: existingOverride?.branch_description || product.description || '',
         is_available_at_branch: existingOverride?.is_available_at_branch ?? true,
         branch_product_image: null,
       });
       
-      if (existingOverride?.branch_image_url) {
-        setOverrideImagePreview(getImageUrl(existingOverride.branch_image_url));
+      // Tampilkan gambar override jika ada, jika tidak tampilkan gambar asli
+      const imgPath = existingOverride?.branch_image_url || product.image_url;
+      if (imgPath) {
+        setOverrideImagePreview(getImageUrl(imgPath));
       } else {
         setOverrideImagePreview('');
       }
@@ -407,7 +415,7 @@ export default function BranchProductsPage() {
         if (selectedProduct) {
           const existingImage = isMenuProduct(selectedProduct) 
             ? selectedProduct.image_url 
-            : selectedProduct.branch_setting?.branch_image_url;
+            : selectedProduct.branch_setting?.branch_image_url || selectedProduct.image_url; // Fallback ke image asli
           if (existingImage) {
             setOverrideImagePreview(getImageUrl(existingImage));
           } else {
@@ -425,7 +433,7 @@ export default function BranchProductsPage() {
         if (selectedProduct) {
           const existingImage = isMenuProduct(selectedProduct) 
             ? selectedProduct.image_url 
-            : selectedProduct.branch_setting?.branch_image_url;
+            : selectedProduct.branch_setting?.branch_image_url || selectedProduct.image_url; // Fallback ke image asli
           if (existingImage) {
             setOverrideImagePreview(getImageUrl(existingImage));
           } else {
@@ -458,11 +466,14 @@ export default function BranchProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (imageError) return;
+    if (imageError || isSubmitting) return;
 
     setIsSubmitting(true);
 
     try {
+      // Delay 3 detik
+      await delay(3000);
+
       const formDataToSend = new FormData();
       formDataToSend.append('product_name', formData.product_name);
       formDataToSend.append('base_price', formData.base_price);
@@ -491,11 +502,14 @@ export default function BranchProductsPage() {
 
   const handleOverrideSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct || overrideImageError) return;
+    if (!selectedProduct || overrideImageError || isSubmitting) return;
 
     setIsSubmitting(true);
 
     try {
+      // Delay 3 detik
+      await delay(3000);
+
       const formDataToSend = new FormData();
       
       formDataToSend.append('sale_price', overrideData.sale_price);
@@ -534,11 +548,13 @@ export default function BranchProductsPage() {
   };
 
   const handleSoftDelete = async () => {
-    if (!selectedProduct || isMenuProduct(selectedProduct)) return;
+    if (!selectedProduct || isMenuProduct(selectedProduct) || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      // Delay 3 detik
+      await delay(3000);
+      
       await branchProductAPI.softDelete(selectedProduct.product_id);
       await loadData();
       setIsSoftDeleteOpen(false);
@@ -551,11 +567,12 @@ export default function BranchProductsPage() {
   };
 
   const handleRestore = async () => {
-    if (!selectedProduct || isMenuProduct(selectedProduct)) return;
+    if (!selectedProduct || isMenuProduct(selectedProduct) || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      // Delay 3 detik
+      await delay(3000);
 
       const payload = {
         is_active: true,
@@ -577,11 +594,13 @@ export default function BranchProductsPage() {
   };
 
   const handleHardDelete = async () => {
-    if (!selectedProduct || isMenuProduct(selectedProduct)) return;
+    if (!selectedProduct || isMenuProduct(selectedProduct) || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      // Delay 3 detik
+      await delay(3000);
+      
       await branchProductAPI.hardDelete(selectedProduct.product_id);
       await loadData();
       setIsHardDeleteOpen(false);
@@ -630,26 +649,7 @@ export default function BranchProductsPage() {
         return archivedNormalProducts.filter(p => !!p.branch_id);
       }
       
-      // 'all' - Gabungkan semua produk yang diarsipkan
-      // Tapi hindari duplikasi: produk override sudah ada di menuProducts
-      const allArchivedProducts: (Product | MenuProduct)[] = [];
-      
-      // Tambahkan produk override yang diarsipkan
-      allArchivedProducts.push(...archivedMenuProducts);
-      
-      // Tambahkan produk normal yang diarsipkan, KECUALI yang sudah ada override
-      // (karena produk dengan override sudah ditampilkan dari menuProducts)
-      archivedNormalProducts.forEach(prod => {
-        // Jika produk ini punya override, skip (sudah ada di menuProducts)
-        if (isOverridden(prod)) {
-          // Cek apakah produk ini juga ada di archivedMenuProducts
-          const existsInMenu = archivedMenuProducts.some(mp => mp.product_id === prod.product_id);
-          if (existsInMenu) return; // Skip, sudah ada
-        }
-        allArchivedProducts.push(prod);
-      });
-      
-      return allArchivedProducts;
+      return [];
     }
     
     // Jika showArchived tidak aktif, tampilkan produk aktif
@@ -739,9 +739,12 @@ export default function BranchProductsPage() {
           <p className="text-muted-foreground">Kelola produk lokal & override produk general</p>
         </div>
         <div className="grid grid-cols-2 gap-2 @md:flex">
-          <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
+          <Button 
+            variant={showArchived ? 'default' : 'outline'} 
+            onClick={() => setShowArchived(!showArchived)}
+          >
             <Archive className="mr-2 h-4 w-4" />
-            {showArchived ? 'Sembunyikan Arsip' : `Tampilkan Arsip (${archivedCount})`}
+            {showArchived ? 'Sembunyikan Arsip' : `Tampilkan Arsip`}
           </Button>
           <Button onClick={() => handleOpenModal()}>
             <Plus className="mr-2 h-4 w-4" />
@@ -775,7 +778,7 @@ export default function BranchProductsPage() {
         </AlertDescription>
       </Alert>
 
-      {/* Filter */}
+      {/* Filter - Fokus pada Override */}
       {!showArchived && (
         <Card className="p-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -784,18 +787,12 @@ export default function BranchProductsPage() {
               <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant={scopeFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setScopeFilter('all')}
-              >
-                Semua ({generalCount + localCount})
-              </Button>
+              {/* Tombol Override - Fokus Utama dengan styling khusus */}
               <Button
                 variant={scopeFilter === 'overridden' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setScopeFilter('overridden')}
-              >
+                className={scopeFilter === 'overridden' ? 'bg-black shadow-lg' : ''}>
                 <Settings className="mr-2 h-3 w-3" />
                 Override ({overriddenCount})
               </Button>
@@ -866,7 +863,7 @@ export default function BranchProductsPage() {
 
                 {!showArchived && !isMenuProduct(product) && isOverridden(product) && (
                   <div className="absolute top-2 left-2 z-10">
-                    <Badge variant="default" className="bg-blue-600 text-white text-[10px] px-2 py-0.5">
+                    <Badge variant="default" className="bg-black text-white text-[10px] px-2 py-0.5">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Override
                     </Badge>
@@ -875,7 +872,7 @@ export default function BranchProductsPage() {
 
                 {!showArchived && isMenuProduct(product) && (
                   <div className="absolute top-2 left-2 z-10">
-                    <Badge variant="default" className="bg-blue-600 text-white text-[10px] px-2 py-0.5">
+                    <Badge variant="default" className="bg-black text-white text-[10px] px-2 py-0.5">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
                       Menu Kasir
                     </Badge>
@@ -1104,6 +1101,7 @@ export default function BranchProductsPage() {
                 />
               </div>
 
+              {/* ✅ PERBAIKAN FINAL: Filter kategori - hanya kategori lokal untuk produk lokal (Tambah & Edit) */}
               <div className="space-y-2">
                 <Label htmlFor="category_id">Kategori *</Label>
                 <Select
@@ -1115,18 +1113,29 @@ export default function BranchProductsPage() {
                     <SelectValue placeholder="Pilih Kategori" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.length > 0 ? (
-                      categories.map((category) => (
-                        <SelectItem key={category.category_id} value={category.category_id}>
-                          {category.category_name}
-                          {!category.branch_id && <Badge variant="outline" className="ml-2 text-[10px]">General</Badge>}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <div className="px-2 py-6 text-center text-sm text-muted-foreground">Tidak ada kategori tersedia</div>
-                    )}
+                    {(() => {
+                      // Untuk produk lokal (baik Tambah Baru maupun Edit), hanya tampilkan kategori lokal
+                      const availableCategories = categories.filter(cat => cat.branch_id);
+
+                      if (availableCategories.length > 0) {
+                        return availableCategories.map((category) => (
+                          <SelectItem key={category.category_id} value={category.category_id}>
+                            {category.category_name}
+                          </SelectItem>
+                        ));
+                      } else {
+                        return (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            Tidak ada kategori lokal. Silakan buat kategori lokal terlebih dahulu.
+                          </div>
+                        );
+                      }
+                    })()}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Hanya kategori lokal cabang yang dapat dipilih untuk produk lokal
+                </p>
               </div>
             </div>
             <DialogFooter>
