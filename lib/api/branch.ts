@@ -76,9 +76,13 @@ export const branchProductAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/product/permanent/${id}`),
   
-  // ✅ PERBAIKAN: Gunakan POST sesuai backend
+  // ✅ ENDPOINT OVERRIDE
   setOverride: (productId: string, formData: FormData) =>
     apiClient.post(`/branch-product-setting/${productId}`, formData),
+  
+  // ✅ TAMBAHAN: Endpoint untuk mendapatkan data override
+  getOverride: (productId: string) =>
+    apiClient.get(`/branch-product-setting/${productId}`),
 };
 
 // ==================== CATEGORIES ====================

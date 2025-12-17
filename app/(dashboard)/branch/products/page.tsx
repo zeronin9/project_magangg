@@ -60,9 +60,20 @@ import {
   RotateCcw,
   Image as ImageIcon,
   Settings,
+  CheckCircle2,
 } from 'lucide-react';
 import Image from 'next/image';
 import { formatRupiah } from '@/lib/utils';
+
+// ✅ Interface dengan nama field sesuai backend
+interface BranchProductSetting {
+  branch_product_setting_id?: string;
+  sale_price?: number;
+  branch_product_name?: string | null;
+  branch_description?: string | null;
+  branch_image_url?: string | null; // ✅ Sesuaikan dengan backend
+  is_available_at_branch: boolean;
+}
 
 interface Product {
   product_id: string;
@@ -78,6 +89,7 @@ interface Product {
   branch?: {
     branch_name: string;
   };
+  branch_setting?: BranchProductSetting | null;
 }
 
 interface Category {
@@ -104,7 +116,7 @@ export default function BranchProductsPage() {
   const [error, setError] = useState('');
 
   const [showArchived, setShowArchived] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'overridden'>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -136,6 +148,28 @@ export default function BranchProductsPage() {
   const [overrideImagePreview, setOverrideImagePreview] = useState<string>('');
   const [overrideImageError, setOverrideImageError] = useState('');
 
+  // ✅ FUNGSI HELPER dengan NULL SAFETY
+  const getDisplayName = (product: Product | null): string => {
+    if (!product) return '';
+    return product.branch_setting?.branch_product_name || product.product_name;
+  };
+
+  const getDisplayPrice = (product: Product | null): number => {
+    if (!product) return 0;
+    return product.branch_setting?.sale_price || product.base_price;
+  };
+
+  const getDisplayImage = (product: Product | null): string => {
+    if (!product) return '';
+    // ✅ Gunakan branch_image_url sesuai backend
+    return getImageUrl(product.branch_setting?.branch_image_url || product.image_url);
+  };
+
+  const isOverridden = (product: Product | null): boolean => {
+    if (!product) return false;
+    return !!product.branch_setting?.branch_product_setting_id;
+  };
+
   useEffect(() => {
     loadData();
   }, [showArchived]);
@@ -158,17 +192,20 @@ export default function BranchProductsPage() {
       const productsList = Array.isArray(productsData.data) ? productsData.data : [];
 
       const filteredList = showArchived
-        ? productsList.filter((p: any) => p.is_active === false)
-        : productsList.filter((p: any) => p.is_active !== false);
+        ? productsList.filter((p: any) => p && p.is_active === false)
+        : productsList.filter((p: any) => p && p.is_active !== false);
 
       const productsWithRelations = filteredList.map((product: any) => {
+        if (!product) return null;
+        
         const category = categoriesList.find((c: any) => c.category_id === product.category_id);
 
         return {
           ...product,
           category: category || null,
+          branch_setting: product.branch_setting || null,
         };
-      });
+      }).filter(Boolean) as Product[];
 
       setProducts(productsWithRelations);
       setCategories(categoriesList);
@@ -218,14 +255,24 @@ export default function BranchProductsPage() {
 
   const handleOpenOverrideModal = (product: Product) => {
     setSelectedProduct(product);
+    
+    const existingOverride = product.branch_setting;
+    
     setOverrideData({
-      sale_price: product.base_price.toString(),
-      branch_product_name: '',
-      branch_description: '',
-      is_available_at_branch: true,
+      sale_price: existingOverride?.sale_price?.toString() || product.base_price.toString(),
+      branch_product_name: existingOverride?.branch_product_name || '',
+      branch_description: existingOverride?.branch_description || '',
+      is_available_at_branch: existingOverride?.is_available_at_branch ?? true,
       branch_product_image: null,
     });
-    setOverrideImagePreview('');
+    
+    // ✅ Gunakan branch_image_url sesuai backend
+    if (existingOverride?.branch_image_url) {
+      setOverrideImagePreview(getImageUrl(existingOverride.branch_image_url));
+    } else {
+      setOverrideImagePreview('');
+    }
+    
     setOverrideImageError('');
     setIsOverrideModalOpen(true);
   };
@@ -293,7 +340,14 @@ export default function BranchProductsPage() {
         setOverrideImageError('Format file tidak valid! Gunakan JPEG, JPG, PNG, atau GIF.');
         e.target.value = '';
         setOverrideData({ ...overrideData, branch_product_image: null });
-        setOverrideImagePreview('');
+        
+        // ✅ Gunakan branch_image_url sesuai backend
+        const existingImage = selectedProduct?.branch_setting?.branch_image_url;
+        if (existingImage) {
+          setOverrideImagePreview(getImageUrl(existingImage));
+        } else {
+          setOverrideImagePreview('');
+        }
         return;
       }
 
@@ -301,7 +355,14 @@ export default function BranchProductsPage() {
         setOverrideImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
         e.target.value = '';
         setOverrideData({ ...overrideData, branch_product_image: null });
-        setOverrideImagePreview('');
+        
+        // ✅ Gunakan branch_image_url sesuai backend
+        const existingImage = selectedProduct?.branch_setting?.branch_image_url;
+        if (existingImage) {
+          setOverrideImagePreview(getImageUrl(existingImage));
+        } else {
+          setOverrideImagePreview('');
+        }
         return;
       }
 
@@ -368,11 +429,9 @@ export default function BranchProductsPage() {
     try {
       const formDataToSend = new FormData();
       
-      // ✅ Field wajib
       formDataToSend.append('sale_price', overrideData.sale_price);
       formDataToSend.append('is_available_at_branch', overrideData.is_available_at_branch.toString());
 
-      // ✅ Field opsional - hanya kirim jika ada isinya
       if (overrideData.branch_product_name && overrideData.branch_product_name.trim() !== '') {
         formDataToSend.append('branch_product_name', overrideData.branch_product_name.trim());
       }
@@ -466,14 +525,19 @@ export default function BranchProductsPage() {
     }
   };
 
+  // ✅ FILTER dengan NULL SAFETY
   const filteredProducts = products.filter((prod) => {
-    if (scopeFilter === 'general') return !prod.branch_id;
+    if (!prod) return false;
+    
+    if (scopeFilter === 'general') return !prod.branch_id && !isOverridden(prod);
     if (scopeFilter === 'local') return !!prod.branch_id;
+    if (scopeFilter === 'overridden') return !prod.branch_id && isOverridden(prod);
     return true;
   });
 
-  const generalCount = products.filter((p) => !p.branch_id).length;
-  const localCount = products.filter((p) => p.branch_id).length;
+  const generalCount = products.filter((p) => p && !p.branch_id && !isOverridden(p)).length;
+  const localCount = products.filter((p) => p && p.branch_id).length;
+  const overriddenCount = products.filter((p) => p && !p.branch_id && isOverridden(p)).length;
 
   const totalItems = filteredProducts.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
@@ -545,7 +609,7 @@ export default function BranchProductsPage() {
         <Building2 className="h-4 w-4" />
         <AlertDescription>
           <strong>Produk Lokal:</strong> Produk yang Anda buat hanya berlaku untuk cabang ini. Produk General dari pusat
-          dapat di-override harga/ketersediaannya. Total: {generalCount} General, {localCount} Lokal
+          dapat di-override harga/ketersediaannya. Total: {generalCount} General, {localCount} Lokal, {overriddenCount} Override
         </AlertDescription>
       </Alert>
 
@@ -562,7 +626,7 @@ export default function BranchProductsPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({generalCount + localCount})
+              Semua ({generalCount + localCount + overriddenCount})
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -571,6 +635,14 @@ export default function BranchProductsPage() {
             >
               <Globe className="mr-2 h-3 w-3" />
               General ({generalCount})
+            </Button>
+            <Button
+              variant={scopeFilter === 'overridden' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('overridden')}
+            >
+              <Settings className="mr-2 h-3 w-3" />
+              Override ({overriddenCount})
             </Button>
             <Button
               variant={scopeFilter === 'local' ? 'default' : 'outline'}
@@ -603,10 +675,10 @@ export default function BranchProductsPage() {
             >
               {/* Product Image */}
               <div className="aspect-[4/3] bg-muted relative">
-                {product.image_url ? (
+                {getDisplayImage(product) ? (
                   <Image
-                    src={getImageUrl(product.image_url)}
-                    alt={product.product_name}
+                    src={getDisplayImage(product)}
+                    alt={getDisplayName(product)}
                     fill
                     className="object-cover"
                     unoptimized={true}
@@ -622,9 +694,18 @@ export default function BranchProductsPage() {
                   </div>
                 )}
 
-                {product.image_url && (
+                {getDisplayImage(product) && (
                   <div className="hidden flex items-center justify-center h-full absolute inset-0 bg-muted -z-10">
                     <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
+                  </div>
+                )}
+
+                {isOverridden(product) && !showArchived && (
+                  <div className="absolute top-2 left-2 z-10">
+                    <Badge variant="default" className="bg-blue-600 text-white text-[10px] px-2 py-0.5">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Override
+                    </Badge>
                   </div>
                 )}
 
@@ -641,12 +722,16 @@ export default function BranchProductsPage() {
               <div className="p-3 space-y-2">
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-sm line-clamp-1" title={product.product_name}>
-                      {product.product_name}
+                    <h3 className="font-semibold text-sm line-clamp-1" title={getDisplayName(product)}>
+                      {getDisplayName(product)}
                     </h3>
                     <p className="text-xs text-muted-foreground line-clamp-1">
                       {product.category?.category_name || 'Tanpa Kategori'}
                     </p>
+                    
+                    {isOverridden(product) && product.branch_setting && !product.branch_setting.is_available_at_branch && (
+                      <p className="text-xs text-red-600 font-medium mt-1">Stok Habis</p>
+                    )}
                   </div>
                   {/* Action Menu */}
                   <DropdownMenu>
@@ -668,7 +753,7 @@ export default function BranchProductsPage() {
                           ) : (
                             <DropdownMenuItem onClick={() => handleOpenOverrideModal(product)}>
                               <Settings className="mr-2 h-4 w-4" />
-                              Override Setting
+                              {isOverridden(product) ? 'Edit Override' : 'Override Setting'}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
@@ -717,7 +802,16 @@ export default function BranchProductsPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-bold text-primary truncate">{formatRupiah(Number(product.base_price))}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-primary truncate">
+                      {formatRupiah(getDisplayPrice(product))}
+                    </p>
+                    {isOverridden(product) && product.branch_setting && product.branch_setting.sale_price !== product.base_price && (
+                      <p className="text-xs text-muted-foreground line-through">
+                        {formatRupiah(product.base_price)}
+                      </p>
+                    )}
+                  </div>
                   <Badge variant={product.branch_id ? 'secondary' : 'default'} className="text-[10px] h-5 px-1.5 shrink-0">
                     {product.branch_id ? <Building2 className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
                   </Badge>
@@ -772,7 +866,6 @@ export default function BranchProductsPage() {
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
-              {/* Image Upload */}
               <div className="space-y-2">
                 <Label>Gambar Produk</Label>
 
@@ -878,7 +971,9 @@ export default function BranchProductsPage() {
       <Dialog open={isOverrideModalOpen} onOpenChange={setIsOverrideModalOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Override Produk General</DialogTitle>
+            <DialogTitle>
+              {selectedProduct && isOverridden(selectedProduct) ? 'Edit Override Produk' : 'Override Produk General'}
+            </DialogTitle>
             <DialogDescription>
               Ubah harga, nama, deskripsi, gambar, atau ketersediaan produk{' '}
               <strong>{selectedProduct?.product_name}</strong> untuk cabang ini
@@ -886,7 +981,6 @@ export default function BranchProductsPage() {
           </DialogHeader>
           <form onSubmit={handleOverrideSubmit}>
             <div className="space-y-4 py-4">
-              {/* Image Upload Override */}
               <div className="space-y-2">
                 <Label>Gambar Produk Override (Opsional)</Label>
 
@@ -927,7 +1021,6 @@ export default function BranchProductsPage() {
                 </div>
               </div>
 
-              {/* Nama Produk Override */}
               <div className="space-y-2">
                 <Label htmlFor="branch_product_name">Nama Produk Override (Opsional)</Label>
                 <Input
@@ -941,7 +1034,6 @@ export default function BranchProductsPage() {
                 </p>
               </div>
 
-              {/* Deskripsi Override */}
               <div className="space-y-2">
                 <Label htmlFor="branch_description">Deskripsi Cabang (Opsional)</Label>
                 <Textarea
@@ -953,7 +1045,6 @@ export default function BranchProductsPage() {
                 />
               </div>
 
-              {/* Harga Override */}
               <div className="space-y-2">
                 <Label htmlFor="sale_price">Harga Override *</Label>
                 <Input
@@ -969,7 +1060,6 @@ export default function BranchProductsPage() {
                 </p>
               </div>
 
-              {/* Ketersediaan */}
               <div className="space-y-2">
                 <Label htmlFor="is_available">Ketersediaan di Cabang</Label>
                 <Select
@@ -994,7 +1084,7 @@ export default function BranchProductsPage() {
               </Button>
               <Button type="submit" disabled={isSubmitting || !!overrideImageError}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Override
+                {selectedProduct && isOverridden(selectedProduct) ? 'Update Override' : 'Simpan Override'}
               </Button>
             </DialogFooter>
           </form>
