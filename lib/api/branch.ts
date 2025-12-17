@@ -59,6 +59,13 @@ export const shiftScheduleAPI = {
     apiClient.delete(`/shift-schedule/permanent/${id}`),
 };
 
+// ==================== CASHIER MENU (FINAL PRODUCTS WITH OVERRIDE) ====================
+export const cashierMenuAPI = {
+  // ✅ Endpoint untuk mendapatkan produk final (General + Lokal + Override)
+  getMenu: () =>
+    apiClient.get('/cashier/menu'),
+};
+
 // ==================== PRODUCTS ====================
 export const branchProductAPI = {
   getAll: (type?: 'local') =>
