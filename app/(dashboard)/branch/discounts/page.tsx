@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { branchDiscountAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,14 +27,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   Table,
   TableBody,
   TableCell,
@@ -42,6 +34,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Pagination,
   PaginationContent,
@@ -66,42 +66,51 @@ import {
   Filter,
   Settings,
   Calendar,
+  Clock,
+  Percent,
+  Ticket
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { id } from 'date-fns/locale';
+import { formatRupiah, formatDate } from '@/lib/utils';
 
+// Definisi Interface sesuai kebutuhan Branch
 interface Discount {
   discount_rule_id: string;
   discount_name: string;
+  discount_code?: string;
   discount_type: 'PERCENTAGE' | 'NOMINAL';
   value: number;
   start_date: string;
   end_date: string;
   branch_id?: string | null;
   is_active: boolean;
+  // Field opsional untuk logika override jika backend mengirimkannya
+  original_value?: number; 
+  is_overridden?: boolean;
 }
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 5;
 
 export default function BranchDiscountsPage() {
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Filter & Pagination
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  // Modal States
+  const [isModalOpen, setIsModalOpen] = useState(false); // Untuk Create/Edit Lokal
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false); // Untuk Override General
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Form Data untuk Diskon Lokal
   const [formData, setFormData] = useState({
     discount_name: '',
     discount_type: 'PERCENTAGE' as 'PERCENTAGE' | 'NOMINAL',
@@ -110,6 +119,7 @@ export default function BranchDiscountsPage() {
     end_date: '',
   });
 
+  // Form Data untuk Override
   const [overrideData, setOverrideData] = useState({
     is_active_at_branch: true,
     value: '',
@@ -121,7 +131,7 @@ export default function BranchDiscountsPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showArchived, scopeFilter]);
+  }, [scopeFilter, showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -130,7 +140,6 @@ export default function BranchDiscountsPage() {
       setIsLoading(true);
       const response = await branchDiscountAPI.getAll();
       const discountsData = Array.isArray(response.data) ? response.data : [];
-
       setDiscounts(discountsData);
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data diskon');
@@ -138,6 +147,8 @@ export default function BranchDiscountsPage() {
       setIsLoading(false);
     }
   };
+
+  // --- HANDLERS UNTUK DISKON LOKAL ---
 
   const handleOpenModal = (discount?: Discount) => {
     if (discount) {
@@ -166,41 +177,6 @@ export default function BranchDiscountsPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedDiscount(null);
-    setFormData({
-      discount_name: '',
-      discount_type: 'PERCENTAGE',
-      value: '',
-      start_date: '',
-      end_date: '',
-    });
-  };
-
-  const handleOpenOverrideModal = (discount: Discount) => {
-    setSelectedDiscount(discount);
-    setOverrideData({
-      is_active_at_branch: true,
-      value: discount.value.toString(),
-    });
-    setIsOverrideModalOpen(true);
-  };
-
-  const handleCloseOverrideModal = () => {
-    setIsOverrideModalOpen(false);
-    setSelectedDiscount(null);
-    setOverrideData({
-      is_active_at_branch: true,
-      value: '',
-    });
-  };
-
-  const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setFormData({ ...formData, value });
-  };
-
-  const handleOverrideValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setOverrideData({ ...overrideData, value });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -232,6 +208,22 @@ export default function BranchDiscountsPage() {
     }
   };
 
+  // --- HANDLERS UNTUK OVERRIDE (GENERAL) ---
+
+  const handleOpenOverrideModal = (discount: Discount) => {
+    setSelectedDiscount(discount);
+    setOverrideData({
+      is_active_at_branch: true, // Default active, user can change to inactive to hide general discount
+      value: discount.value.toString(), // Pre-fill dengan nilai saat ini (baik itu asli atau sudah di-override sebelumnya)
+    });
+    setIsOverrideModalOpen(true);
+  };
+
+  const handleCloseOverrideModal = () => {
+    setIsOverrideModalOpen(false);
+    setSelectedDiscount(null);
+  };
+
   const handleOverrideSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDiscount) return;
@@ -244,9 +236,11 @@ export default function BranchDiscountsPage() {
         value: Number(overrideData.value),
       };
 
+      // Memanggil endpoint override setting
+      // Ini hanya akan menyimpan konfigurasi untuk cabang ini, tidak mengubah data master di Mitra
       await branchDiscountAPI.setOverride(selectedDiscount.discount_rule_id, payload);
 
-      await loadData();
+      await loadData(); // Reload untuk melihat nilai 'value' yang sudah ter-update dari backend
       handleCloseOverrideModal();
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan override diskon';
@@ -256,12 +250,23 @@ export default function BranchDiscountsPage() {
     }
   };
 
+  // --- HANDLERS LAINNYA ---
+
+  const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9]/g, '');
+    setFormData({ ...formData, value });
+  };
+
+  const handleOverrideValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^0-9]/g, '');
+    setOverrideData({ ...overrideData, value });
+  };
+
   const handleSoftDelete = async () => {
     if (!selectedDiscount) return;
-
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await branchDiscountAPI.softDelete(selectedDiscount.discount_rule_id);
       await loadData();
       setIsSoftDeleteOpen(false);
@@ -275,19 +280,14 @@ export default function BranchDiscountsPage() {
 
   const handleRestore = async () => {
     if (!selectedDiscount) return;
-
     setIsSubmitting(true);
     try {
-      await delay(2000);
-
+      await delay(1000);
+      // Logic restore manual jika API restore khusus tidak ada, atau gunakan update
       await branchDiscountAPI.update(selectedDiscount.discount_rule_id, {
-        discount_name: selectedDiscount.discount_name,
-        discount_type: selectedDiscount.discount_type,
-        value: selectedDiscount.value,
-        start_date: selectedDiscount.start_date,
-        end_date: selectedDiscount.end_date,
+        ...selectedDiscount,
+        is_active: true
       });
-
       await loadData();
       setIsRestoreOpen(false);
       setSelectedDiscount(null);
@@ -300,25 +300,22 @@ export default function BranchDiscountsPage() {
 
   const handleHardDelete = async () => {
     if (!selectedDiscount) return;
-
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await branchDiscountAPI.hardDelete(selectedDiscount.discount_rule_id);
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Gagal menghapus diskon permanen';
-      alert(errorMessage);
+      alert(err.response?.data?.message || 'Gagal menghapus permanen');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Filter
+  // --- FILTER & PAGINATION LOGIC ---
   const filteredDiscounts = discounts.filter((discount) => {
-    const matchesSearch = discount.discount_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesArchive = showArchived ? discount.is_active === false : discount.is_active !== false;
     const matchesScope =
       scopeFilter === 'all'
@@ -328,13 +325,12 @@ export default function BranchDiscountsPage() {
         : scopeFilter === 'local'
         ? !!discount.branch_id
         : true;
-    return matchesSearch && matchesArchive && matchesScope;
+    return matchesArchive && matchesScope;
   });
 
   const generalCount = discounts.filter((d) => !d.branch_id && d.is_active !== false).length;
   const localCount = discounts.filter((d) => d.branch_id && d.is_active !== false).length;
 
-  // Pagination
   const totalItems = filteredDiscounts.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -348,21 +344,25 @@ export default function BranchDiscountsPage() {
     }
   };
 
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // --- RENDER ---
   if (isLoading) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-        <div className="flex justify-between items-center">
-          <div>
-            <Skeleton className="h-8 w-48 mb-2" />
-            <Skeleton className="h-4 w-96" />
-          </div>
-          <Skeleton className="h-10 w-32" />
-        </div>
+        <Skeleton className="h-8 w-48 mb-2" />
         <Skeleton className="h-12 w-full" />
         <Card>
-          <CardContent className="p-6">
-            <Skeleton className="h-64 w-full" />
-          </CardContent>
+          <div className="p-6 space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
         </Card>
       </div>
     );
@@ -373,22 +373,30 @@ export default function BranchDiscountsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Diskon & Promo</h1>
-          <p className="text-muted-foreground">Kelola diskon lokal & override diskon general</p>
+          <h1 className="text-3xl font-bold tracking-tight">Promo & Diskon</h1>
+          <p className="text-muted-foreground">
+            Kelola diskon lokal & atur override diskon general
+          </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 @md:flex">
-          <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
+        <div className="flex flex-col gap-2 @md:flex-row">
+          <Button
+            variant={showArchived ? 'default' : 'outline'}
+            onClick={() => setShowArchived(!showArchived)}
+            className="w-full @md:w-auto"
+          >
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          <Button 
+            onClick={() => handleOpenModal()}
+            className="w-full @md:w-auto"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Tambah Diskon Lokal
           </Button>
         </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -396,16 +404,21 @@ export default function BranchDiscountsPage() {
         </Alert>
       )}
 
-      {/* Info Alert */}
+      {/* Info Hybrid Scope */}
       <Alert>
-        <Building2 className="h-4 w-4" />
+        <Globe className="h-4 w-4" />
         <AlertDescription>
-          <strong>Diskon Lokal:</strong> Diskon yang Anda buat hanya berlaku untuk cabang ini. Diskon General dari pusat
-          dapat di-override nilai/statusnya. Total: {generalCount} General, {localCount} Lokal
+          <strong>Hybrid Scope:</strong> Diskon <strong>General</strong> berasal dari pusat. Anda dapat melakukan 
+          <em> Override</em> untuk mengubah nilai atau menonaktifkannya khusus di cabang ini. 
+          Diskon <strong>Lokal</strong> dikelola sepenuhnya oleh cabang.
+          <br/>
+          <span className="text-xs text-muted-foreground mt-1 block">
+            Total: {generalCount} General, {localCount} Lokal
+          </span>
         </AlertDescription>
       </Alert>
 
-      {/* Filter */}
+      {/* Filter Scope */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-2">
@@ -418,7 +431,7 @@ export default function BranchDiscountsPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({generalCount + localCount})
+              Semua ({filteredDiscounts.length})
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -442,191 +455,233 @@ export default function BranchDiscountsPage() {
 
       {/* Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Daftar Diskon</CardTitle>
-          <CardDescription>
-            Total {filteredDiscounts.length} diskon {showArchived ? 'diarsipkan' : 'aktif'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {paginatedDiscounts.length === 0 ? (
-            <div className="text-center py-12">
-              <Tag className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">
-                {searchQuery ? 'Tidak ada hasil pencarian' : showArchived ? 'Tidak ada diskon di arsip' : 'Belum ada diskon'}
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nama Diskon</TableHead>
-                    <TableHead>Tipe</TableHead>
-                    <TableHead>Nilai</TableHead>
-                    <TableHead>Periode</TableHead>
-                    <TableHead>Scope</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedDiscounts.map((discount) => (
-                    <TableRow key={discount.discount_rule_id} className={showArchived ? 'opacity-60' : ''}>
-                      <TableCell className="font-medium">{discount.discount_name}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}</Badge>
-                      </TableCell>
-                      <TableCell className="font-semibold text-primary">
-                        {discount.discount_type === 'PERCENTAGE' ? `${discount.value}%` : `Rp ${discount.value.toLocaleString('id-ID')}`}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          {format(new Date(discount.start_date), 'dd MMM yyyy', { locale: id })} -{' '}
-                          {format(new Date(discount.end_date), 'dd MMM yyyy', { locale: id })}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={discount.branch_id ? 'secondary' : 'default'}>
-                          {discount.branch_id ? (
-                            <>
-                              <Building2 className="mr-1 h-3 w-3" />
-                              Lokal
-                            </>
-                          ) : (
-                            <>
-                              <Globe className="mr-1 h-3 w-3" />
-                              General
-                            </>
-                          )}
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nama Promo</TableHead>
+                <TableHead>Kode</TableHead>
+                <TableHead>Tipe</TableHead>
+                <TableHead>Nilai (Efektif)</TableHead>
+                <TableHead>Waktu Mulai</TableHead>
+                <TableHead>Waktu Selesai</TableHead>
+                <TableHead>Scope</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedDiscounts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12">
+                    <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+                    <p className="text-muted-foreground">
+                      {showArchived ? 'Tidak ada diskon di arsip' : 'Belum ada diskon'}
+                    </p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paginatedDiscounts.map((discount) => (
+                  <TableRow 
+                    key={discount.discount_rule_id} 
+                    className={!discount.is_active ? 'opacity-75 bg-muted/30' : ''}
+                  >
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <Tag className="h-4 w-4 text-muted-foreground" />
+                        {discount.discount_name}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {discount.discount_code ? (
+                        <Badge variant="secondary" className="font-mono">
+                          <Ticket className="mr-1 h-3 w-3" />
+                          {discount.discount_code}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {discount.is_active === false ? (
-                          <Badge variant="secondary">Diarsipkan</Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Otomatis</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-semibold text-primary">
+                      {discount.discount_type === 'PERCENTAGE' 
+                        ? `${discount.value}%` 
+                        : formatRupiah(discount.value)
+                      }
+                      {/* Indikator visual jika nilai ini hasil override (opsional, tergantung data backend) */}
+                      {discount.is_overridden && (
+                        <sup className="text-xs text-orange-500 ml-1">(Override)</sup>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-sm">
+                          <Calendar className="h-3 w-3 text-muted-foreground" />
+                          <span>{formatDate(discount.start_date)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>{formatTime(discount.start_date)}</span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-sm">
+                          <Calendar className="h-3 w-3 text-muted-foreground" />
+                          <span>{formatDate(discount.end_date)}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>{formatTime(discount.end_date)}</span>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={discount.branch_id ? 'secondary' : 'default'}>
+                        {discount.branch_id ? (
+                          <>
+                            <Building2 className="mr-1 h-3 w-3" />
+                            Lokal
+                          </>
                         ) : (
-                          <Badge variant="default" className="bg-black">
-                            Aktif
-                          </Badge>
+                          <>
+                            <Globe className="mr-1 h-3 w-3" />
+                            General
+                          </>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
 
-                            {!showArchived ? (
-                              <>
-                                {discount.branch_id ? (
+                          {!showArchived ? (
+                            <>
+                              {discount.branch_id ? (
+                                // --- AKSI UNTUK DISKON LOKAL ---
+                                <>
                                   <DropdownMenuItem onClick={() => handleOpenModal(discount)}>
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Edit
                                   </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem onClick={() => handleOpenOverrideModal(discount)}>
-                                    <Settings className="mr-2 h-4 w-4" />
-                                    Override Setting
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setSelectedDiscount(discount);
+                                      setIsSoftDeleteOpen(true);
+                                    }}
+                                    className="text-black"
+                                  >
+                                    <Archive className="mr-2 h-4 w-4" />
+                                    Arsipkan
                                   </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                {discount.branch_id && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        setSelectedDiscount(discount);
-                                        setIsSoftDeleteOpen(true);
-                                      }}
-                                      className="text-black"
-                                    >
-                                      <Archive className="mr-2 h-4 w-4" />
-                                      Arsipkan
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        setSelectedDiscount(discount);
-                                        setIsHardDeleteOpen(true);
-                                      }}
-                                      className="text-destructive focus:text-destructive"
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Hapus Permanen
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                              </>
-                            ) : (
-                              discount.branch_id && (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedDiscount(discount);
-                                    setIsRestoreOpen(true);
-                                  }}
-                                  className="text-green-600"
-                                >
-                                  <RotateCcw className="mr-2 h-4 w-4" />
-                                  Aktifkan Kembali
+                                </>
+                              ) : (
+                                // --- AKSI UNTUK DISKON GENERAL (OVERRIDE) ---
+                                <DropdownMenuItem onClick={() => handleOpenOverrideModal(discount)}>
+                                  <Settings className="mr-2 h-4 w-4" />
+                                  Override Setting
                                 </DropdownMenuItem>
-                              )
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
+                              )}
+                            </>
+                          ) : (
+                            // --- AKSI UNTUK ARSIP ---
+                            discount.branch_id && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedDiscount(discount);
+                                  setIsRestoreOpen(true);
+                                }}
+                                className="text-black"
+                              >
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Aktifkan Kembali
+                              </DropdownMenuItem>
+                            )
+                          )}
+                          
+                          {/* Hapus Permanen Hanya untuk Lokal */}
+                          {discount.branch_id && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedDiscount(discount);
+                                  setIsHardDeleteOpen(true);
+                                }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Hapus Permanen
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="py-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => handlePageChange(currentPage - 1, e)}
+                    className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                  />
+                </PaginationItem>
+
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <PaginationItem key={i}>
+                    <PaginationLink 
+                      href="#" 
+                      isActive={currentPage === i + 1} 
+                      onClick={(e) => handlePageChange(i + 1, e)}
+                    >
+                      {i + 1}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => handlePageChange(currentPage + 1, e)}
+                    className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </Card>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="py-4 flex justify-center">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  onClick={(e) => handlePageChange(currentPage - 1, e)}
-                  className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
-                />
-              </PaginationItem>
-
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink href="#" isActive={currentPage === i + 1} onClick={(e) => handlePageChange(i + 1, e)}>
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
-
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  onClick={(e) => handlePageChange(currentPage + 1, e)}
-                  className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
-
-      {/* Create/Edit Discount Modal */}
+      {/* Modal: Create/Edit Discount Lokal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{selectedDiscount ? 'Edit Diskon Lokal' : 'Tambah Diskon Lokal Baru'}</DialogTitle>
             <DialogDescription>
-              {selectedDiscount ? 'Perbarui informasi diskon lokal' : 'Diskon hanya berlaku untuk cabang Anda'}
+              {selectedDiscount ? 'Perbarui informasi diskon lokal' : 'Diskon hanya berlaku untuk cabang ini'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
@@ -668,9 +723,6 @@ export default function BranchDiscountsPage() {
                   placeholder={formData.discount_type === 'PERCENTAGE' ? 'Contoh: 10' : 'Contoh: 5000'}
                   required
                 />
-                <p className="text-xs text-muted-foreground">
-                  {formData.discount_type === 'PERCENTAGE' ? 'Masukkan angka tanpa %' : 'Masukkan nominal tanpa Rp'}
-                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -710,13 +762,14 @@ export default function BranchDiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Override Discount Modal */}
+      {/* Modal: Override Discount General */}
       <Dialog open={isOverrideModalOpen} onOpenChange={setIsOverrideModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Override Diskon General</DialogTitle>
             <DialogDescription>
-              Ubah nilai atau status diskon <strong>{selectedDiscount?.discount_name}</strong> untuk cabang ini
+              Ubah nilai atau status diskon <strong>{selectedDiscount?.discount_name}</strong> khusus untuk cabang ini.
+              Perubahan ini tidak akan mempengaruhi data pusat.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleOverrideSubmit}>
@@ -732,10 +785,10 @@ export default function BranchDiscountsPage() {
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Nilai asli:{' '}
+                  Nilai saat ini:{' '}
                   {selectedDiscount?.discount_type === 'PERCENTAGE'
                     ? `${selectedDiscount?.value}%`
-                    : `Rp ${selectedDiscount?.value.toLocaleString('id-ID')}`}
+                    : formatRupiah(selectedDiscount?.value || 0)}
                 </p>
               </div>
 
@@ -750,9 +803,12 @@ export default function BranchDiscountsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="true">Aktif</SelectItem>
-                    <SelectItem value="false">Non-Aktif</SelectItem>
+                    <SelectItem value="false">Non-Aktif (Sembunyikan)</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Jika Non-Aktif, diskon ini tidak akan berlaku di cabang meskipun di pusat aktif.
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -768,7 +824,7 @@ export default function BranchDiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Soft Delete Confirmation */}
+      {/* Dialog: Soft Delete (Archive) */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -791,7 +847,7 @@ export default function BranchDiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Restore Confirmation */}
+      {/* Dialog: Restore */}
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
@@ -804,7 +860,7 @@ export default function BranchDiscountsPage() {
             <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button onClick={handleRestore} disabled={isSubmitting}>
+            <Button className="bg-black text-white hover:bg-gray-800" onClick={handleRestore} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Aktifkan
             </Button>
@@ -812,7 +868,7 @@ export default function BranchDiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Hard Delete Confirmation */}
+      {/* Dialog: Hard Delete */}
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -822,7 +878,7 @@ export default function BranchDiscountsPage() {
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus diskon <strong>{selectedDiscount?.discount_name}</strong> secara permanen?
-              <br />
+              Tindakan ini tidak dapat dibatalkan.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

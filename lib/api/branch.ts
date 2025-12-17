@@ -2,7 +2,7 @@
 
 import { apiClient } from '../api';
 
-// ==================== CASHIER LOGIN ACCOUNTS (L0 - Generic Login) ====================
+// ==================== CASHIER LOGIN ACCOUNTS ====================
 export const cashierAccountAPI = {
   getAll: (showAll = false) =>
     apiClient.get(`/cashier/login-account${showAll ? '?show_all=true' : ''}`),
@@ -59,9 +59,8 @@ export const shiftScheduleAPI = {
     apiClient.delete(`/shift-schedule/permanent/${id}`),
 };
 
-// ==================== CASHIER MENU (FINAL PRODUCTS WITH OVERRIDE) ====================
+// ==================== CASHIER MENU ====================
 export const cashierMenuAPI = {
-  // ✅ Endpoint untuk mendapatkan produk final (General + Lokal + Override)
   getMenu: () =>
     apiClient.get('/cashier/menu'),
 };
@@ -83,11 +82,9 @@ export const branchProductAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/product/permanent/${id}`),
   
-  // ✅ ENDPOINT OVERRIDE
   setOverride: (productId: string, formData: FormData) =>
     apiClient.post(`/branch-product-setting/${productId}`, formData),
   
-  // ✅ TAMBAHAN: Endpoint untuk mendapatkan data override
   getOverride: (productId: string) =>
     apiClient.get(`/branch-product-setting/${productId}`),
 };
@@ -112,8 +109,13 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
+  // Get Local Discounts (Hanya diskon yang dibuat cabang ini)
   getAll: () =>
     apiClient.get('/discount-rule'),
+
+  // Get General Discounts (Diskon pusat dengan setting override cabang)
+  getGeneral: () =>
+    apiClient.get('/branch-discount-setting'),
   
   create: (data: {
     discount_name: string;
@@ -133,11 +135,12 @@ export const branchDiscountAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/discount-rule/permanent/${id}`),
   
+  // Override General Discount
   setOverride: (discountRuleId: string, data: { is_active_at_branch: boolean; value?: number }) =>
     apiClient.post(`/branch-discount-setting/${discountRuleId}`, data),
 };
 
-// ==================== EXPENSES (KAS KELUAR) ====================
+// ==================== EXPENSES ====================
 export const expenseAPI = {
   getAll: () =>
     apiClient.get('/expense'),
