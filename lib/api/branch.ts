@@ -10,7 +10,6 @@ export const cashierAccountAPI = {
   create: (data: { full_name: string; username: string; password: string }) =>
     apiClient.post('/cashier/login-account', data),
   
-  // ✅ PERBAIKAN: Tambahkan username ke tipe data update
   update: (id: string, data: { full_name?: string; username?: string; password?: string }) =>
     apiClient.put(`/cashier/login-account/${id}`, data),
   
@@ -20,21 +19,18 @@ export const cashierAccountAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/cashier/login-account/permanent/${id}`),
   
-  // ✅ TAMBAHAN: Fungsi khusus untuk restore (reaktivasi)
   restore: (id: string, data: { full_name: string; username?: string }) =>
     apiClient.put(`/cashier/login-account/${id}`, data),
 };
 
 // ==================== PIN OPERATORS ====================
 export const pinOperatorAPI = {
-  // ✅ PERBAIKAN: Tambahkan parameter showAll seperti cashierAccountAPI
   getAll: (showAll = false) =>
     apiClient.get(`/cashier/pin-operator${showAll ? '?show_all=true' : ''}`),
   
   create: (data: { full_name: string; pin: string }) =>
     apiClient.post('/cashier/pin-operator', data),
   
-  // ✅ PERBAIKAN: Tambahkan is_active untuk support restore
   update: (id: string, data: { full_name?: string; pin?: string; is_active?: boolean }) =>
     apiClient.put(`/cashier/pin-operator/${id}`, data),
   
@@ -56,11 +52,9 @@ export const shiftScheduleAPI = {
   update: (id: string, data: { shift_name?: string; start_time?: string; end_time?: string; is_active?: boolean }) =>
     apiClient.put(`/shift-schedule/${id}`, data),
 
-  // ✅ BARU: Sesuai Doc 4.4 Soft Delete
   softDelete: (id: string) =>
     apiClient.delete(`/shift-schedule/${id}`),
 
-  // ✅ BARU: Sesuai Doc 4.5 Hard Delete
   hardDelete: (id: string) =>
     apiClient.delete(`/shift-schedule/permanent/${id}`),
 };
@@ -82,14 +76,13 @@ export const branchProductAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/product/permanent/${id}`),
   
+  // ✅ PERBAIKAN: Gunakan POST sesuai backend
   setOverride: (productId: string, formData: FormData) =>
     apiClient.post(`/branch-product-setting/${productId}`, formData),
 };
 
 // ==================== CATEGORIES ====================
 export const branchCategoryAPI = {
-  // ✅ PERBAIKAN: Gunakan parameter 'type' sesuai backend
-  // Backend support: ?type=local | ?type=general
   getAll: (type?: 'local' | 'general') =>
     apiClient.get(`/category${type ? `?type=${type}` : ''}`),
   

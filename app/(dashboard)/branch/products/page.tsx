@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -126,8 +127,14 @@ export default function BranchProductsPage() {
 
   const [overrideData, setOverrideData] = useState({
     sale_price: '',
+    branch_product_name: '',
+    branch_description: '',
     is_available_at_branch: true,
+    branch_product_image: null as File | null,
   });
+
+  const [overrideImagePreview, setOverrideImagePreview] = useState<string>('');
+  const [overrideImageError, setOverrideImageError] = useState('');
 
   useEffect(() => {
     loadData();
@@ -213,8 +220,13 @@ export default function BranchProductsPage() {
     setSelectedProduct(product);
     setOverrideData({
       sale_price: product.base_price.toString(),
+      branch_product_name: '',
+      branch_description: '',
       is_available_at_branch: true,
+      branch_product_image: null,
     });
+    setOverrideImagePreview('');
+    setOverrideImageError('');
     setIsOverrideModalOpen(true);
   };
 
@@ -223,8 +235,13 @@ export default function BranchProductsPage() {
     setSelectedProduct(null);
     setOverrideData({
       sale_price: '',
+      branch_product_name: '',
+      branch_description: '',
       is_available_at_branch: true,
+      branch_product_image: null,
     });
+    setOverrideImagePreview('');
+    setOverrideImageError('');
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -262,6 +279,38 @@ export default function BranchProductsPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleOverrideImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+
+      if (!allowedTypes.includes(file.type)) {
+        setOverrideImageError('Format file tidak valid! Gunakan JPEG, JPG, PNG, atau GIF.');
+        e.target.value = '';
+        setOverrideData({ ...overrideData, branch_product_image: null });
+        setOverrideImagePreview('');
+        return;
+      }
+
+      if (file.size > 1024 * 1024) {
+        setOverrideImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
+        e.target.value = '';
+        setOverrideData({ ...overrideData, branch_product_image: null });
+        setOverrideImagePreview('');
+        return;
+      }
+
+      setOverrideImageError('');
+      setOverrideData({ ...overrideData, branch_product_image: file });
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setOverrideImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -312,20 +361,43 @@ export default function BranchProductsPage() {
 
   const handleOverrideSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedProduct) return;
+    if (!selectedProduct || overrideImageError) return;
 
     setIsSubmitting(true);
 
     try {
       const formDataToSend = new FormData();
+      
+      // ✅ Field wajib
       formDataToSend.append('sale_price', overrideData.sale_price);
       formDataToSend.append('is_available_at_branch', overrideData.is_available_at_branch.toString());
 
+      // ✅ Field opsional - hanya kirim jika ada isinya
+      if (overrideData.branch_product_name && overrideData.branch_product_name.trim() !== '') {
+        formDataToSend.append('branch_product_name', overrideData.branch_product_name.trim());
+      }
+
+      if (overrideData.branch_description && overrideData.branch_description.trim() !== '') {
+        formDataToSend.append('branch_description', overrideData.branch_description.trim());
+      }
+
+      if (overrideData.branch_product_image) {
+        formDataToSend.append('branch_product_image', overrideData.branch_product_image);
+      }
+
+      console.log('🚀 Sending override request for product:', selectedProduct.product_id);
+
       await branchProductAPI.setOverride(selectedProduct.product_id, formDataToSend);
 
+      console.log('✅ Override berhasil disimpan');
+      
       await loadData();
       handleCloseOverrideModal();
+      
+      alert('Override produk berhasil disimpan!');
     } catch (err: any) {
+      console.error('❌ Error override:', err);
+      console.error('Response:', err.response?.data);
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan override produk';
       alert(errorMessage);
     } finally {
@@ -804,15 +876,84 @@ export default function BranchProductsPage() {
 
       {/* Override Product Modal */}
       <Dialog open={isOverrideModalOpen} onOpenChange={setIsOverrideModalOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Override Produk General</DialogTitle>
             <DialogDescription>
-              Ubah harga atau ketersediaan produk <strong>{selectedProduct?.product_name}</strong> untuk cabang ini
+              Ubah harga, nama, deskripsi, gambar, atau ketersediaan produk{' '}
+              <strong>{selectedProduct?.product_name}</strong> untuk cabang ini
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleOverrideSubmit}>
             <div className="space-y-4 py-4">
+              {/* Image Upload Override */}
+              <div className="space-y-2">
+                <Label>Gambar Produk Override (Opsional)</Label>
+
+                {overrideImageError && (
+                  <Alert variant="destructive" className="mb-2 py-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-xs font-medium">{overrideImageError}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex flex-col gap-4">
+                  {overrideImagePreview && (
+                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
+                      <Image src={overrideImagePreview} alt="Preview" fill className="object-cover" unoptimized={true} />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/gif"
+                      onChange={handleOverrideImageChange}
+                      className="hidden"
+                      id="override_image"
+                    />
+                    <Label htmlFor="override_image" className="flex-1 cursor-pointer">
+                      <div
+                        className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${
+                          overrideImageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'
+                        }`}
+                      >
+                        <Upload className={`h-5 w-5 ${overrideImageError ? 'text-destructive' : 'text-muted-foreground'}`} />
+                        <span className={`text-sm ${overrideImageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                          {overrideImagePreview ? 'Ganti Gambar' : 'Upload Gambar Override (Max 1MB)'}
+                        </span>
+                      </div>
+                    </Label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nama Produk Override */}
+              <div className="space-y-2">
+                <Label htmlFor="branch_product_name">Nama Produk Override (Opsional)</Label>
+                <Input
+                  id="branch_product_name"
+                  value={overrideData.branch_product_name}
+                  onChange={(e) => setOverrideData({ ...overrideData, branch_product_name: e.target.value })}
+                  placeholder="Kosongkan jika tidak ingin override nama"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Nama asli: {selectedProduct?.product_name}
+                </p>
+              </div>
+
+              {/* Deskripsi Override */}
+              <div className="space-y-2">
+                <Label htmlFor="branch_description">Deskripsi Cabang (Opsional)</Label>
+                <Textarea
+                  id="branch_description"
+                  value={overrideData.branch_description}
+                  onChange={(e) => setOverrideData({ ...overrideData, branch_description: e.target.value })}
+                  placeholder="Tambahkan deskripsi khusus untuk cabang"
+                  rows={3}
+                />
+              </div>
+
+              {/* Harga Override */}
               <div className="space-y-2">
                 <Label htmlFor="sale_price">Harga Override *</Label>
                 <Input
@@ -828,6 +969,7 @@ export default function BranchProductsPage() {
                 </p>
               </div>
 
+              {/* Ketersediaan */}
               <div className="space-y-2">
                 <Label htmlFor="is_available">Ketersediaan di Cabang</Label>
                 <Select
@@ -850,7 +992,7 @@ export default function BranchProductsPage() {
               <Button type="button" variant="outline" onClick={handleCloseOverrideModal} disabled={isSubmitting}>
                 Batal
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting || !!overrideImageError}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Simpan Override
               </Button>
@@ -916,6 +1058,7 @@ export default function BranchProductsPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
               <br />
+              Tindakan ini tidak dapat dibatalkan.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
