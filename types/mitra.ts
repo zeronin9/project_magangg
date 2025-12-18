@@ -1,3 +1,17 @@
+export interface PaginationMeta {
+  current_page: number;
+  limit: number;
+  total_items: number;
+  total_pages: number;
+  has_next_page: boolean;
+  has_prev_page: boolean;
+}
+
+export interface PaginatedResponse<T> {
+  meta: PaginationMeta;
+  data: T[];
+}
+
 export interface Branch {
   branch_id: string;
   branch_name: string;
@@ -51,20 +65,17 @@ export interface DiscountRule {
   value: number;
   start_date: string;
   end_date: string;
-  applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_PRODUCTS' | 'SPECIFIC_CATEGORIES';  // ✅ UBAH: Plural
-  
-  // ✅ UBAH: Ganti target_id dengan arrays
+  applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_PRODUCTS' | 'SPECIFIC_CATEGORIES';
   product_ids?: string[];
   category_ids?: string[];
-  
-  // Field Rules
+  products?: any[]; // Helper untuk mapping
+  categories?: any[]; // Helper untuk mapping
   min_transaction_amount?: number;
   max_transaction_amount?: number;
   min_item_quantity?: number;
   max_item_quantity?: number;
   min_discount_amount?: number;
   max_discount_amount?: number;
-
   branch_id: string | null;
   branch?: Branch | null;
   is_active: boolean;
@@ -183,5 +194,6 @@ export interface ApiResponse<T = any> {
   success?: boolean;
   message?: string;
   data?: T;
+  meta?: PaginationMeta; // Tambahkan meta opsional di sini jika format response backend menyatu
   [key: string]: any;
 }

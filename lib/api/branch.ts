@@ -1,6 +1,7 @@
 // lib/api/branch.ts
 
 import { apiClient } from '../api';
+import { fetchData } from '@/lib/services/fetchData';
 
 // ==================== CASHIER LOGIN ACCOUNTS ====================
 export const cashierAccountAPI = {
@@ -67,8 +68,14 @@ export const cashierMenuAPI = {
 
 // ==================== PRODUCTS ====================
 export const branchProductAPI = {
-  getAll: (type?: 'local') =>
-    apiClient.get(`/product${type ? `?type=${type}` : ''}`),
+  // ✅ Update: Menggunakan fetchData untuk Pagination
+  getAll: async (params: { page?: number; limit?: number; search?: string; category_id?: string; type?: string } = {}) => {
+    return fetchData('/product', params.page, params.limit, {
+      search: params.search,
+      category_id: params.category_id,
+      type: params.type
+    });
+  },
   
   create: (formData: FormData) =>
     apiClient.post('/product', formData),
@@ -91,8 +98,13 @@ export const branchProductAPI = {
 
 // ==================== CATEGORIES ====================
 export const branchCategoryAPI = {
-  getAll: (type?: 'local' | 'general') =>
-    apiClient.get(`/category${type ? `?type=${type}` : ''}`),
+  // ✅ Update: Menggunakan fetchData untuk Pagination
+  getAll: async (params: { page?: number; limit?: number; search?: string; type?: string } = {}) => {
+    return fetchData('/category', params.page, params.limit, {
+      search: params.search,
+      type: params.type
+    });
+  },
   
   create: (data: { category_name: string }) =>
     apiClient.post('/category', data),
@@ -109,11 +121,14 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
-  // Get Local Discounts (Hanya diskon yang dibuat cabang ini)
-  getAll: () =>
-    apiClient.get('/discount-rule'),
+  // ✅ Update: Menggunakan fetchData untuk Pagination (Local & Search)
+  getAll: async (params: { page?: number; limit?: number; search?: string } = {}) => {
+    return fetchData('/discount-rule', params.page, params.limit, {
+      search: params.search
+    });
+  },
 
-  // Get General Discounts (Diskon pusat dengan setting override cabang)
+  // Get General Discounts (Diskon pusat) - Tetap axios biasa karena struktur beda/belum tentu paginated
   getGeneral: () =>
     apiClient.get('/branch-discount-setting'),
   
@@ -142,8 +157,14 @@ export const branchDiscountAPI = {
 
 // ==================== EXPENSES ====================
 export const expenseAPI = {
-  getAll: () =>
-    apiClient.get('/expense'),
+  // ✅ Update: Menggunakan fetchData untuk Pagination
+  getAll: async (params: { page?: number; limit?: number; search?: string; start_date?: string; end_date?: string } = {}) => {
+    return fetchData('/expense', params.page, params.limit, {
+      search: params.search,
+      start_date: params.start_date,
+      end_date: params.end_date
+    });
+  },
   
   create: (formData: FormData) =>
     apiClient.post('/expense', formData),
@@ -154,17 +175,25 @@ export const expenseAPI = {
 
 // ==================== VOID REQUESTS ====================
 export const voidRequestAPI = {
-  getAll: () =>
-    apiClient.get('/transaction/void-requests'),
-  
+  // ✅ Update: Menggunakan fetchData untuk Pagination
+  getAll: async (params: { page?: number; limit?: number } = {}) => {
+    return fetchData('/transaction/void-requests', params.page, params.limit);
+  },
+
+  // ✅ Update: Sesuai route backend (POST /transaction/:id/void-review)
   review: (id: string, approve: boolean) =>
-    apiClient.put(`/transaction/${id}/review-void`, { approve }),
+    apiClient.post(`/transaction/${id}/void-review`, { approve }),
 };
 
 // ==================== REPORTS ====================
 export const branchReportAPI = {
-  getSales: (tanggalMulai: string, tanggalSelesai: string) =>
-    apiClient.get(`/report/sales?tanggalMulai=${tanggalMulai}&tanggalSelesai=${tanggalSelesai}`),
+  // ✅ Update: Menggunakan fetchData untuk Pagination + Filter Tanggal
+  getSales: async (tanggalMulai: string, tanggalSelesai: string, page = 1, limit = 10) => {
+    return fetchData('/report/sales', page, limit, {
+      tanggalMulai,
+      tanggalSelesai
+    });
+  },
 };
 
 // ==================== LICENSES ====================

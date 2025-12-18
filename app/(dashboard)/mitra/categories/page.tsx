@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { categoryAPI, branchAPI } from '@/lib/api/mitra';
-import { Category, Branch } from '@/types/mitra';
+import { Category, Branch, PaginationMeta } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -18,13 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -44,7 +37,6 @@ import {
 import {
   Pagination,
   PaginationContent,
-  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -67,11 +59,12 @@ import {
 } from 'lucide-react';
 
 // Konstanta Pagination
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
@@ -94,9 +87,15 @@ export default function CategoriesPage() {
     category_name: '',
   });
 
+  // Load branches (hanya sekali)
   useEffect(() => {
-    loadData();
-  }, [showArchived]);
+    loadBranches();
+  }, []);
+
+  // Load categories ketika filter/page berubah
+  useEffect(() => {
+    loadCategories();
+  }, [currentPage, showArchived, scopeFilter]);
 
   // Reset pagination saat filter berubah
   useEffect(() => {
@@ -106,35 +105,56 @@ export default function CategoriesPage() {
   // Helper Delay
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const loadData = async () => {
+  const loadBranches = async () => {
+    try {
+      const branchesData = await branchAPI.getAll();
+      const branchesList = Array.isArray(branchesData) ? branchesData : [];
+      setBranches(branchesList);
+    } catch (err: any) {
+      console.error('Gagal memuat branches:', err);
+    }
+  };
+
+  const loadCategories = async () => {
     try {
       setIsLoading(true);
-      const [categoriesData, branchesData] = await Promise.all([
-        categoryAPI.getAll(),
-        branchAPI.getAll(),
-      ]);
+      setError('');
       
-      const branchesList = Array.isArray(branchesData) ? branchesData : [];
-      const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
+      // Siapkan parameter query
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        // Kirim status active/inactive ke backend agar pagination valid
+        is_active: showArchived ? 'false' : 'true' 
+      };
+
+      // Handle Filter Scope
+      if (scopeFilter === 'local') params.type = 'local';
+      if (scopeFilter === 'general') params.type = 'general';
       
-      const filteredCategoriesList = showArchived 
-        ? categoriesList.filter(c => c.is_active === false)
-        : categoriesList.filter(c => c.is_active !== false);
+      // Panggil API dengan parameter objek
+      const response = await categoryAPI.getAll(params);
       
-      const categoriesWithBranch = filteredCategoriesList.map(category => {
+      // Extract data dan meta dari response
+      const categoriesList = Array.isArray(response.data) ? response.data : [];
+      
+      // Mapping relasi branch (jika backend mengirim branch_id tapi object branch null)
+      const categoriesWithBranch = categoriesList.map(category => {
         const branch = category.branch_id 
-          ? branchesList.find(b => b.branch_id === category.branch_id)
+          ? branches.find(b => b.branch_id === category.branch_id)
           : null;
         return {
           ...category,
-          branch: branch || null
+          branch: branch || category.branch || null
         };
       });
       
       setCategories(categoriesWithBranch);
-      setBranches(branchesList);
+      setMeta(response.meta);
+      
     } catch (err: any) {
-      setError(err.message || 'Gagal memuat data kategori');
+      setError(err.response?.data?.message || 'Gagal memuat data kategori');
+      console.error('Error loading categories:', err);
     } finally {
       setIsLoading(false);
     }
@@ -168,14 +188,14 @@ export default function CategoriesPage() {
     setIsSubmitting(true);
 
     try {
-      await delay(3000);
+      await delay(1000); // Optional delay untuk UX loading state
 
-      if (selectedCategory) {
+      if (selectedCategory?.category_id) {
         await categoryAPI.update(selectedCategory.category_id, formData);
       } else {
         await categoryAPI.create(formData);
       }
-      await loadData();
+      await loadCategories();
       handleCloseModal();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Gagal menyimpan kategori');
@@ -185,13 +205,13 @@ export default function CategoriesPage() {
   };
 
   const handleSoftDelete = async () => {
-    if (!selectedCategory) return;
+    if (!selectedCategory?.category_id) return;
     
     setIsSubmitting(true);
     try {
-      await delay(3000);
+      await delay(1000);
       await categoryAPI.softDelete(selectedCategory.category_id);
-      await loadData();
+      await loadCategories();
       setIsDeleteModalOpen(false);
       setSelectedCategory(null);
     } catch (err: any) {
@@ -202,16 +222,17 @@ export default function CategoriesPage() {
   };
 
   const handleRestore = async () => {
-    if (!selectedCategory) return;
+    if (!selectedCategory?.category_id) return;
     
     setIsSubmitting(true);
     try {
-      await delay(3000);
+      await delay(1000);
+      // Asumsi backend support update is_active lewat endpoint update biasa
       await categoryAPI.update(selectedCategory.category_id, { 
         category_name: selectedCategory.category_name,
         is_active: true
       });
-      await loadData();
+      await loadCategories();
       setIsRestoreOpen(false);
       setSelectedCategory(null);
     } catch (err: any) {
@@ -222,13 +243,13 @@ export default function CategoriesPage() {
   };
 
   const handleHardDelete = async () => {
-    if (!selectedCategory) return;
+    if (!selectedCategory?.category_id) return;
     
     setIsSubmitting(true);
     try {
-      await delay(3000);
+      await delay(1000);
       await categoryAPI.hardDelete(selectedCategory.category_id);
-      await loadData();
+      await loadCategories();
       setIsHardDeleteModalOpen(false);
       setSelectedCategory(null);
     } catch (err: any) {
@@ -239,27 +260,14 @@ export default function CategoriesPage() {
     }
   };
 
-  // 1. Filter Data
-  const filteredCategories = categories.filter(cat => {
-    if (scopeFilter === 'general') return !cat.branch_id;
-    if (scopeFilter === 'local') return !!cat.branch_id;
-    return true;
-  });
-
-  const generalCount = categories.filter(c => !c.branch_id).length;
-  const localCount = categories.filter(c => c.branch_id).length;
-
-  // 2. Logika Pagination
-  const totalItems = filteredCategories.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedCategories = filteredCategories.slice(startIndex, endIndex);
-
-  // Helper untuk pindah halaman
+  // Hitung total untuk badge (berdasarkan meta dari server jika ada, fallback ke 0)
+  // Catatan: generalCount/localCount di sini hanya referensi UI, 
+  // angka pastinya tergantung support backend untuk memberikan summary count.
+  // Jika tidak ada, kita gunakan total_items dari meta saat filter 'all' aktif.
+  
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
-    if (page > 0 && page <= totalPages) {
+    if (page > 0 && page <= (meta?.total_pages || 1)) {
       setCurrentPage(page);
     }
   };
@@ -324,7 +332,8 @@ export default function CategoriesPage() {
         <Globe className="h-4 w-4" />
         <AlertDescription>
           <strong>Hybrid Scope:</strong> Kategori yang Anda buat akan otomatis menjadi{' '}
-          <strong>General</strong> (berlaku untuk semua cabang). Total: {generalCount} General, {localCount} Lokal
+          <strong>General</strong> (berlaku untuk semua cabang). 
+          Total Data: {meta?.total_items || 0}
         </AlertDescription>
       </Alert>
 
@@ -332,8 +341,8 @@ export default function CategoriesPage() {
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Filter Scope:</span>
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Filter Scope:</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -341,7 +350,7 @@ export default function CategoriesPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({categories.length})
+              Semua
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -349,7 +358,7 @@ export default function CategoriesPage() {
               onClick={() => setScopeFilter('general')}
             >
               <Globe className="mr-2 h-3 w-3" />
-              General ({generalCount})
+              General
             </Button>
             <Button
               variant={scopeFilter === 'local' ? 'default' : 'outline'}
@@ -357,7 +366,7 @@ export default function CategoriesPage() {
               onClick={() => setScopeFilter('local')}
             >
               <Building2 className="mr-2 h-3 w-3" />
-              Lokal ({localCount})
+              Lokal
             </Button>
           </div>
         </div>
@@ -368,6 +377,7 @@ export default function CategoriesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>No</TableHead>
               <TableHead>Nama Kategori</TableHead>
               <TableHead>Scope</TableHead>
               <TableHead>Cabang</TableHead>
@@ -376,9 +386,9 @@ export default function CategoriesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedCategories.length === 0 ? (
+            {categories.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12">
+                <TableCell colSpan={6} className="text-center py-12">
                   <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                   <p className="text-muted-foreground">
                     {showArchived ? 'Tidak ada kategori yang diarsipkan' : 'Tidak ada kategori ditemukan'}
@@ -386,8 +396,11 @@ export default function CategoriesPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedCategories.map((category) => (
+              categories.map((category, idx) => (
                 <TableRow key={category.category_id} className={category.is_active === false ? 'opacity-75 bg-muted/30' : ''}>
+                  <TableCell>
+                    {((meta?.current_page || 1) - 1) * ITEMS_PER_PAGE + idx + 1}
+                  </TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <Layers className="h-4 w-4 text-muted-foreground" />
@@ -471,7 +484,7 @@ export default function CategoriesPage() {
         </Table>
         
         {/* Pagination Controls */}
-        {totalPages > 1 && (
+        {meta && meta.total_pages > 1 && (
           <div className="py-4">
             <Pagination>
               <PaginationContent>
@@ -479,31 +492,31 @@ export default function CategoriesPage() {
                   <PaginationPrevious 
                     href="#" 
                     onClick={(e) => handlePageChange(currentPage - 1, e)}
-                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                    className={!meta.has_prev_page ? "pointer-events-none opacity-50" : ""}
                   />
                 </PaginationItem>
                 
-                {Array.from({ length: totalPages }).map((_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink 
-                      href="#" 
-                      isActive={currentPage === i + 1}
-                      onClick={(e) => handlePageChange(i + 1, e)}
-                    >
-                      {i + 1}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
+                {/* Logic Pagination Sederhana (Tampilkan current page) */}
+                <PaginationItem>
+                   <span className="text-sm font-medium px-4">
+                     Halaman {meta.current_page} dari {meta.total_pages}
+                   </span>
+                </PaginationItem>
 
                 <PaginationItem>
                   <PaginationNext 
                     href="#" 
                     onClick={(e) => handlePageChange(currentPage + 1, e)}
-                    className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                    className={!meta.has_next_page ? "pointer-events-none opacity-50" : ""}
                   />
                 </PaginationItem>
               </PaginationContent>
             </Pagination>
+
+            {/* Info Pagination Detail */}
+            <div className="text-center text-xs text-muted-foreground mt-2">
+              Menampilkan {categories.length} dari total {meta.total_items} data
+            </div>
           </div>
         )}
       </Card>
@@ -613,6 +626,7 @@ export default function CategoriesPage() {
             <DialogDescription>
               Apakah Anda yakin ingin menghapus kategori <strong>{selectedCategory?.category_name}</strong> secara permanen?
               <br/>
+              Data yang dihapus tidak dapat dikembalikan.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -620,7 +634,7 @@ export default function CategoriesPage() {
               Batal
             </Button>
             <Button 
-              className="bg-black text-white" 
+              variant="destructive"
               onClick={handleHardDelete} 
               disabled={isSubmitting}
             >

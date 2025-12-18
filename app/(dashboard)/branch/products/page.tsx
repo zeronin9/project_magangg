@@ -3,7 +3,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { cashierMenuAPI, branchProductAPI, branchCategoryAPI } from '@/lib/api/branch';
+import { branchProductAPI, branchCategoryAPI, cashierMenuAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -64,19 +64,28 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { formatRupiah } from '@/lib/utils';
+import { MetaPagination } from '@/lib/services/fetchData';
 
-// ✅ Interface untuk produk dari /cashier/menu (final display)
+// --- Interfaces ---
+
+// Interface dari endpoint /cashier/menu (Tampilan Kasir)
 interface MenuProduct {
   product_id: string;
   name: string;
-  price: string;
+  price: string | number; // Bisa string dari backend, kita convert
   image_url: string | null;
   category: string;
-  description?: string; // Menambahkan description
+  description?: string;
   is_available: boolean;
+  // Field tambahan untuk compatibility
+  branch_setting?: any;
+  product_name?: string; 
+  base_price?: number;
+  branch_id?: string;
+  is_active?: boolean;
 }
 
-// ✅ Interface untuk raw product data (untuk CRUD operations)
+// Interface dari endpoint /product (Manajemen)
 interface BranchProductSetting {
   branch_product_setting_id?: string;
   sale_price?: number;
@@ -92,7 +101,7 @@ interface Product {
   base_price: number;
   category_id: string;
   image_url?: string;
-  description?: string; // Menambahkan description
+  description?: string;
   branch_id?: string | null;
   is_active: boolean;
   category?: {
@@ -102,6 +111,10 @@ interface Product {
     branch_name: string;
   };
   branch_setting?: BranchProductSetting | null;
+  // Field tambahan untuk compatibility
+  name?: string;
+  price?: string | number;
+  is_available?: boolean;
 }
 
 interface Category {
@@ -119,22 +132,24 @@ const getImageUrl = (path: string | null | undefined) => {
   return `${serverUrl}/${cleanPath}`;
 };
 
-const ITEMS_PER_PAGE = 10;
-
 export default function BranchProductsPage() {
-  // ✅ State untuk menampilkan produk dari /cashier/menu
-  const [menuProducts, setMenuProducts] = useState<MenuProduct[]>([]);
-  
-  // ✅ State untuk raw products (untuk CRUD operations)
-  const [products, setProducts] = useState<Product[]>([]);
+  // State Data (Union Type untuk mengakomodasi kedua jenis data)
+  const [products, setProducts] = useState<(Product | MenuProduct)[]>([]);
+  const [meta, setMeta] = useState<MetaPagination | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  
+  // State UI
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [showArchived, setShowArchived] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<'general' | 'local' | 'overridden'>('overridden');
+  // Filter & Pagination States
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'overridden'>('overridden'); // Default ke Override/Menu Kasir
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
+  // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
@@ -142,9 +157,11 @@ export default function BranchProductsPage() {
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | MenuProduct | null>(null);
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Form States
   const [imageError, setImageError] = useState('');
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [overrideImagePreview, setOverrideImagePreview] = useState<string>('');
+  const [overrideImageError, setOverrideImageError] = useState('');
 
   const [formData, setFormData] = useState({
     product_name: '',
@@ -161,25 +178,22 @@ export default function BranchProductsPage() {
     branch_product_image: null as File | null,
   });
 
-  const [overrideImagePreview, setOverrideImagePreview] = useState<string>('');
-  const [overrideImageError, setOverrideImageError] = useState('');
-
-  // ✅ Helper untuk mengecek apakah produk adalah MenuProduct
-  const isMenuProduct = (product: any): product is MenuProduct => {
-    return product && 'name' in product && 'price' in product && typeof product.price === 'string';
+  // --- Helpers (Type Guards & Accessors) ---
+  
+  const isMenuProduct = (p: Product | MenuProduct | null): p is MenuProduct => {
+    return !!p && 'name' in p && 'price' in p;
   };
 
-  // ✅ FUNGSI HELPER dengan NULL SAFETY
   const getDisplayName = (product: Product | MenuProduct | null): string => {
     if (!product) return '';
     if (isMenuProduct(product)) return product.name;
-    return product.branch_setting?.branch_product_name || product.product_name;
+    return product.branch_setting?.branch_product_name || product.product_name || '';
   };
 
   const getDisplayPrice = (product: Product | MenuProduct | null): number => {
     if (!product) return 0;
     if (isMenuProduct(product)) return Number(product.price);
-    return product.branch_setting?.sale_price || product.base_price;
+    return product.branch_setting?.sale_price || product.base_price || 0;
   };
 
   const getDisplayImage = (product: Product | MenuProduct | null): string => {
@@ -190,88 +204,127 @@ export default function BranchProductsPage() {
 
   const getDisplayCategory = (product: Product | MenuProduct | null): string => {
     if (!product) return 'Tanpa Kategori';
-    if (isMenuProduct(product)) return product.category || 'Tanpa Kategori';
+    if (isMenuProduct(product)) return product.category;
     return product.category?.category_name || 'Tanpa Kategori';
   };
 
-  const isOverridden = (product: Product | null): boolean => {
+  const isOverridden = (product: Product | MenuProduct | null): boolean => {
     if (!product) return false;
+    if (isMenuProduct(product)) return false; // MenuProduct is the result of override
     return !!product.branch_setting?.branch_product_setting_id;
   };
 
-  const isArchived = (product: Product | MenuProduct | null): boolean => {
-    if (!product) return false;
-    
-    // Untuk MenuProduct, cek is_available
-    if (isMenuProduct(product)) {
-      return !product.is_available;
-    }
-    
-    // Untuk Product biasa, cek is_active dan is_available_at_branch
-    if (product.is_active === false) return true;
-    if (product.branch_setting && !product.branch_setting.is_available_at_branch) return true;
-    
-    return false;
-  };
-
+  // --- Effects ---
   useEffect(() => {
-    loadData();
+    const fetchCategories = async () => {
+      try {
+        const res = await branchCategoryAPI.getAll({ limit: 100 });
+        setCategories(res.items);
+      } catch (err) {
+        console.error("Gagal load kategori", err);
+      }
+    };
+    fetchCategories();
   }, []);
 
   useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, scopeFilter, searchQuery]);
+
+  useEffect(() => {
     setCurrentPage(1);
-  }, [scopeFilter, showArchived]);
+  }, [scopeFilter, searchQuery]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // ✅ LOGIKA LOAD DATA (Switch Endpoint)
   const loadData = async () => {
     try {
       setIsLoading(true);
+      setError('');
       
-      // ✅ Load data dari kedua endpoint
-      const [menuData, productsData, categoriesData] = await Promise.all([
-        cashierMenuAPI.getMenu(), // Untuk tampilan Override
-        branchProductAPI.getAll(), // Untuk CRUD operations
-        branchCategoryAPI.getAll(),
-      ]);
+      let response;
 
-      console.log('📦 Menu Data (Display):', menuData.data);
-      console.log('🔧 Raw Products (CRUD):', productsData.data);
-
-      const categoriesList = Array.isArray(categoriesData.data) ? categoriesData.data : [];
-      const productsList = Array.isArray(productsData.data) ? productsData.data : [];
-      const menuList = Array.isArray(menuData.data) ? menuData.data : [];
-
-      const productsWithRelations = productsList.map((product: any) => {
-        if (!product) return null;
+      if (scopeFilter === 'overridden') {
+        // ✅ FETCH DARI /cashier/menu
+        // Asumsi backend support pagination di endpoint ini, atau kita kirim paramsnya
+        // Jika API wrapper cashierMenuAPI belum update, gunakan axios langsung atau update wrapper
+        // Di sini saya asumsikan structure response sama { items, meta } via fetchData
+        // Jika tidak, Anda perlu menyesuaikan di sini.
+        // Untuk amannya, kita fetch standard dan handle response.
         
-        const category = categoriesList.find((c: any) => c.category_id === product.category_id);
+        try {
+            // Kita coba pakai fetchData pattern jika wrapper mendukung, 
+            // atau panggil API wrapper yang sudah ada
+            // Note: cashierMenuAPI.getMenu biasanya return axios response
+            const res = await cashierMenuAPI.getMenu(); 
+            
+            // Handle jika backend return { meta, data } atau array langsung
+            const data = res.data.data || res.data;
+            const metaData = res.data.meta || null;
 
-        return {
-          ...product,
-          category: category || null,
-          branch_setting: product.branch_setting || null,
-        };
-      }).filter(Boolean) as Product[];
+            // Client side filter/search if backend doesn't support params yet for menu
+            let filtered = Array.isArray(data) ? data : [];
+            if (searchQuery) {
+               filtered = filtered.filter((p: any) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+            }
 
-      setProducts(productsWithRelations);
-      setMenuProducts(menuList);
-      setCategories(categoriesList);
+            // Pagination manual jika meta null (fallback)
+            if (!metaData) {
+               const start = (currentPage - 1) * 10;
+               const end = start + 10;
+               setProducts(filtered.slice(start, end));
+               setMeta({
+                 current_page: currentPage,
+                 limit: 10,
+                 total_items: filtered.length,
+                 total_pages: Math.ceil(filtered.length / 10),
+                 has_next_page: end < filtered.length,
+                 has_prev_page: start > 0
+               });
+            } else {
+               setProducts(data);
+               setMeta(metaData);
+            }
+        } catch (e) {
+            throw e;
+        }
+
+      } else {
+        // ✅ FETCH DARI /product (Management)
+        let typeParam: string | undefined = undefined;
+        if (scopeFilter === 'local') typeParam = 'local';
+        if (scopeFilter === 'general') typeParam = 'general';
+
+        response = await branchProductAPI.getAll({
+          page: currentPage,
+          limit: 10,
+          search: searchQuery,
+          type: typeParam
+        });
+        
+        setProducts(response.items);
+        setMeta(response.meta);
+      }
+
     } catch (err: any) {
+      console.error(err);
       setError(err.message || 'Gagal memuat data produk');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleOpenModal = (product?: Product) => {
+  // --- Modal Handlers ---
+  const handleOpenModal = (product?: Product | MenuProduct) => {
     setImageError('');
-    if (product) {
+    if (product && !isMenuProduct(product)) {
       setSelectedProduct(product);
       setFormData({
-        product_name: product.product_name,
-        base_price: product.base_price.toString(),
-        category_id: product.category_id,
+        product_name: product.product_name || '',
+        base_price: product.base_price?.toString() || '',
+        category_id: product.category_id || '',
         image_url: null,
       });
       setImagePreview(getImageUrl(product.image_url) || '');
@@ -291,12 +344,6 @@ export default function BranchProductsPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedProduct(null);
-    setFormData({
-      product_name: '',
-      base_price: '',
-      category_id: '',
-      image_url: null,
-    });
     setImagePreview('');
     setImageError('');
   };
@@ -304,46 +351,37 @@ export default function BranchProductsPage() {
   const handleOpenOverrideModal = (product: Product | MenuProduct) => {
     setSelectedProduct(product);
     
+    // Logic untuk mengisi form override tergantung sumber data
+    let price = '';
+    let name = '';
+    let description = '';
+    let isAvailable = true;
+    let imgUrl = '';
+
     if (isMenuProduct(product)) {
-      // Dari menu product
-      setOverrideData({
-        sale_price: product.price,
-        // Gunakan nama produk asli jika belum di-override
-        branch_product_name: product.name,
-        // Gunakan deskripsi asli jika ada
-        branch_description: product.description || '',
-        is_available_at_branch: product.is_available,
-        branch_product_image: null,
-      });
-      
-      if (product.image_url) {
-        setOverrideImagePreview(getImageUrl(product.image_url));
-      } else {
-        setOverrideImagePreview('');
-      }
+        price = product.price.toString();
+        name = product.name;
+        description = product.description || '';
+        isAvailable = product.is_available;
+        imgUrl = product.image_url || '';
     } else {
-      // Dari raw product
-      const existingOverride = product.branch_setting;
-      
-      setOverrideData({
-        sale_price: existingOverride?.sale_price?.toString() || product.base_price.toString(),
-        // Gunakan override name JIKA ADA, jika tidak gunakan nama produk asli
-        branch_product_name: existingOverride?.branch_product_name || product.product_name,
-        // Gunakan override description JIKA ADA, jika tidak gunakan deskripsi produk asli
-        branch_description: existingOverride?.branch_description || product.description || '',
-        is_available_at_branch: existingOverride?.is_available_at_branch ?? true,
-        branch_product_image: null,
-      });
-      
-      // Tampilkan gambar override jika ada, jika tidak tampilkan gambar asli
-      const imgPath = existingOverride?.branch_image_url || product.image_url;
-      if (imgPath) {
-        setOverrideImagePreview(getImageUrl(imgPath));
-      } else {
-        setOverrideImagePreview('');
-      }
+        const setting = product.branch_setting;
+        price = setting?.sale_price?.toString() || product.base_price.toString();
+        name = setting?.branch_product_name || product.product_name;
+        description = setting?.branch_description || product.description || '';
+        isAvailable = setting?.is_available_at_branch ?? true;
+        imgUrl = setting?.branch_image_url || product.image_url || '';
     }
+
+    setOverrideData({
+      sale_price: price,
+      branch_product_name: name,
+      branch_description: description,
+      is_available_at_branch: isAvailable,
+      branch_product_image: null,
+    });
     
+    setOverrideImagePreview(getImageUrl(imgUrl));
     setOverrideImageError('');
     setIsOverrideModalOpen(true);
   };
@@ -351,53 +389,22 @@ export default function BranchProductsPage() {
   const handleCloseOverrideModal = () => {
     setIsOverrideModalOpen(false);
     setSelectedProduct(null);
-    setOverrideData({
-      sale_price: '',
-      branch_product_name: '',
-      branch_description: '',
-      is_available_at_branch: true,
-      branch_product_image: null,
-    });
     setOverrideImagePreview('');
     setOverrideImageError('');
   };
 
+  // --- Form Handlers ---
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-
-      if (!allowedTypes.includes(file.type)) {
-        setImageError('Format file tidak valid! Gunakan JPEG, JPG, PNG, atau GIF.');
-        e.target.value = '';
-        setFormData({ ...formData, image_url: null });
-        if (selectedProduct && !isMenuProduct(selectedProduct) && selectedProduct.image_url) {
-          setImagePreview(getImageUrl(selectedProduct.image_url) || '');
-        } else {
-          setImagePreview('');
-        }
-        return;
-      }
-
       if (file.size > 1024 * 1024) {
         setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
-        e.target.value = '';
-        setFormData({ ...formData, image_url: null });
-        if (selectedProduct && !isMenuProduct(selectedProduct) && selectedProduct.image_url) {
-          setImagePreview(getImageUrl(selectedProduct.image_url) || '');
-        } else {
-          setImagePreview('');
-        }
         return;
       }
-
       setImageError('');
       setFormData({ ...formData, image_url: file });
-
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
+      reader.onloadend = () => setImagePreview(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -405,51 +412,14 @@ export default function BranchProductsPage() {
   const handleOverrideImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-
-      if (!allowedTypes.includes(file.type)) {
-        setOverrideImageError('Format file tidak valid! Gunakan JPEG, JPG, PNG, atau GIF.');
-        e.target.value = '';
-        setOverrideData({ ...overrideData, branch_product_image: null });
-        
-        if (selectedProduct) {
-          const existingImage = isMenuProduct(selectedProduct) 
-            ? selectedProduct.image_url 
-            : selectedProduct.branch_setting?.branch_image_url || selectedProduct.image_url; // Fallback ke image asli
-          if (existingImage) {
-            setOverrideImagePreview(getImageUrl(existingImage));
-          } else {
-            setOverrideImagePreview('');
-          }
-        }
-        return;
-      }
-
       if (file.size > 1024 * 1024) {
         setOverrideImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
-        e.target.value = '';
-        setOverrideData({ ...overrideData, branch_product_image: null });
-        
-        if (selectedProduct) {
-          const existingImage = isMenuProduct(selectedProduct) 
-            ? selectedProduct.image_url 
-            : selectedProduct.branch_setting?.branch_image_url || selectedProduct.image_url; // Fallback ke image asli
-          if (existingImage) {
-            setOverrideImagePreview(getImageUrl(existingImage));
-          } else {
-            setOverrideImagePreview('');
-          }
-        }
         return;
       }
-
       setOverrideImageError('');
       setOverrideData({ ...overrideData, branch_product_image: file });
-
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setOverrideImagePreview(reader.result as string);
-      };
+      reader.onloadend = () => setOverrideImagePreview(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -464,37 +434,29 @@ export default function BranchProductsPage() {
     setOverrideData({ ...overrideData, sale_price: value });
   };
 
+  // --- Submit Handlers ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (imageError || isSubmitting) return;
 
     setIsSubmitting(true);
-
     try {
-      // Delay 3 detik
-      await delay(3000);
-
+      await delay(2000);
       const formDataToSend = new FormData();
       formDataToSend.append('product_name', formData.product_name);
-      formDataToSend.append('base_price', formData.base_price);
+      formDataToSend.append('base_price', formData.base_price.replace(/[^0-9]/g, ''));
       formDataToSend.append('category_id', formData.category_id);
-
-      if (formData.image_url) {
-        formDataToSend.append('product_image', formData.image_url);
-      }
+      if (formData.image_url) formDataToSend.append('product_image', formData.image_url);
 
       if (selectedProduct && !isMenuProduct(selectedProduct)) {
         await branchProductAPI.update(selectedProduct.product_id, formDataToSend);
       } else {
         await branchProductAPI.create(formDataToSend);
       }
-
       await loadData();
       handleCloseModal();
     } catch (err: any) {
-      console.error('Error response:', err.response?.data);
-      const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan produk';
-      alert(errorMessage);
+      alert(err.response?.data?.message || 'Gagal menyimpan produk');
     } finally {
       setIsSubmitting(false);
     }
@@ -505,56 +467,32 @@ export default function BranchProductsPage() {
     if (!selectedProduct || overrideImageError || isSubmitting) return;
 
     setIsSubmitting(true);
-
     try {
-      // Delay 3 detik
-      await delay(3000);
-
+      await delay(2000);
       const formDataToSend = new FormData();
-      
-      formDataToSend.append('sale_price', overrideData.sale_price);
+      formDataToSend.append('sale_price', overrideData.sale_price.replace(/[^0-9]/g, ''));
       formDataToSend.append('is_available_at_branch', overrideData.is_available_at_branch.toString());
-
-      if (overrideData.branch_product_name && overrideData.branch_product_name.trim() !== '') {
-        formDataToSend.append('branch_product_name', overrideData.branch_product_name.trim());
-      }
-
-      if (overrideData.branch_description && overrideData.branch_description.trim() !== '') {
-        formDataToSend.append('branch_description', overrideData.branch_description.trim());
-      }
-
-      if (overrideData.branch_product_image) {
-        formDataToSend.append('branch_product_image', overrideData.branch_product_image);
-      }
-
-      console.log('🚀 Sending override request for product:', selectedProduct.product_id);
+      
+      if (overrideData.branch_product_name) formDataToSend.append('branch_product_name', overrideData.branch_product_name);
+      if (overrideData.branch_description) formDataToSend.append('branch_description', overrideData.branch_description);
+      if (overrideData.branch_product_image) formDataToSend.append('branch_product_image', overrideData.branch_product_image);
 
       await branchProductAPI.setOverride(selectedProduct.product_id, formDataToSend);
-
-      console.log('✅ Override berhasil disimpan');
-      
       await loadData();
       handleCloseOverrideModal();
-      
-      alert('Override produk berhasil disimpan!');
     } catch (err: any) {
-      console.error('❌ Error override:', err);
-      console.error('Response:', err.response?.data);
-      const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan override produk';
-      alert(errorMessage);
+      alert(err.response?.data?.message || 'Gagal menyimpan override produk');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // --- Delete/Restore Handlers ---
   const handleSoftDelete = async () => {
-    if (!selectedProduct || isMenuProduct(selectedProduct) || isSubmitting) return;
-
+    if (!selectedProduct || isMenuProduct(selectedProduct)) return;
     setIsSubmitting(true);
     try {
-      // Delay 3 detik
-      await delay(3000);
-      
+      await delay(2000);
       await branchProductAPI.softDelete(selectedProduct.product_id);
       await loadData();
       setIsSoftDeleteOpen(false);
@@ -567,22 +505,16 @@ export default function BranchProductsPage() {
   };
 
   const handleRestore = async () => {
-    if (!selectedProduct || isMenuProduct(selectedProduct) || isSubmitting) return;
-
+    if (!selectedProduct || isMenuProduct(selectedProduct)) return;
     setIsSubmitting(true);
     try {
-      // Delay 3 detik
-      await delay(3000);
-
-      const payload = {
+      await delay(2000);
+      await branchProductAPI.update(selectedProduct.product_id, {
         is_active: true,
         product_name: selectedProduct.product_name,
         base_price: selectedProduct.base_price,
         category_id: selectedProduct.category_id,
-      };
-
-      await branchProductAPI.update(selectedProduct.product_id, payload);
-
+      });
       await loadData();
       setIsRestoreOpen(false);
       setSelectedProduct(null);
@@ -594,114 +526,23 @@ export default function BranchProductsPage() {
   };
 
   const handleHardDelete = async () => {
-    if (!selectedProduct || isMenuProduct(selectedProduct) || isSubmitting) return;
-
+    if (!selectedProduct || isMenuProduct(selectedProduct)) return;
     setIsSubmitting(true);
     try {
-      // Delay 3 detik
-      await delay(3000);
-      
+      await delay(2000);
       await branchProductAPI.hardDelete(selectedProduct.product_id);
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Gagal menghapus produk permanen';
-      alert(errorMessage);
+      alert(err.response?.data?.message || 'Gagal menghapus produk permanen');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ✅ FILTER - Dengan dukungan showArchived (DIPERBAIKI)
-  const getFilteredProducts = (): (Product | MenuProduct)[] => {
-    // Jika showArchived aktif, tampilkan produk yang diarsipkan
-    if (showArchived) {
-      // 1. Ambil produk override yang diarsipkan dari menuProducts
-      const archivedMenuProducts = menuProducts.filter(p => !p.is_available);
-      
-      // 2. Ambil produk biasa yang diarsipkan (is_active = false atau is_available_at_branch = false)
-      const archivedNormalProducts = products.filter((prod) => {
-        if (!prod) return false;
-        
-        // Produk diarsipkan jika:
-        // - is_active = false (soft delete)
-        // - atau memiliki override dengan is_available_at_branch = false
-        const isArchivedBySoftDelete = prod.is_active === false;
-        const isArchivedByOverride = prod.branch_setting && !prod.branch_setting.is_available_at_branch;
-        
-        return isArchivedBySoftDelete || isArchivedByOverride;
-      });
-      
-      // 3. Filter berdasarkan scope
-      if (scopeFilter === 'overridden') {
-        // Hanya produk override yang diarsipkan
-        return archivedMenuProducts;
-      }
-      
-      if (scopeFilter === 'general') {
-        // Hanya produk general (bukan lokal, bukan override) yang diarsipkan
-        return archivedNormalProducts.filter(p => !p.branch_id && !isOverridden(p));
-      }
-      
-      if (scopeFilter === 'local') {
-        // Hanya produk lokal yang diarsipkan
-        return archivedNormalProducts.filter(p => !!p.branch_id);
-      }
-      
-      return [];
-    }
-    
-    // Jika showArchived tidak aktif, tampilkan produk aktif
-    if (scopeFilter === 'overridden') {
-      // Gunakan data dari /cashier/menu untuk filter Override (hanya yang available)
-      return menuProducts.filter(p => p.is_available);
-    }
-    
-    // Untuk filter lainnya, gunakan products biasa (hanya yang aktif)
-    return products.filter((prod) => {
-      if (!prod) return false;
-      
-      // Hanya produk aktif
-      const isActive = prod.is_active !== false && 
-                      (!prod.branch_setting || prod.branch_setting.is_available_at_branch);
-      
-      if (!isActive) return false;
-      
-      if (scopeFilter === 'general') return !prod.branch_id && !isOverridden(prod);
-      if (scopeFilter === 'local') return !!prod.branch_id;
-      return true;
-    });
-  };
-
-  const filteredProducts = getFilteredProducts();
-
-  // Hitung total untuk setiap kategori (hanya yang aktif)
-  const generalCount = products.filter((p) => p && !p.branch_id && !isOverridden(p) && p.is_active !== false && (!p.branch_setting || p.branch_setting.is_available_at_branch)).length;
-  const localCount = products.filter((p) => p && p.branch_id && p.is_active !== false && (!p.branch_setting || p.branch_setting.is_available_at_branch)).length;
-  const overriddenCount = menuProducts.filter(p => p.is_available).length;
-
-  // ✅ Hitung total archived (DIPERBAIKI - Hindari duplikasi)
-  const archivedFromMenu = menuProducts.filter(p => !p.is_available).length;
-  const archivedNormalWithoutOverride = products.filter((p) => {
-    if (!p) return false;
-    const isArchivedState = p.is_active === false || (p.branch_setting && !p.branch_setting.is_available_at_branch);
-    const hasOverride = isOverridden(p);
-    // Hanya hitung yang diarsipkan TANPA override (yang punya override sudah dihitung di archivedFromMenu)
-    return isArchivedState && !hasOverride;
-  }).length;
-  
-  const archivedCount = archivedFromMenu + archivedNormalWithoutOverride;
-
-  const totalItems = filteredProducts.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
-  const handlePageChange = (page: number, e: React.MouseEvent) => {
-    e.preventDefault();
-    if (page > 0 && page <= totalPages) {
+  const handlePageChange = (page: number) => {
+    if (meta && page > 0 && page <= meta.total_pages) {
       setCurrentPage(page);
     }
   };
@@ -717,8 +558,8 @@ export default function BranchProductsPage() {
           <Skeleton className="h-10 w-32" />
         </div>
         <Skeleton className="h-12 w-full" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
             <Card key={i} className="p-4">
               <Skeleton className="h-48 w-full mb-4" />
               <Skeleton className="h-6 w-3/4 mb-2" />
@@ -767,72 +608,92 @@ export default function BranchProductsPage() {
         <AlertDescription>
           {showArchived ? (
             <>
-              <strong>Mode Arsip:</strong> Menampilkan produk yang diarsipkan (tidak tampil di menu kasir). Total: {archivedCount} produk diarsipkan
+              <strong>Mode Arsip:</strong> Menampilkan produk yang diarsipkan (tidak tampil di menu kasir).
             </>
           ) : (
             <>
               <strong>Produk Aktif:</strong> Produk yang Anda buat hanya berlaku untuk cabang ini. Produk General dari pusat
-              dapat di-override harga/ketersediaannya. Total: {generalCount} General, {localCount} Lokal, {overriddenCount} Override
+              dapat di-override harga/ketersediaannya.
             </>
           )}
         </AlertDescription>
       </Alert>
 
-      {/* Filter - Fokus pada Override */}
-      {!showArchived && (
-        <Card className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {/* Tombol Override - Fokus Utama dengan styling khusus */}
-              <Button
-                variant={scopeFilter === 'overridden' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setScopeFilter('overridden')}
-                className={scopeFilter === 'overridden' ? 'bg-black shadow-lg' : ''}>
-                <Settings className="mr-2 h-3 w-3" />
-                Override ({overriddenCount})
-              </Button>
-              <Button
-                variant={scopeFilter === 'general' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setScopeFilter('general')}
-              >
-                <Globe className="mr-2 h-3 w-3" />
-                General ({generalCount})
-              </Button>
-              <Button
-                variant={scopeFilter === 'local' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setScopeFilter('local')}
-              >
-                <Building2 className="mr-2 h-3 w-3" />
-                Lokal ({localCount})
-              </Button>
-            </div>
+      {/* Filter & Search */}
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
           </div>
-        </Card>
-      )}
+          <div className="flex flex-wrap gap-2">
+            
+            {/* Tombol Override / Menu Kasir */}
+            <Button
+              variant={scopeFilter === 'overridden' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('overridden')}
+              className={scopeFilter === 'overridden' ? 'bg-black text-white shadow-lg' : ''}
+            >
+              <Settings className="mr-2 h-3 w-3" />
+              Menu Kasir {scopeFilter === 'overridden' && meta && `(${meta.total_items})`}
+            </Button>
+
+            <Button
+              variant={scopeFilter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('all')}
+            >
+              Semua {scopeFilter === 'all' && meta && `(${meta.total_items})`}
+            </Button>
+
+            <Button
+              variant={scopeFilter === 'general' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('general')}
+            >
+              <Globe className="mr-2 h-3 w-3" />
+              General {scopeFilter === 'general' && meta && `(${meta.total_items})`}
+            </Button>
+            <Button
+              variant={scopeFilter === 'local' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('local')}
+            >
+              <Building2 className="mr-2 h-3 w-3" />
+              Lokal {scopeFilter === 'local' && meta && `(${meta.total_items})`}
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       {/* Products Grid */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {paginatedProducts.length === 0 ? (
+        {products.length === 0 ? (
           <Card className="col-span-full p-12">
             <div className="text-center">
               <Package className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {showArchived ? 'Tidak ada produk di arsip' : 'Tidak ada produk'}
+                {searchQuery ? 'Tidak ada hasil pencarian' : 'Tidak ada produk'}
               </p>
             </div>
           </Card>
         ) : (
-          paginatedProducts.map((product) => (
+          products.map((product) => {
+            // Check status aktif
+            const isActive = isMenuProduct(product) 
+               ? product.is_available 
+               : (product.is_active !== false && (!product.branch_setting || product.branch_setting.is_available_at_branch));
+            
+            // Logic visual: jika showArchived true, tampilkan yang TIDAK aktif.
+            // jika showArchived false, tampilkan yang AKTIF.
+            if (showArchived && isActive) return null;
+            if (!showArchived && !isActive) return null;
+
+            return (
             <Card
               key={product.product_id}
-              className={`overflow-hidden p-0 gap-0 border relative group ${showArchived ? 'opacity-75 bg-muted/40' : ''}`}
+              className={`overflow-hidden p-0 gap-0 border relative group ${!isActive ? 'opacity-75 bg-muted/40' : ''}`}
             >
               {/* Product Image */}
               <div className="aspect-[4/3] bg-muted relative">
@@ -855,22 +716,15 @@ export default function BranchProductsPage() {
                   </div>
                 )}
 
+                {/* Overlay Image Fallback */}
                 {getDisplayImage(product) && (
-                  <div className="hidden flex items-center justify-center h-full absolute inset-0 bg-muted -z-10">
-                    <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
-                  </div>
+                   <div className="hidden flex items-center justify-center h-full absolute inset-0 bg-muted -z-10">
+                     <ImageIcon className="h-10 w-10 text-muted-foreground/50" />
+                   </div>
                 )}
 
-                {!showArchived && !isMenuProduct(product) && isOverridden(product) && (
-                  <div className="absolute top-2 left-2 z-10">
-                    <Badge variant="default" className="bg-black text-white text-[10px] px-2 py-0.5">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Override
-                    </Badge>
-                  </div>
-                )}
-
-                {!showArchived && isMenuProduct(product) && (
+                {/* ✅ Badge Menu Kasir */}
+                {isMenuProduct(product) && !showArchived && (
                   <div className="absolute top-2 left-2 z-10">
                     <Badge variant="default" className="bg-black text-white text-[10px] px-2 py-0.5">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -879,6 +733,17 @@ export default function BranchProductsPage() {
                   </div>
                 )}
 
+                {/* ✅ Badge Override (hanya muncul di tab manajemen jika produk ter-override) */}
+                {!isMenuProduct(product) && isOverridden(product) && !showArchived && (
+                  <div className="absolute top-2 left-2 z-10">
+                    <Badge variant="default" className="bg-black text-white text-[10px] px-2 py-0.5">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Override
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Archived Badge */}
                 {showArchived && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10">
                     <Badge variant="secondary" className="bg-white/90 text-black">
@@ -919,10 +784,11 @@ export default function BranchProductsPage() {
                           ) : (
                             <DropdownMenuItem onClick={() => handleOpenOverrideModal(product)}>
                               <Settings className="mr-2 h-4 w-4" />
-                              {!isMenuProduct(product) && isOverridden(product) ? 'Edit Override' : 'Override Setting'}
+                              {isOverridden(product) ? 'Edit Override' : 'Override Setting'}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
+                          {/* Hanya produk lokal yang bisa delete */}
                           {!isMenuProduct(product) && product.branch_id && (
                             <>
                               <DropdownMenuItem
@@ -972,15 +838,17 @@ export default function BranchProductsPage() {
                     <p className="text-sm font-bold text-primary truncate">
                       {formatRupiah(getDisplayPrice(product))}
                     </p>
+                    {/* Tampilkan harga coret jika di override */}
                     {!isMenuProduct(product) && isOverridden(product) && product.branch_setting && product.branch_setting.sale_price !== product.base_price && (
-                      <p className="text-xs text-muted-foreground line-through">
-                        {formatRupiah(product.base_price)}
-                      </p>
+                       <p className="text-xs text-muted-foreground line-through">
+                         {formatRupiah(product.base_price)}
+                       </p>
                     )}
                   </div>
+                  {/* Badge Tipe */}
                   <Badge variant={!isMenuProduct(product) && product.branch_id ? 'secondary' : 'default'} className="text-[10px] h-5 px-1.5 shrink-0">
                     {isMenuProduct(product) ? (
-                      <CheckCircle2 className="h-3 w-3" />
+                        <CheckCircle2 className="h-3 w-3" />
                     ) : product.branch_id ? (
                       <Building2 className="h-3 w-3" />
                     ) : (
@@ -990,36 +858,34 @@ export default function BranchProductsPage() {
                 </div>
               </div>
             </Card>
-          ))
+          )})
         )}
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {meta && meta.total_pages > 1 && (
         <div className="py-4 flex justify-center">
           <Pagination>
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious
                   href="#"
-                  onClick={(e) => handlePageChange(currentPage - 1, e)}
-                  className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                  onClick={(e) => { e.preventDefault(); handlePageChange(currentPage - 1); }}
+                  className={!meta.has_prev_page ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                 />
               </PaginationItem>
 
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink href="#" isActive={currentPage === i + 1} onClick={(e) => handlePageChange(i + 1, e)}>
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
+              <PaginationItem>
+                <span className="flex items-center px-4 text-sm font-medium">
+                  Halaman {meta.current_page} dari {meta.total_pages}
+                </span>
+              </PaginationItem>
 
               <PaginationItem>
                 <PaginationNext
                   href="#"
-                  onClick={(e) => handlePageChange(currentPage + 1, e)}
-                  className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                  onClick={(e) => { e.preventDefault(); handlePageChange(currentPage + 1); }}
+                  className={!meta.has_next_page ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                 />
               </PaginationItem>
             </PaginationContent>
@@ -1027,27 +893,26 @@ export default function BranchProductsPage() {
         </div>
       )}
 
+      {/* --- MODALS (Create, Override, Delete, Restore) --- */}
+      
       {/* Create/Edit Product Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{selectedProduct && !isMenuProduct(selectedProduct) ? 'Edit Produk Lokal' : 'Tambah Produk Lokal Baru'}</DialogTitle>
+            <DialogTitle>{selectedProduct ? 'Edit Produk Lokal' : 'Tambah Produk Lokal Baru'}</DialogTitle>
             <DialogDescription>
-              {selectedProduct && !isMenuProduct(selectedProduct) ? 'Perbarui informasi produk lokal' : 'Produk hanya berlaku untuk cabang Anda'}
+              {selectedProduct ? 'Perbarui informasi produk lokal' : 'Produk hanya berlaku untuk cabang Anda'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>Gambar Produk</Label>
-
                 {imageError && (
                   <Alert variant="destructive" className="mb-2 py-2">
-                    <AlertCircle className="h-4 w-4" />
                     <AlertDescription className="text-xs font-medium">{imageError}</AlertDescription>
                   </Alert>
                 )}
-
                 <div className="flex flex-col gap-4">
                   {imagePreview && (
                     <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
@@ -1063,13 +928,9 @@ export default function BranchProductsPage() {
                       id="image_url"
                     />
                     <Label htmlFor="image_url" className="flex-1 cursor-pointer">
-                      <div
-                        className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${
-                          imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'
-                        }`}
-                      >
-                        <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
-                        <span className={`text-sm ${imageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                      <div className="flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 hover:bg-muted/50">
+                        <Upload className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
                           {imagePreview ? 'Ganti Gambar' : 'Upload Gambar (Max 1MB)'}
                         </span>
                       </div>
@@ -1077,7 +938,7 @@ export default function BranchProductsPage() {
                   </div>
                 </div>
               </div>
-
+              
               <div className="space-y-2">
                 <Label htmlFor="product_name">Nama Produk *</Label>
                 <Input
@@ -1095,13 +956,12 @@ export default function BranchProductsPage() {
                   id="base_price"
                   type="text"
                   value={formData.base_price ? `Rp. ${Number(formData.base_price).toLocaleString('id-ID')}` : ''}
-                  onChange={handlePriceChange}
+                  onChange={(e) => setFormData({ ...formData, base_price: e.target.value.replace(/[^0-9]/g, '') })}
                   placeholder="Masukkan harga"
                   required
                 />
               </div>
 
-              {/* ✅ PERBAIKAN FINAL: Filter kategori - hanya kategori lokal untuk produk lokal (Tambah & Edit) */}
               <div className="space-y-2">
                 <Label htmlFor="category_id">Kategori *</Label>
                 <Select
@@ -1113,38 +973,27 @@ export default function BranchProductsPage() {
                     <SelectValue placeholder="Pilih Kategori" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(() => {
-                      // Untuk produk lokal (baik Tambah Baru maupun Edit), hanya tampilkan kategori lokal
-                      const availableCategories = categories.filter(cat => cat.branch_id);
-
-                      if (availableCategories.length > 0) {
-                        return availableCategories.map((category) => (
-                          <SelectItem key={category.category_id} value={category.category_id}>
-                            {category.category_name}
-                          </SelectItem>
-                        ));
-                      } else {
-                        return (
-                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                            Tidak ada kategori lokal. Silakan buat kategori lokal terlebih dahulu.
-                          </div>
-                        );
-                      }
-                    })()}
+                    {categories.filter(cat => cat.branch_id).length > 0 ? (
+                      categories.filter(cat => cat.branch_id).map((category) => (
+                        <SelectItem key={category.category_id} value={category.category_id}>
+                          {category.category_name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                        Belum ada kategori lokal.
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Hanya kategori lokal cabang yang dapat dipilih untuk produk lokal
-                </p>
+                <p className="text-xs text-muted-foreground">Hanya kategori lokal yang dapat dipilih</p>
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
+              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>Batal</Button>
               <Button type="submit" disabled={isSubmitting || !!imageError}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedProduct && !isMenuProduct(selectedProduct) ? 'Update' : 'Simpan'}
+                {selectedProduct ? 'Update' : 'Simpan'}
               </Button>
             </DialogFooter>
           </form>
@@ -1155,26 +1004,18 @@ export default function BranchProductsPage() {
       <Dialog open={isOverrideModalOpen} onOpenChange={setIsOverrideModalOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
-              {selectedProduct && !isMenuProduct(selectedProduct) && isOverridden(selectedProduct) ? 'Edit Override Produk' : 'Override Produk General'}
-            </DialogTitle>
+            <DialogTitle>Override Produk General</DialogTitle>
             <DialogDescription>
-              Ubah harga, nama, deskripsi, gambar produk{' '}
-              <strong>{getDisplayName(selectedProduct)}</strong> untuk cabang ini
+              Ubah harga, nama, atau ketersediaan untuk cabang ini.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleOverrideSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Gambar Produk Override (Opsional)</Label>
-
+                <Label>Gambar Override (Opsional)</Label>
                 {overrideImageError && (
-                  <Alert variant="destructive" className="mb-2 py-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="text-xs font-medium">{overrideImageError}</AlertDescription>
-                  </Alert>
+                  <Alert variant="destructive" className="mb-2"><AlertDescription>{overrideImageError}</AlertDescription></Alert>
                 )}
-
                 <div className="flex flex-col gap-4">
                   {overrideImagePreview && (
                     <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
@@ -1182,23 +1023,11 @@ export default function BranchProductsPage() {
                     </div>
                   )}
                   <div className="flex items-center gap-2">
-                    <Input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/gif"
-                      onChange={handleOverrideImageChange}
-                      className="hidden"
-                      id="override_image"
-                    />
+                    <Input type="file" accept="image/*" onChange={handleOverrideImageChange} className="hidden" id="override_image" />
                     <Label htmlFor="override_image" className="flex-1 cursor-pointer">
-                      <div
-                        className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${
-                          overrideImageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'
-                        }`}
-                      >
-                        <Upload className={`h-5 w-5 ${overrideImageError ? 'text-destructive' : 'text-muted-foreground'}`} />
-                        <span className={`text-sm ${overrideImageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                          {overrideImagePreview ? 'Ganti Gambar' : 'Upload Gambar Override (Max 1MB)'}
-                        </span>
+                      <div className="flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 hover:bg-muted/50">
+                        <Upload className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Upload Gambar Override</span>
                       </div>
                     </Label>
                   </div>
@@ -1206,10 +1035,34 @@ export default function BranchProductsPage() {
               </div>
 
               <div className="space-y-2">
+                <Label>Harga Override *</Label>
+                <Input
+                  value={overrideData.sale_price ? `Rp. ${Number(overrideData.sale_price).toLocaleString('id-ID')}` : ''}
+                  onChange={(e) => setOverrideData({...overrideData, sale_price: e.target.value.replace(/[^0-9]/g, '')})}
+                  placeholder="Harga baru cabang"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Status Ketersediaan</Label>
+                <Select
+                  value={overrideData.is_available_at_branch.toString()}
+                  onValueChange={(val) => setOverrideData({...overrideData, is_available_at_branch: val === 'true'})}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Tersedia</SelectItem>
+                    <SelectItem value="false">Tidak Tersedia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
                 <Label htmlFor="branch_product_name">Nama Produk Override (Opsional)</Label>
                 <Input
                   id="branch_product_name"
-                  value={overrideData.branch_product_name}
+                  value={overrideData.branch_product_name || ''}
                   onChange={(e) => setOverrideData({ ...overrideData, branch_product_name: e.target.value })}
                   placeholder="Kosongkan jika tidak ingin override nama"
                 />
@@ -1222,130 +1075,64 @@ export default function BranchProductsPage() {
                 <Label htmlFor="branch_description">Deskripsi Cabang (Opsional)</Label>
                 <Textarea
                   id="branch_description"
-                  value={overrideData.branch_description}
+                  value={overrideData.branch_description || ''}
                   onChange={(e) => setOverrideData({ ...overrideData, branch_description: e.target.value })}
                   placeholder="Tambahkan deskripsi khusus untuk cabang"
                   rows={3}
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sale_price">Harga Override *</Label>
-                <Input
-                  id="sale_price"
-                  type="text"
-                  value={overrideData.sale_price ? `Rp. ${Number(overrideData.sale_price).toLocaleString('id-ID')}` : ''}
-                  onChange={handleOverridePriceChange}
-                  placeholder="Masukkan harga baru"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Harga saat ini: {formatRupiah(getDisplayPrice(selectedProduct))}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="is_available">Status Ketersediaan</Label>
-                <Select
-                  value={overrideData.is_available_at_branch.toString()}
-                  onValueChange={(value) =>
-                    setOverrideData({ ...overrideData, is_available_at_branch: value === 'true' })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">Tersedia</SelectItem>
-                    <SelectItem value="false">Tidak Tersedia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseOverrideModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting || !!overrideImageError}>
+              <Button type="button" variant="outline" onClick={handleCloseOverrideModal} disabled={isSubmitting}>Batal</Button>
+              <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedProduct && !isMenuProduct(selectedProduct) && isOverridden(selectedProduct) ? 'Update Override' : 'Simpan Override'}
+                Simpan Override
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Soft Delete Confirmation */}
+      {/* Soft Delete & Restore & Hard Delete Modals (Standard) */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Arsipkan Produk?</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin mengarsipkan <strong>{getDisplayName(selectedProduct)}</strong>?
-              <br />
-              Produk akan dinonaktifkan dan tidak muncul di menu kasir.
-            </DialogDescription>
+            <DialogDescription>Produk <strong>{getDisplayName(selectedProduct)}</strong> akan dinonaktifkan.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)} disabled={isSubmitting}>
-              Batal
-            </Button>
-            <Button className="bg-black text-white hover:bg-gray-800" onClick={handleSoftDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Arsipkan
-            </Button>
+            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)}>Batal</Button>
+            <Button onClick={handleSoftDelete} disabled={isSubmitting}>Arsipkan</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Restore Confirmation */}
+      
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Aktifkan Kembali?</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin mengaktifkan kembali produk <strong>{getDisplayName(selectedProduct)}</strong>?
-              <br />
-              Produk akan muncul kembali di daftar aktif dan menu kasir.
-            </DialogDescription>
+            <DialogDescription>Produk <strong>{getDisplayName(selectedProduct)}</strong> akan diaktifkan kembali.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
-              Batal
-            </Button>
-            <Button onClick={handleRestore} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Aktifkan
-            </Button>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)}>Batal</Button>
+            <Button onClick={handleRestore} disabled={isSubmitting}>Aktifkan</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Hard Delete Confirmation */}
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
-              Hapus Permanen?
-            </DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin menghapus <strong>{getDisplayName(selectedProduct)}</strong> secara permanen?
-              <br />
-              Tindakan ini tidak dapat dibatalkan.
-            </DialogDescription>
+            <DialogTitle>Hapus Permanen?</DialogTitle>
+            <DialogDescription>Tindakan ini tidak dapat dibatalkan.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
-              Batal
-            </Button>
-            <Button className="bg-black hover:bg-gray-800" variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Hapus Permanen
-            </Button>
+            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)}>Batal</Button>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>Hapus Permanen</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   );
 }

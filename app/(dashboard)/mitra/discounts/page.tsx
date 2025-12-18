@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { discountAPI, categoryAPI, productAPI, branchAPI } from '@/lib/api/mitra';
-import { DiscountRule, Category, Product, Branch } from '@/types/mitra';
+import { DiscountRule, Category, Product, Branch, PaginationMeta } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -90,14 +90,19 @@ const ITEMS_PER_PAGE = 5;
 
 export default function DiscountsPage() {
   const router = useRouter();
+  
+  // Data States
   const [discounts, setDiscounts] = useState<DiscountRule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  
+  // UI States
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // State Filter & Pagination
+  // Filter & Pagination States
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -110,36 +115,62 @@ export default function DiscountsPage() {
   const [selectedDiscount, setSelectedDiscount] = useState<DiscountRule | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [showArchived]);
+  // Helper Delay
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Initial Load (Dependencies)
+  useEffect(() => {
+    const loadDependencies = async () => {
+      try {
+        const [categoriesData, productsData, branchesData] = await Promise.all([
+          categoryAPI.getAll(), 
+          productAPI.getAll(),
+          branchAPI.getAll(),
+        ]);
+
+        setCategories(Array.isArray(categoriesData) ? categoriesData : (categoriesData as any).data || []);
+        setProducts(Array.isArray(productsData) ? productsData : (productsData as any).data || []);
+        setBranches(Array.isArray(branchesData) ? branchesData : []);
+      } catch (err) {
+        console.error("Gagal memuat data pendukung", err);
+      }
+    };
+    loadDependencies();
+  }, []);
+
+  // Load Discounts on Filter/Page Change
+  useEffect(() => {
+    loadDiscounts();
+  }, [currentPage, showArchived, scopeFilter]);
+
+  // Reset pagination saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
   }, [scopeFilter, showArchived]);
 
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-  const loadData = async () => {
+  const loadDiscounts = async () => {
     try {
       setIsLoading(true);
-      const [discountsData, categoriesData, productsData, branchesData] = await Promise.all([
-        discountAPI.getAll(),
-        categoryAPI.getAll(),
-        productAPI.getAll(),
-        branchAPI.getAll(),
-      ]);
       
-      const branchesList = Array.isArray(branchesData) ? branchesData : [];
-      const discountsList = Array.isArray(discountsData) ? discountsData : [];
-      
-      const filteredApiData = showArchived 
-        ? discountsList.filter(d => d.is_active === false)
-        : discountsList.filter(d => d.is_active !== false);
+      // Construct Parameters
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        is_active: showArchived ? 'false' : 'true'
+      };
 
-      const discountsWithBranch = filteredApiData.map(discount => {
+      // Pass scope filter if backend supports it (optional)
+      if (scopeFilter === 'local') params.type = 'local';
+      if (scopeFilter === 'general') params.type = 'general';
+
+      const response = await discountAPI.getAll(params);
+      
+      const discountsList = Array.isArray(response.data) ? response.data : [];
+      
+      // Mapping logic (tetap dilakukan di client jika backend tidak melakukan join lengkap)
+      const discountsWithBranch = discountsList.map(discount => {
         const branch = discount.branch_id 
-          ? branchesList.find(b => b.branch_id === discount.branch_id)
+          ? branches.find(b => b.branch_id === discount.branch_id)
           : null;
         
         return {
@@ -151,9 +182,8 @@ export default function DiscountsPage() {
       });
       
       setDiscounts(discountsWithBranch);
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      setProducts(Array.isArray(productsData) ? productsData : []);
-      setBranches(branchesList);
+      setMeta(response.meta);
+
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data Promo');
     } finally {
@@ -163,12 +193,11 @@ export default function DiscountsPage() {
 
   const handleArchive = async () => {
     if (!selectedDiscount) return;
-    
     setIsSubmitting(true);
     try {
       await delay(2000);
       await discountAPI.softDelete(selectedDiscount.discount_rule_id);
-      await loadData();
+      await loadDiscounts();
       setIsSoftDeleteOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -180,10 +209,10 @@ export default function DiscountsPage() {
 
   const handleRestore = async () => {
     if (!selectedDiscount) return;
-    
     setIsSubmitting(true);
     try {
       await delay(2000);
+      // Asumsi backend support partial update untuk restore
       const restoreData = {
         is_active: true,
         discount_name: selectedDiscount.discount_name,
@@ -195,7 +224,7 @@ export default function DiscountsPage() {
       };
       
       await discountAPI.update(selectedDiscount.discount_rule_id, restoreData);
-      await loadData();
+      await loadDiscounts();
       setIsRestoreOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -207,12 +236,11 @@ export default function DiscountsPage() {
 
   const handleHardDelete = async () => {
     if (!selectedDiscount) return;
-    
     setIsSubmitting(true);
     try {
       await delay(2000);
       await discountAPI.hardDelete(selectedDiscount.discount_rule_id);
-      await loadData();
+      await loadDiscounts();
       setIsHardDeleteModalOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -222,52 +250,36 @@ export default function DiscountsPage() {
     }
   };
 
-  const filteredDiscounts = discounts.filter(disc => {
-    if (scopeFilter === 'general') return !disc.branch_id;
-    if (scopeFilter === 'local') return !!disc.branch_id;
-    return true;
-  });
-
-  const generalCount = discounts.filter(d => !d.branch_id).length;
-  const localCount = discounts.filter(d => d.branch_id).length;
-
-  const totalItems = filteredDiscounts.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedDiscounts = filteredDiscounts.slice(startIndex, endIndex);
-
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
-    if (page > 0 && page <= totalPages) {
+    if (page > 0 && meta && page <= meta.total_pages) {
       setCurrentPage(page);
     }
   };
 
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
     });
   };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
+      day: '2-digit', month: 'short', year: 'numeric'
     });
   };
 
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit'
+      hour: '2-digit', minute: '2-digit'
     });
   };
+
+  // Hitung counts (Hanya estimasi di client karena pagination, 
+  // idealnya backend menyediakan endpoint summary count)
+  const generalCount = discounts.filter(d => !d.branch_id).length;
+  const localCount = discounts.filter(d => d.branch_id).length;
 
   if (isLoading) {
     return (
@@ -325,7 +337,8 @@ export default function DiscountsPage() {
         <Globe className="h-4 w-4" />
         <AlertDescription>
           <strong>Hybrid Scope:</strong> Promo yang Anda buat akan otomatis menjadi{' '}
-          <strong>General</strong> (berlaku untuk semua cabang). Total: {generalCount} General, {localCount} Lokal
+          <strong>General</strong> (berlaku untuk semua cabang). 
+          Total Data: {meta?.total_items || 0}
         </AlertDescription>
       </Alert>
 
@@ -342,7 +355,7 @@ export default function DiscountsPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({discounts.length})
+              Semua
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -350,7 +363,7 @@ export default function DiscountsPage() {
               onClick={() => setScopeFilter('general')}
             >
               <Globe className="mr-2 h-3 w-3" />
-              General ({generalCount})
+              General
             </Button>
             <Button
               variant={scopeFilter === 'local' ? 'default' : 'outline'}
@@ -358,7 +371,7 @@ export default function DiscountsPage() {
               onClick={() => setScopeFilter('local')}
             >
               <Building2 className="mr-2 h-3 w-3" />
-              Lokal ({localCount})
+              Lokal
             </Button>
           </div>
         </div>
@@ -381,7 +394,7 @@ export default function DiscountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedDiscounts.length === 0 ? (
+              {discounts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={8} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
@@ -391,7 +404,7 @@ export default function DiscountsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedDiscounts.map((discount) => (
+                discounts.map((discount) => (
                   <TableRow key={discount.discount_rule_id} className={!discount.is_active ? 'opacity-75 bg-muted/30' : ''}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -515,7 +528,8 @@ export default function DiscountsPage() {
           </Table>
         </div>
 
-        {totalPages > 1 && (
+        {/* Pagination Controls */}
+        {meta && meta.total_pages > 1 && (
           <div className="py-4">
             <Pagination>
               <PaginationContent>
@@ -523,27 +537,21 @@ export default function DiscountsPage() {
                   <PaginationPrevious 
                     href="#" 
                     onClick={(e) => handlePageChange(currentPage - 1, e)}
-                    className={currentPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                    className={!meta.has_prev_page ? "pointer-events-none opacity-50" : ""}
                   />
                 </PaginationItem>
                 
-                {Array.from({ length: totalPages }).map((_, i) => (
-                  <PaginationItem key={i}>
-                    <PaginationLink 
-                      href="#" 
-                      isActive={currentPage === i + 1}
-                      onClick={(e) => handlePageChange(i + 1, e)}
-                    >
-                      {i + 1}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
+                <PaginationItem>
+                    <span className="text-sm px-4">
+                        Halaman {meta.current_page} dari {meta.total_pages}
+                    </span>
+                </PaginationItem>
 
                 <PaginationItem>
                   <PaginationNext 
                     href="#" 
                     onClick={(e) => handlePageChange(currentPage + 1, e)}
-                    className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                    className={!meta.has_next_page ? "pointer-events-none opacity-50" : ""}
                   />
                 </PaginationItem>
               </PaginationContent>

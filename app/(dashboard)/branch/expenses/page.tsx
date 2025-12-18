@@ -58,13 +58,14 @@ import {
   Download,
   FileText,
   User,
+  Search,
 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { formatRupiah } from '@/lib/utils';
+import { MetaPagination } from '@/lib/services/fetchData';
 
-// Update Interface untuk mengakomodasi data User dan Shift
 interface Expense {
   expense_id: string;
   amount: number;
@@ -73,7 +74,6 @@ interface Expense {
   proof_image?: string;
   shift_id?: string | null;
   created_at: string;
-  // Tambahan field relasi dari backend
   user?: {
     full_name: string;
   };
@@ -84,7 +84,6 @@ interface Expense {
   };
 }
 
-// Helper untuk URL gambar
 const getImageUrl = (path: string | null | undefined) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -94,10 +93,11 @@ const getImageUrl = (path: string | null | undefined) => {
   return `${serverUrl}/${cleanPath}`;
 };
 
-const ITEMS_PER_PAGE = 10;
-
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  // ✅ State untuk Meta Pagination
+  const [meta, setMeta] = useState<MetaPagination | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -128,10 +128,13 @@ export default function ExpensesPage() {
     proof_image: null as File | null,
   });
 
+  // ✅ Trigger loadData saat page atau search berubah
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, searchQuery]);
 
+  // Reset page ke 1 saat melakukan pencarian
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
@@ -141,15 +144,18 @@ export default function ExpensesPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const response = await expenseAPI.getAll();
-      const expensesData = Array.isArray(response.data) ? response.data : [];
+      setError('');
 
-      // Sort by date descending
-      const sortedExpenses = expensesData.sort(
-        (a: any, b: any) => new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime()
-      );
+      // ✅ Panggil API dengan parameter Pagination & Search
+      const response = await expenseAPI.getAll({
+        page: currentPage,
+        limit: 10,
+        search: searchQuery
+      });
 
-      setExpenses(sortedExpenses);
+      setExpenses(response.items);
+      setMeta(response.meta);
+
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data kas keluar');
     } finally {
@@ -242,6 +248,7 @@ export default function ExpensesPage() {
     setIsSubmitting(true);
 
     try {
+      await delay(2000);
       const formDataToSend = new FormData();
       formDataToSend.append('amount', formData.amount);
       formDataToSend.append('description', formData.description);
@@ -282,25 +289,15 @@ export default function ExpensesPage() {
     }
   };
 
-  // --- Filter & Pagination Logic ---
-  const filteredExpenses = expenses.filter((expense) => {
-    const searchLower = searchQuery.toLowerCase();
-    return expense.description.toLowerCase().includes(searchLower);
-  });
-
-  const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
-
-  const totalItems = filteredExpenses.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedExpenses = filteredExpenses.slice(startIndex, endIndex);
-
+  // ✅ Helper Pagination
   const handlePageChange = (page: number) => {
-    if (page > 0 && page <= totalPages) {
+    if (meta && page > 0 && page <= meta.total_pages) {
       setCurrentPage(page);
     }
   };
+
+  // Hitung total halaman ini (karena pagination server-side tidak return total sum semua data kecuali endpoint khusus report)
+  const currentPageTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
 
   if (isLoading) {
     return (
@@ -347,10 +344,10 @@ export default function ExpensesPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Pengeluaran</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total (Halaman Ini)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-black">{formatRupiah(totalExpenses)}</div>
+            <div className="text-3xl font-bold text-black">{formatRupiah(currentPageTotal)}</div>
           </CardContent>
         </Card>
 
@@ -359,7 +356,8 @@ export default function ExpensesPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Jumlah Pengeluaran</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-black">{filteredExpenses.length} item</div>
+            {/* Menggunakan meta.total_items untuk total keseluruhan */}
+            <div className="text-3xl font-bold text-black">{meta ? meta.total_items : 0} item</div>
           </CardContent>
         </Card>
       </div>
@@ -371,7 +369,7 @@ export default function ExpensesPage() {
           <CardDescription>Daftar lengkap transaksi kas keluar</CardDescription>
         </CardHeader>
         <CardContent>
-          {paginatedExpenses.length === 0 ? (
+          {expenses.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
@@ -394,10 +392,10 @@ export default function ExpensesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {paginatedExpenses.map((expense, index) => {
-                      const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                    {expenses.map((expense, index) => {
+                      // Hitung nomor urut global
+                      const globalIndex = meta ? (meta.current_page - 1) * 10 + index + 1 : index + 1;
                       
-                      // Logika untuk menampilkan nama kasir dan operator
                       const operatorName = expense.user?.full_name || '-';
                       const cashierName = expense.shift?.cashier?.full_name || '-';
                       const showBothRoles = operatorName !== cashierName && cashierName !== '-';
@@ -426,7 +424,6 @@ export default function ExpensesPage() {
                           
                           <TableCell className="text-sm">
                             <div className="space-y-1.5">
-                              {/* Nama Kasir (Shift Owner) */}
                               <div className="flex items-center gap-2">
                                 <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
                                 <div>
@@ -436,7 +433,6 @@ export default function ExpensesPage() {
                                 </div>
                               </div>
                               
-                              {/* Nama Operator (jika berbeda dari kasir) */}
                               {showBothRoles && (
                                 <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
                                   <div>
@@ -477,12 +473,6 @@ export default function ExpensesPage() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Aksi</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                {expense.proof_image && (
-                                  <DropdownMenuItem onClick={() => handleViewProof(expense)}>
-                                    <Eye className="mr-2 h-4 w-4" />
-                                    Lihat Bukti
-                                  </DropdownMenuItem>
-                                )}
                                 <DropdownMenuItem
                                   onClick={() => {
                                     setSelectedExpense(expense);
@@ -503,8 +493,8 @@ export default function ExpensesPage() {
                 </Table>
               </div>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
+              {/* ✅ Pagination Component */}
+              {meta && meta.total_pages > 1 && (
                 <div className="py-4">
                   <Pagination>
                     <PaginationContent>
@@ -515,24 +505,15 @@ export default function ExpensesPage() {
                             e.preventDefault();
                             handlePageChange(currentPage - 1);
                           }}
-                          className={currentPage <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                          className={!meta.has_prev_page ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                         />
                       </PaginationItem>
 
-                      {Array.from({ length: totalPages }).map((_, i) => (
-                        <PaginationItem key={i}>
-                          <PaginationLink
-                            href="#"
-                            isActive={currentPage === i + 1}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handlePageChange(i + 1);
-                            }}
-                          >
-                            {i + 1}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
+                      <PaginationItem>
+                        <span className="flex items-center px-4 text-sm font-medium">
+                          Halaman {meta.current_page} dari {meta.total_pages}
+                        </span>
+                      </PaginationItem>
 
                       <PaginationItem>
                         <PaginationNext
@@ -541,14 +522,11 @@ export default function ExpensesPage() {
                             e.preventDefault();
                             handlePageChange(currentPage + 1);
                           }}
-                          className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                          className={!meta.has_next_page ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                         />
                       </PaginationItem>
                     </PaginationContent>
                   </Pagination>
-                  <div className="text-center text-sm text-muted-foreground mt-2">
-                    Halaman {currentPage} dari {totalPages}
-                  </div>
                 </div>
               )}
             </>
@@ -654,29 +632,10 @@ export default function ExpensesPage() {
               <ImageIcon className="h-5 w-5" />
               Bukti Pengeluaran
             </DialogTitle>
-            <DialogDescription>
-              Detail dan foto bukti pengeluaran
-            </DialogDescription>
           </DialogHeader>
           
           {selectedProof && (
             <div className="space-y-4 py-4">
-              {/* Detail Ringkas */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Deskripsi</p>
-                  <p className="font-medium text-black">{selectedProof.description}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Tanggal</p>
-                  <p className="font-medium text-black">{selectedProof.date}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Jumlah</p>
-                  <p className="font-bold text-black">{selectedProof.amount}</p>
-                </div>
-              </div>
-
               {/* Gambar Bukti */}
               <div className="space-y-2 pt-2 border-t">
                 <p className="text-sm font-medium text-gray-900">Foto Bukti</p>

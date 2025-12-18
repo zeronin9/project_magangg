@@ -58,6 +58,7 @@ import {
   Building2,
   Filter,
 } from 'lucide-react';
+import { MetaPagination } from '@/lib/services/fetchData';
 
 interface Category {
   category_id: string;
@@ -66,10 +67,11 @@ interface Category {
   is_active: boolean;
 }
 
-const ITEMS_PER_PAGE = 10;
-
 export default function BranchCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
+  // ✅ State untuk Meta Pagination
+  const [meta, setMeta] = useState<MetaPagination | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -90,17 +92,17 @@ export default function BranchCategoriesPage() {
     category_name: '',
   });
 
-  // ✅ PERBAIKAN: Hapus showArchived dari dependency agar tidak fetch ulang
-  // Kita fetch semua data di awal, filtering dilakukan di client-side
+  // ✅ Trigger loadData saat parameter berubah
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, searchQuery, scopeFilter]); 
 
+  // Reset halaman ke 1 saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, showArchived, scopeFilter]);
+  }, [searchQuery, scopeFilter]);
 
-  // ✅ PERBAIKAN: Delay diatur ke 3000ms (3 detik)
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadData = async () => {
@@ -108,23 +110,22 @@ export default function BranchCategoriesPage() {
       setIsLoading(true);
       setError('');
 
-      // ✅ LOGIKA BARU: Fetch 'general' & 'local' secara terpisah lalu gabung.
-      // Alasannya: Endpoint default backend memfilter is_active=true.
-      // Endpoint ?type=... di backend TIDAK memfilter is_active, jadi kita bisa dapat data arsip.
-      const [generalRes, localRes] = await Promise.all([
-        branchCategoryAPI.getAll('general'),
-        branchCategoryAPI.getAll('local')
-      ]);
+      // ✅ Mapping scopeFilter ke parameter API
+      let typeParam: string | undefined = undefined;
+      if (scopeFilter === 'local') typeParam = 'local';
+      if (scopeFilter === 'general') typeParam = 'general';
 
-      const generalData = Array.isArray(generalRes.data) ? generalRes.data : [];
-      const localData = Array.isArray(localRes.data) ? localRes.data : [];
+      // ✅ Panggil API dengan parameter Pagination & Search
+      const response = await branchCategoryAPI.getAll({
+        page: currentPage,
+        limit: 10,
+        search: searchQuery,
+        type: typeParam
+      });
 
-      // Gabungkan dan urutkan berdasarkan nama
-      const allData = [...generalData, ...localData].sort((a, b) => 
-        a.category_name.localeCompare(b.category_name)
-      );
+      setCategories(response.items);
+      setMeta(response.meta);
 
-      setCategories(allData);
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Gagal memuat data kategori');
@@ -161,7 +162,6 @@ export default function BranchCategoriesPage() {
     setIsSubmitting(true);
 
     try {
-      // ✅ Delay 3 detik
       await delay(3000);
 
       if (selectedCategory) {
@@ -185,7 +185,6 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      // ✅ Delay 3 detik
       await delay(3000);
       
       await branchCategoryAPI.softDelete(selectedCategory.category_id);
@@ -205,7 +204,6 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      // ✅ Delay 3 detik
       await delay(3000);
 
       await branchCategoryAPI.update(selectedCategory.category_id, {
@@ -228,7 +226,6 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      // ✅ Delay 3 detik
       await delay(3000);
       
       await branchCategoryAPI.hardDelete(selectedCategory.category_id);
@@ -244,40 +241,18 @@ export default function BranchCategoriesPage() {
     }
   };
 
-  // Filter
-  const filteredCategories = categories.filter((category) => {
-    const matchesSearch = category.category_name.toLowerCase().includes(searchQuery.toLowerCase());
-    // Logika arsip: Jika showArchived true -> tampilkan non-aktif. Jika false -> tampilkan aktif.
-    const matchesArchive = showArchived ? category.is_active === false : category.is_active !== false;
-    
-    const matchesScope =
-      scopeFilter === 'all'
-        ? true
-        : scopeFilter === 'general'
-        ? !category.branch_id
-        : scopeFilter === 'local'
-        ? !!category.branch_id
-        : true;
-    return matchesSearch && matchesArchive && matchesScope;
-  });
-
-  const generalCount = categories.filter((c) => !c.branch_id && c.is_active !== false).length;
-  const localCount = categories.filter((c) => c.branch_id && c.is_active !== false).length;
-
-  // Pagination
-  const totalItems = filteredCategories.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedCategories = filteredCategories.slice(startIndex, endIndex);
-
+  // ✅ Helper untuk Pagination
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
-    if (page > 0 && page <= totalPages) {
+    if (meta && page > 0 && page <= meta.total_pages) {
       setCurrentPage(page);
     }
   };
 
+  // Hitung jumlah sederhana dari data yang tampil (opsional, karena total_items ada di meta)
+  // Catatan: Server-side pagination tidak selalu mengirim hitungan terpisah 'local' vs 'general' 
+  // kecuali ada endpoint khusus statistik. Kita gunakan total_items dari meta untuk display.
+  
   if (isLoading) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
@@ -307,6 +282,7 @@ export default function BranchCategoriesPage() {
           <p className="text-muted-foreground">Kelola kategori produk (General & Lokal)</p>
         </div>
         <div className="grid grid-cols-2 gap-2 @md:flex">
+          {/* Tombol Arsip mungkin tidak berfungsi penuh tanpa filter server-side khusus, tergantung backend */}
           <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
@@ -331,13 +307,23 @@ export default function BranchCategoriesPage() {
         <Building2 className="h-4 w-4" />
         <AlertDescription>
           <strong>Kategori Lokal:</strong> Kategori yang Anda buat hanya berlaku untuk cabang ini. Kategori General dapat
-          dilihat namun tidak dapat diedit. Total: {generalCount} General, {localCount} Lokal
+          dilihat namun tidak dapat diedit.
         </AlertDescription>
       </Alert>
 
-      {/* Filter */}
+      {/* Filter Scope */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          
+          {/* ✅ Input Search */}
+          <div className="flex-1 max-w-sm">
+             <Input 
+                placeholder="Cari kategori..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+             />
+          </div>
+
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
@@ -348,7 +334,7 @@ export default function BranchCategoriesPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({generalCount + localCount})
+              Semua
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -356,7 +342,7 @@ export default function BranchCategoriesPage() {
               onClick={() => setScopeFilter('general')}
             >
               <Globe className="mr-2 h-3 w-3" />
-              General ({generalCount})
+              General
             </Button>
             <Button
               variant={scopeFilter === 'local' ? 'default' : 'outline'}
@@ -364,7 +350,7 @@ export default function BranchCategoriesPage() {
               onClick={() => setScopeFilter('local')}
             >
               <Building2 className="mr-2 h-3 w-3" />
-              Lokal ({localCount})
+              Lokal
             </Button>
           </div>
         </div>
@@ -375,18 +361,16 @@ export default function BranchCategoriesPage() {
         <CardHeader>
           <CardTitle>Daftar Kategori</CardTitle>
           <CardDescription>
-            Total {filteredCategories.length} kategori {showArchived ? 'diarsipkan' : 'aktif'}
+            {meta ? `Total ${meta.total_items} kategori` : 'Memuat data...'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {paginatedCategories.length === 0 ? (
+          {categories.length === 0 ? (
             <div className="text-center py-12">
               <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
                 {searchQuery
                   ? 'Tidak ada hasil pencarian'
-                  : showArchived
-                  ? 'Tidak ada kategori di arsip'
                   : 'Belum ada kategori'}
               </p>
             </div>
@@ -402,8 +386,9 @@ export default function BranchCategoriesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedCategories.map((category) => (
-                    <TableRow key={category.category_id} className={showArchived ? 'opacity-60' : ''}>
+                  {/* ✅ Mapping langsung dari categories (bukan paginatedCategories) */}
+                  {categories.map((category) => (
+                    <TableRow key={category.category_id} className={category.is_active === false ? 'opacity-60' : ''}>
                       <TableCell className="font-medium">{category.category_name}</TableCell>
                       <TableCell>
                         <Badge variant={category.branch_id ? 'secondary' : 'default'}>
@@ -441,7 +426,8 @@ export default function BranchCategoriesPage() {
 
                             {category.branch_id ? (
                               <>
-                                {!showArchived ? (
+                                {/* Logika Aksi berdasarkan status Active/Inactive */}
+                                {category.is_active !== false ? (
                                   <>
                                     <DropdownMenuItem onClick={() => handleOpenModal(category)}>
                                       <Pencil className="mr-2 h-4 w-4" />
@@ -500,8 +486,8 @@ export default function BranchCategoriesPage() {
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
+      {/* ✅ Server-Side Pagination Component */}
+      {meta && meta.total_pages > 1 && (
         <div className="py-4 flex justify-center">
           <Pagination>
             <PaginationContent>
@@ -509,23 +495,21 @@ export default function BranchCategoriesPage() {
                 <PaginationPrevious
                   href="#"
                   onClick={(e) => handlePageChange(currentPage - 1, e)}
-                  className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
+                  className={!meta.has_prev_page ? 'pointer-events-none opacity-50' : ''}
                 />
               </PaginationItem>
 
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink href="#" isActive={currentPage === i + 1} onClick={(e) => handlePageChange(i + 1, e)}>
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
+              <PaginationItem>
+                  <span className="flex items-center px-4 text-sm font-medium">
+                    Halaman {meta.current_page} dari {meta.total_pages}
+                  </span>
+              </PaginationItem>
 
               <PaginationItem>
                 <PaginationNext
                   href="#"
                   onClick={(e) => handlePageChange(currentPage + 1, e)}
-                  className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
+                  className={!meta.has_next_page ? 'pointer-events-none opacity-50' : ''}
                 />
               </PaginationItem>
             </PaginationContent>

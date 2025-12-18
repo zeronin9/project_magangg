@@ -1,5 +1,14 @@
 import axios from 'axios';
-import { SubscriptionOrderResponse, Subscription } from '@/types/mitra'; 
+// Pastikan Anda sudah mengupdate types/mitra.ts sesuai instruksi sebelumnya
+// agar PaginatedResponse dan PaginationMeta tersedia.
+import { 
+  PaginatedResponse, 
+  Product, 
+  Category, 
+  DiscountRule, 
+  SubscriptionOrderResponse, 
+  Subscription 
+} from '@/types/mitra'; 
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://192.168.1.16:3001/api';
 
@@ -10,6 +19,8 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// ==================== INTERCEPTORS ====================
 
 // Add token to requests
 apiClient.interceptors.request.use(
@@ -156,13 +167,19 @@ export const branchAdminAPI = {
   },
 };
 
-// ==================== PRODUCT ====================
+// ==================== PRODUCT (UPDATED) ====================
 export const productAPI = {
-  getAll: async (showAll = false) => {
-    const response = await apiClient.get('/product', {
-      params: showAll ? { show_all: true } : {},
-    });
-    return response.data;
+  // ✅ Updated: Menerima params untuk pagination & filter
+  getAll: async (params?: { 
+    page?: number; 
+    limit?: number; 
+    search?: string; 
+    type?: string; 
+    category_id?: string 
+  }) => {
+    const response = await apiClient.get('/product', { params });
+    // Mengembalikan PaginatedResponse<Product>
+    return response.data as PaginatedResponse<Product>; 
   },
 
   getById: async (id: string) => {
@@ -193,11 +210,18 @@ export const productAPI = {
   },
 };
 
-// ==================== CATEGORY ====================
+// ==================== CATEGORY (UPDATED) ====================
 export const categoryAPI = {
-  getAll: async () => {
-    const response = await apiClient.get('/category');
-    return response.data;
+  // ✅ Updated: Menerima params object, menggunakan apiClient agar token otomatis terlampir
+  getAll: async (params?: { 
+    page?: number; 
+    limit?: number; 
+    search?: string; 
+    type?: string 
+  }) => {
+    const response = await apiClient.get('/category', { params });
+    // Mengembalikan PaginatedResponse<Category>
+    return response.data as PaginatedResponse<Category>;
   },
 
   getById: async (id: string) => {
@@ -210,7 +234,6 @@ export const categoryAPI = {
     return response.data;
   },
 
-  // ✅ PERBAIKAN: Tambahkan is_active ke type definition
   update: async (id: string, data: { category_name: string; is_active?: boolean }) => {
     const response = await apiClient.put(`/category/${id}`, data);
     return response.data;
@@ -227,11 +250,17 @@ export const categoryAPI = {
   },
 };
 
-// ==================== DISCOUNT ====================
+// ==================== DISCOUNT (UPDATED) ====================
 export const discountAPI = {
-  getAll: async () => {
-    const response = await apiClient.get('/discount-rule');
-    return response.data;
+  // ✅ Updated: Support pagination
+  getAll: async (params?: { 
+    page?: number; 
+    limit?: number; 
+    search?: string 
+  }) => {
+    const response = await apiClient.get('/discount-rule', { params });
+    // Mengembalikan PaginatedResponse<DiscountRule>
+    return response.data as PaginatedResponse<DiscountRule>;
   },
 
   getById: async (id: string) => {
@@ -351,6 +380,7 @@ export const reportAPI = {
   },
 };
 
+// ==================== HELPERS ====================
 export const formatCurrency = (value: string | number): string => {
   const numValue = typeof value === 'string' ? parseFloat(value) : value;
   return new Intl.NumberFormat('id-ID', {

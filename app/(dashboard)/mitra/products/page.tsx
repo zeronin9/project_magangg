@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { productAPI, categoryAPI, branchAPI } from '@/lib/api/mitra';
-import { Product, Category, Branch } from '@/types/mitra';
+import { Product, Category, Branch, PaginationMeta } from '@/types/mitra';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -67,13 +67,18 @@ const ITEMS_PER_PAGE = 10;
 
 export default function ProductsPage() {
   const router = useRouter();
+  
+  // Data States
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  
+  // UI States
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // State Filter & Pagination
+  // Filter & Pagination States
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -83,55 +88,79 @@ export default function ProductsPage() {
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Initial Load (Categories & Branches only once)
   useEffect(() => {
-    loadData();
-  }, [showArchived]);
+    const loadDependencies = async () => {
+      try {
+        const [categoriesData, branchesData] = await Promise.all([
+          categoryAPI.getAll(), // Asumsi category dropdown tidak butuh pagination berat
+          branchAPI.getAll(),
+        ]);
+        
+        // Handle response structure differences
+        setCategories(Array.isArray(categoriesData) ? categoriesData : (categoriesData as any).data || []);
+        setBranches(Array.isArray(branchesData) ? branchesData : []);
+      } catch (err) {
+        console.error("Failed to load dependencies", err);
+      }
+    };
+    loadDependencies();
+  }, []);
+
+  // Load Products on Filter/Page Change
+  useEffect(() => {
+    loadProducts();
+  }, [currentPage, showArchived, scopeFilter]);
 
   // Reset pagination saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
   }, [scopeFilter, showArchived]);
 
-  // Helper Delay
+  // Helper Delay for UX
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const loadData = async () => {
+  const loadProducts = async () => {
     try {
       setIsLoading(true);
-      const [productsData, categoriesData, branchesData] = await Promise.all([
-        productAPI.getAll(showArchived),
-        categoryAPI.getAll(),
-        branchAPI.getAll(),
-      ]);
-      
-      const branchesList = Array.isArray(branchesData) ? branchesData : [];
-      const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
-      const productsList = Array.isArray(productsData) ? productsData : [];
-      
-      const filteredList = showArchived 
-        ? productsList.filter((p: any) => p.is_active === false)
-        : productsList.filter((p: any) => p.is_active !== false);
+      setError('');
 
-      const productsWithRelations = filteredList.map((product: any) => {
+      // Params construction
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+        is_active: showArchived ? 'false' : 'true' // Kirim sebagai string query param
+      };
+
+      if (scopeFilter === 'local') params.type = 'local';
+      if (scopeFilter === 'general') params.type = 'general';
+
+      const response = await productAPI.getAll(params);
+      
+      const productsList = Array.isArray(response.data) ? response.data : [];
+      
+      // Client-side relation mapping (if backend doesn't join)
+      // Note: Idealnya backend mengirim data yang sudah di-join
+      const productsWithRelations = productsList.map((product: any) => {
         const branch = product.branch_id 
-          ? branchesList.find(b => b.branch_id === product.branch_id)
+          ? branches.find(b => b.branch_id === product.branch_id)
           : null;
-        const category = categoriesList.find(c => c.category_id === product.category_id);
+        
+        // Fallback jika category tidak di-join backend, cari di state local
+        const category = product.category || categories.find(c => c.category_id === product.category_id);
         
         return {
           ...product,
-          image_url: product.image_url,  
-          branch: branch || null,
+          branch: branch || product.branch || null,
           category: category || null
         };
       });
       
       setProducts(productsWithRelations);
-      setCategories(categoriesList);
-      setBranches(branchesList);
+      setMeta(response.meta); // Simpan metadata pagination dari server
+
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data produk');
     } finally {
@@ -145,13 +174,11 @@ export default function ProductsPage() {
 
   const handleSoftDelete = async () => {
     if (!selectedProduct) return;
-    
     setIsSubmitting(true);
     try {
-      await delay(3000); 
-
+      await delay(1000); 
       await productAPI.softDelete(selectedProduct.product_id);
-      await loadData();
+      await loadProducts();
       setIsSoftDeleteOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -163,21 +190,18 @@ export default function ProductsPage() {
 
   const handleRestore = async () => {
     if (!selectedProduct) return;
-    
     setIsSubmitting(true);
     try {
-      await delay(3000); 
-
+      await delay(1000); 
+      // Asumsi backend support update field partial
       const payload = {
         is_active: true,
         product_name: selectedProduct.product_name,
         base_price: selectedProduct.base_price,
         category_id: selectedProduct.category_id
       };
-
       await productAPI.update(selectedProduct.product_id, payload);
-      
-      await loadData();
+      await loadProducts();
       setIsRestoreOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -189,13 +213,11 @@ export default function ProductsPage() {
 
   const handleHardDelete = async () => {
     if (!selectedProduct) return;
-    
     setIsSubmitting(true);
     try {
-      await delay(3000); 
-
+      await delay(1000); 
       await productAPI.hardDelete(selectedProduct.product_id);
-      await loadData();
+      await loadProducts();
       setIsHardDeleteOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -206,26 +228,9 @@ export default function ProductsPage() {
     }
   };
 
-  // 1. Filter Logic
-  const filteredProducts = products.filter(prod => {
-    if (scopeFilter === 'general') return !prod.branch_id;
-    if (scopeFilter === 'local') return !!prod.branch_id;
-    return true; 
-  });
-
-  const generalCount = products.filter(p => !p.branch_id).length;
-  const localCount = products.filter(p => p.branch_id).length;
-
-  // 2. Pagination Logic
-  const totalItems = filteredProducts.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
-    if (page > 0 && page <= totalPages) {
+    if (page > 0 && meta && page <= meta.total_pages) {
       setCurrentPage(page);
     }
   };
@@ -292,7 +297,8 @@ export default function ProductsPage() {
         <Globe className="h-4 w-4" />
         <AlertDescription>
           <strong>Hybrid Scope:</strong> Produk yang Anda buat akan otomatis menjadi{' '}
-          <strong>General</strong> (berlaku untuk semua cabang). Total: {generalCount} General, {localCount} Lokal
+          <strong>General</strong> (berlaku untuk semua cabang). 
+          Total Data: {meta?.total_items || 0}
         </AlertDescription>
       </Alert>
 
@@ -309,7 +315,7 @@ export default function ProductsPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({generalCount + localCount})
+              Semua
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -317,7 +323,7 @@ export default function ProductsPage() {
               onClick={() => setScopeFilter('general')}
             >
               <Globe className="mr-2 h-3 w-3" />
-              General ({generalCount})
+              General
             </Button>
             <Button
               variant={scopeFilter === 'local' ? 'default' : 'outline'}
@@ -325,7 +331,7 @@ export default function ProductsPage() {
               onClick={() => setScopeFilter('local')}
             >
               <Building2 className="mr-2 h-3 w-3" />
-              Lokal ({localCount})
+              Lokal
             </Button>
           </div>
         </div>
@@ -333,17 +339,17 @@ export default function ProductsPage() {
 
       {/* Products Grid */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {paginatedProducts.length === 0 ? (
+        {products.length === 0 ? (
           <Card className="col-span-full p-12">
             <div className="text-center">
               <Package className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {showArchived ? 'Tidak ada produk di arsip' : 'Tidak ada produk'}
+                {showArchived ? 'Tidak ada produk di arsip' : 'Tidak ada produk ditemukan'}
               </p>
             </div>
           </Card>
         ) : (
-          paginatedProducts.map((product) => (
+          products.map((product) => (
             <Card key={product.product_id} className={`overflow-hidden p-0 gap-0 border relative group ${showArchived ? 'opacity-75 bg-muted/40' : ''}`}>
               {/* Product Image */}
               <div className="aspect-[4/3] bg-muted relative">
@@ -463,7 +469,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Pagination Controls */}
-      {totalPages > 1 && (
+      {meta && meta.total_pages > 1 && (
         <div className="py-4 flex justify-center">
           <Pagination>
             <PaginationContent>
@@ -471,28 +477,21 @@ export default function ProductsPage() {
                 <PaginationPrevious 
                   href="#" 
                   onClick={(e) => handlePageChange(currentPage - 1, e)}
-                  className={currentPage <= 1 ? "pointer-events-none opacity-50" : ""}
+                  className={!meta.has_prev_page ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
               
-              {/* Generate Page Numbers */}
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink 
-                    href="#" 
-                    isActive={currentPage === i + 1}
-                    onClick={(e) => handlePageChange(i + 1, e)}
-                  >
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
+              <PaginationItem>
+                 <span className="text-sm px-4">
+                   Halaman {meta.current_page} dari {meta.total_pages}
+                 </span>
+              </PaginationItem>
 
               <PaginationItem>
                 <PaginationNext 
                   href="#" 
                   onClick={(e) => handlePageChange(currentPage + 1, e)}
-                  className={currentPage >= totalPages ? "pointer-events-none opacity-50" : ""}
+                  className={!meta.has_next_page ? "pointer-events-none opacity-50" : ""}
                 />
               </PaginationItem>
             </PaginationContent>
