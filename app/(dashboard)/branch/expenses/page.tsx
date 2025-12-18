@@ -47,7 +47,6 @@ import {
   Plus,
   MoreHorizontal,
   Trash2,
-  TrendingDown,
   AlertCircle,
   Loader2,
   AlertTriangle,
@@ -55,12 +54,17 @@ import {
   Calendar,
   Eye,
   Image as ImageIcon,
+  X,
+  Download,
+  FileText,
+  User,
 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { formatRupiah } from '@/lib/utils';
 
+// Update Interface untuk mengakomodasi data User dan Shift
 interface Expense {
   expense_id: string;
   amount: number;
@@ -69,8 +73,18 @@ interface Expense {
   proof_image?: string;
   shift_id?: string | null;
   created_at: string;
+  // Tambahan field relasi dari backend
+  user?: {
+    full_name: string;
+  };
+  shift?: {
+    cashier?: {
+      full_name: string;
+    };
+  };
 }
 
+// Helper untuk URL gambar
 const getImageUrl = (path: string | null | undefined) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -90,10 +104,18 @@ export default function ExpensesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [isImageViewOpen, setIsImageViewOpen] = useState(false);
+  const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+  
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [selectedProof, setSelectedProof] = useState<{
+    image_url: string;
+    description: string;
+    amount: string;
+    date: string;
+  } | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imageError, setImageError] = useState('');
@@ -135,6 +157,7 @@ export default function ExpensesPage() {
     }
   };
 
+  // --- Handlers Modal Create ---
   const handleOpenModal = () => {
     setSelectedExpense(null);
     const today = new Date().toISOString().split('T')[0];
@@ -160,6 +183,19 @@ export default function ExpensesPage() {
     });
     setImagePreview('');
     setImageError('');
+  };
+
+  // --- Handlers Modal View Proof ---
+  const handleViewProof = (expense: Expense) => {
+    const imageUrl = getImageUrl(expense.proof_image);
+    
+    setSelectedProof({
+      image_url: imageUrl,
+      description: expense.description,
+      amount: formatRupiah(Number(expense.amount)),
+      date: format(new Date(expense.expense_date), 'dd MMMM yyyy', { locale: id }),
+    });
+    setIsProofModalOpen(true);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,29 +282,21 @@ export default function ExpensesPage() {
     }
   };
 
-  const handleViewImage = (expense: Expense) => {
-    setSelectedExpense(expense);
-    setIsImageViewOpen(true);
-  };
-
-  // Filter
+  // --- Filter & Pagination Logic ---
   const filteredExpenses = expenses.filter((expense) => {
     const searchLower = searchQuery.toLowerCase();
     return expense.description.toLowerCase().includes(searchLower);
   });
 
-  // Calculate total
   const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
 
-  // Pagination
   const totalItems = filteredExpenses.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedExpenses = filteredExpenses.slice(startIndex, endIndex);
 
-  const handlePageChange = (page: number, e: React.MouseEvent) => {
-    e.preventDefault();
+  const handlePageChange = (page: number) => {
     if (page > 0 && page <= totalPages) {
       setCurrentPage(page);
     }
@@ -277,18 +305,18 @@ export default function ExpensesPage() {
   if (isLoading) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-        <div className="flex justify-between items-center">
-          <div>
-            <Skeleton className="h-8 w-48 mb-2" />
-            <Skeleton className="h-4 w-96" />
-          </div>
+        <div className="flex justify-between items-center mb-4">
+          <Skeleton className="h-8 w-48" />
           <Skeleton className="h-10 w-32" />
         </div>
-        <Skeleton className="h-12 w-full" />
+        <div className="grid gap-4 md:grid-cols-2 mb-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
         <Card>
-          <CardContent className="p-6">
+          <div className="p-6">
             <Skeleton className="h-64 w-full" />
-          </CardContent>
+          </div>
         </Card>
       </div>
     );
@@ -300,7 +328,7 @@ export default function ExpensesPage() {
       <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Kas Keluar</h1>
-          <p className="text-muted-foreground">Catat pengeluaran operasional cabang</p>
+          <p className="text-muted-foreground">Catat dan kelola pengeluaran operasional cabang</p>
         </div>
         <Button onClick={handleOpenModal}>
           <Plus className="mr-2 h-4 w-4" />
@@ -308,7 +336,6 @@ export default function ExpensesPage() {
         </Button>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -316,170 +343,228 @@ export default function ExpensesPage() {
         </Alert>
       )}
 
-      {/* Info Alert */}
-      <Alert>
-        <TrendingDown className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Kas Keluar:</strong> Catat semua pengeluaran operasional seperti pembelian bahan, utilitas, dll. Upload
-          bukti untuk dokumentasi.
-        </AlertDescription>
-      </Alert>
-
-      {/* Summary Card */}
-      <div className="grid gap-4 ">
+      {/* Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-black font-medium text-muted-foreground">Total Pengeluaran</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Pengeluaran</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-black">{formatRupiah(totalExpenses)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{filteredExpenses.length} transaksi</p>
+            <div className="text-3xl font-bold text-black">{formatRupiah(totalExpenses)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Jumlah Pengeluaran</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-black">{filteredExpenses.length} item</div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Table */}
+      {/* Table Section */}
       <Card>
         <CardHeader>
-          <CardTitle>Riwayat Kas Keluar</CardTitle>
-          <CardDescription>Daftar semua pengeluaran operasional</CardDescription>
+          <CardTitle>Riwayat Pengeluaran</CardTitle>
+          <CardDescription>Daftar lengkap transaksi kas keluar</CardDescription>
         </CardHeader>
         <CardContent>
           {paginatedExpenses.length === 0 ? (
             <div className="text-center py-12">
-              <TrendingDown className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+              <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
                 {searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada data pengeluaran'}
               </p>
             </div>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tanggal</TableHead>
-                    <TableHead>Deskripsi</TableHead>
-                    <TableHead>Jumlah</TableHead>
-                    <TableHead>Bukti</TableHead>
-                    <TableHead className="text-right">Aksi</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedExpenses.map((expense) => (
-                    <TableRow key={expense.expense_id}>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Calendar className="h-3 w-3 text-muted-foreground" />
-                          {format(new Date(expense.expense_date), 'dd MMM yyyy', { locale: id })}
-                        </div>
-                        {expense.shift_id && (
-                          <Badge variant="outline" className="mt-1 text-[10px]">
-                            Via Shift
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-medium">{expense.description}</TableCell>
-                      <TableCell className="font-bold text-black">{formatRupiah(Number(expense.amount))}</TableCell>
-                      <TableCell>
-                        {expense.proof_image ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewImage(expense)}
-                            className="h-8 gap-1"
-                          >
-                            <Eye className="h-3 w-3" />
-                            Lihat
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Tidak ada</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-
-                            {expense.proof_image && (
-                              <>
-                                <DropdownMenuItem onClick={() => handleViewImage(expense)}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  Lihat Bukti
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                              </>
-                            )}
-
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedExpense(expense);
-                                setIsDeleteOpen(true);
-                              }}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Hapus
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+            <>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-16 text-center">No</TableHead>
+                      <TableHead>Tanggal</TableHead>
+                      <TableHead>Deskripsi</TableHead>
+                      <TableHead className="w-48">Input Oleh</TableHead>
+                      <TableHead>Jumlah</TableHead>
+                      <TableHead className="text-center">Bukti</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedExpenses.map((expense, index) => {
+                      const globalIndex = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                      
+                      // Logika untuk menampilkan nama kasir dan operator
+                      const operatorName = expense.user?.full_name || '-';
+                      const cashierName = expense.shift?.cashier?.full_name || '-';
+                      const showBothRoles = operatorName !== cashierName && cashierName !== '-';
+
+                      return (
+                        <TableRow key={expense.expense_id}>
+                          <TableCell className="font-medium text-center">
+                            {globalIndex}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <div className="flex flex-col gap-1">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-muted-foreground" />
+                                {format(new Date(expense.expense_date), 'dd MMM yyyy', { locale: id })}
+                              </span>
+                              {expense.shift_id && (
+                                <Badge variant="outline" className="w-fit text-[10px] h-5">
+                                  Shift
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate" title={expense.description}>
+                            {expense.description}
+                          </TableCell>
+                          
+                          <TableCell className="text-sm">
+                            <div className="space-y-1.5">
+                              {/* Nama Kasir (Shift Owner) */}
+                              <div className="flex items-center gap-2">
+                                <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
+                                <div>
+                                  <div className="font-medium text-gray-900 text-sm">
+                                    {cashierName}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Nama Operator (jika berbeda dari kasir) */}
+                              {showBothRoles && (
+                                <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
+                                  <div>
+                                    <div className="font-medium text-gray-700 text-xs">
+                                      {operatorName}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="font-bold text-black">
+                            {formatRupiah(Number(expense.amount))}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {expense.proof_image ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewProof(expense)}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8"
+                              >
+                                <Eye className="mr-1 h-3.5 w-3.5" />
+                                Lihat
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">Tidak ada</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {expense.proof_image && (
+                                  <DropdownMenuItem onClick={() => handleViewProof(expense)}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Lihat Bukti
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedExpense(expense);
+                                    setIsDeleteOpen(true);
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Hapus
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="py-4">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handlePageChange(currentPage - 1);
+                          }}
+                          className={currentPage <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                        />
+                      </PaginationItem>
+
+                      {Array.from({ length: totalPages }).map((_, i) => (
+                        <PaginationItem key={i}>
+                          <PaginationLink
+                            href="#"
+                            isActive={currentPage === i + 1}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handlePageChange(i + 1);
+                            }}
+                          >
+                            {i + 1}
+                          </PaginationLink>
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handlePageChange(currentPage + 1);
+                          }}
+                          className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                  <div className="text-center text-sm text-muted-foreground mt-2">
+                    Halaman {currentPage} dari {totalPages}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="py-4 flex justify-center">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  href="#"
-                  onClick={(e) => handlePageChange(currentPage - 1, e)}
-                  className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
-                />
-              </PaginationItem>
-
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <PaginationItem key={i}>
-                  <PaginationLink href="#" isActive={currentPage === i + 1} onClick={(e) => handlePageChange(i + 1, e)}>
-                    {i + 1}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
-
-              <PaginationItem>
-                <PaginationNext
-                  href="#"
-                  onClick={(e) => handlePageChange(currentPage + 1, e)}
-                  className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : ''}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
-      )}
-
-      {/* Create Expense Modal */}
+      {/* Modal Create Expense */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Tambah Kas Keluar</DialogTitle>
-            <DialogDescription>Catat pengeluaran operasional cabang dengan bukti (opsional)</DialogDescription>
+            <DialogDescription>Catat pengeluaran baru dengan bukti (opsional)</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
-              {/* Amount */}
               <div className="space-y-2">
                 <Label htmlFor="amount">Jumlah Pengeluaran *</Label>
                 <Input
@@ -487,26 +572,24 @@ export default function ExpensesPage() {
                   type="text"
                   value={formData.amount ? `Rp. ${Number(formData.amount).toLocaleString('id-ID')}` : ''}
                   onChange={handleAmountChange}
-                  placeholder="Masukkan jumlah pengeluaran"
+                  placeholder="Masukkan jumlah"
                   required
                 />
               </div>
 
-              {/* Description */}
               <div className="space-y-2">
                 <Label htmlFor="description">Deskripsi *</Label>
                 <Input
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Masukkan deskripsi pengeluaran"
+                  placeholder="Contoh: Beli Token Listrik"
                   required
                 />
               </div>
 
-              {/* Expense Date */}
               <div className="space-y-2">
-                <Label htmlFor="expense_date">Tanggal Pengeluaran *</Label>
+                <Label htmlFor="expense_date">Tanggal *</Label>
                 <Input
                   id="expense_date"
                   type="date"
@@ -516,17 +599,14 @@ export default function ExpensesPage() {
                 />
               </div>
 
-              {/* Image Upload */}
               <div className="space-y-2">
                 <Label>Bukti Pengeluaran (Opsional)</Label>
-
                 {imageError && (
                   <Alert variant="destructive" className="mb-2 py-2">
                     <AlertCircle className="h-4 w-4" />
                     <AlertDescription className="text-xs font-medium">{imageError}</AlertDescription>
                   </Alert>
                 )}
-
                 <div className="flex flex-col gap-4">
                   {imagePreview && (
                     <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
@@ -542,11 +622,7 @@ export default function ExpensesPage() {
                       id="proof_image"
                     />
                     <Label htmlFor="proof_image" className="flex-1 cursor-pointer">
-                      <div
-                        className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${
-                          imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'
-                        }`}
-                      >
+                      <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'}`}>
                         <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
                         <span className={`text-sm ${imageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
                           {imagePreview ? 'Ganti Bukti' : 'Upload Bukti (Max 2MB)'}
@@ -570,39 +646,75 @@ export default function ExpensesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Image View Modal */}
-      <Dialog open={isImageViewOpen} onOpenChange={setIsImageViewOpen}>
-        <DialogContent className="max-w-3xl">
+      {/* Modal View Proof */}
+      <Dialog open={isProofModalOpen} onOpenChange={setIsProofModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Bukti Pengeluaran</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" />
+              Bukti Pengeluaran
+            </DialogTitle>
             <DialogDescription>
-              {selectedExpense?.description} - {formatRupiah(Number(selectedExpense?.amount || 0))}
+              Detail dan foto bukti pengeluaran
             </DialogDescription>
           </DialogHeader>
-          <div className="relative aspect-video w-full rounded-lg overflow-hidden border bg-muted">
-            {selectedExpense?.proof_image ? (
-              <Image
-                src={getImageUrl(selectedExpense.proof_image)}
-                alt="Bukti"
-                fill
-                className="object-contain"
-                unoptimized={true}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <ImageIcon className="h-16 w-16 text-muted-foreground/50" />
+          
+          {selectedProof && (
+            <div className="space-y-4 py-4">
+              {/* Detail Ringkas */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Deskripsi</p>
+                  <p className="font-medium text-black">{selectedProof.description}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tanggal</p>
+                  <p className="font-medium text-black">{selectedProof.date}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Jumlah</p>
+                  <p className="font-bold text-black">{selectedProof.amount}</p>
+                </div>
               </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsImageViewOpen(false)}>
-              Tutup
-            </Button>
-          </DialogFooter>
+
+              {/* Gambar Bukti */}
+              <div className="space-y-2 pt-2 border-t">
+                <p className="text-sm font-medium text-gray-900">Foto Bukti</p>
+                <div className="relative w-full min-h-[300px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={selectedProof.image_url}
+                    alt="Bukti Pengeluaran"
+                    className="max-w-full max-h-[60vh] object-contain rounded"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent) {
+                        parent.innerHTML = '<div class="text-center p-8"><p class="text-muted-foreground">Gagal memuat gambar atau gambar tidak tersedia</p></div>';
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
+                <Button variant="outline" onClick={() => setIsProofModalOpen(false)}>
+                  <X className="mr-2 h-4 w-4" />
+                  Tutup
+                </Button>
+                <Button onClick={() => window.open(selectedProof.image_url, '_blank')}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download / Buka Asli
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
+      {/* Modal Delete */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -612,8 +724,7 @@ export default function ExpensesPage() {
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus pengeluaran <strong>{selectedExpense?.description}</strong> sebesar{' '}
-              <strong>{formatRupiah(Number(selectedExpense?.amount || 0))}</strong>?
-              <br />
+              <strong>{selectedExpense ? formatRupiah(Number(selectedExpense.amount)) : ''}</strong>?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

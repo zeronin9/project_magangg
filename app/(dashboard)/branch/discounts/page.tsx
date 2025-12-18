@@ -3,11 +3,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { branchDiscountAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -19,13 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -72,18 +64,19 @@ import {
 } from 'lucide-react';
 import { formatRupiah, formatDate } from '@/lib/utils';
 
-// Definisi Interface sesuai kebutuhan Branch
+// Definisi Interface
 interface Discount {
   discount_rule_id: string;
   discount_name: string;
   discount_code?: string;
-  discount_type: 'PERCENTAGE' | 'NOMINAL';
+  discount_type: 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT';
   value: number;
   start_date: string;
   end_date: string;
   branch_id?: string | null;
   is_active: boolean;
-  // Field opsional untuk logika override jika backend mengirimkannya
+  
+  // Field untuk logika override visual
   original_value?: number; 
   is_overridden?: boolean;
 }
@@ -91,39 +84,23 @@ interface Discount {
 const ITEMS_PER_PAGE = 5;
 
 export default function BranchDiscountsPage() {
+  const router = useRouter();
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
   // Filter & Pagination
   const [showArchived, setShowArchived] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'override'>('all');
   const [currentPage, setCurrentPage] = useState(1);
 
   // Modal States
-  const [isModalOpen, setIsModalOpen] = useState(false); // Untuk Create/Edit Lokal
-  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false); // Untuk Override General
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Form Data untuk Diskon Lokal
-  const [formData, setFormData] = useState({
-    discount_name: '',
-    discount_type: 'PERCENTAGE' as 'PERCENTAGE' | 'NOMINAL',
-    value: '',
-    start_date: '',
-    end_date: '',
-  });
-
-  // Form Data untuk Override
-  const [overrideData, setOverrideData] = useState({
-    is_active_at_branch: true,
-    value: '',
-  });
 
   useEffect(() => {
     loadData();
@@ -138,129 +115,69 @@ export default function BranchDiscountsPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const response = await branchDiscountAPI.getAll();
-      const discountsData = Array.isArray(response.data) ? response.data : [];
-      setDiscounts(discountsData);
+      setError('');
+
+      // Fetch Local & General Discounts secara parallel
+      const [localResponse, generalResponse] = await Promise.all([
+        branchDiscountAPI.getAll().catch(err => ({ data: [], error: err })),
+        branchDiscountAPI.getGeneral().catch(err => ({ data: [], error: err })),
+      ]);
+
+      const localDiscounts: Discount[] = Array.isArray(localResponse.data) ? localResponse.data : [];
+      const generalData = Array.isArray(generalResponse.data) ? generalResponse.data : [];
+      
+      // Mapping data General agar sesuai format tabel & mendeteksi override
+      const mappedGeneralDiscounts: Discount[] = generalData.map((item: any) => {
+        const branchSetting = item.branch_setting || {};
+        
+        // Gunakan nilai dari override jika ada, jika tidak gunakan master
+        const effectiveValue = branchSetting.value ?? item.master_value;
+        const isActive = branchSetting.is_active_at_branch ?? true; 
+        const originalValue = item.master_value;
+
+        // Cek apakah ada override (Nilai berubah ATAU status non-aktif)
+        const isOverridden = (Number(effectiveValue) !== Number(originalValue)) || (isActive === false);
+
+        return {
+          discount_rule_id: item.discount_rule_id,
+          discount_name: item.discount_name,
+          discount_code: item.discount_code,
+          discount_type: item.discount_type,
+          value: Number(effectiveValue),
+          start_date: item.start_date || new Date().toISOString(),
+          end_date: item.end_date || new Date().toISOString(),
+          branch_id: null, 
+          is_active: isActive,
+          original_value: Number(originalValue),
+          is_overridden: isOverridden
+        };
+      });
+
+      setDiscounts([...localDiscounts, ...mappedGeneralDiscounts]);
+
     } catch (err: any) {
+      console.error("Error loading data:", err);
       setError(err.message || 'Gagal memuat data diskon');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- HANDLERS UNTUK DISKON LOKAL ---
+  // --- NAVIGATION HANDLERS ---
 
-  const handleOpenModal = (discount?: Discount) => {
-    if (discount) {
-      setSelectedDiscount(discount);
-      setFormData({
-        discount_name: discount.discount_name,
-        discount_type: discount.discount_type,
-        value: discount.value.toString(),
-        start_date: discount.start_date.split('T')[0],
-        end_date: discount.end_date.split('T')[0],
-      });
-    } else {
-      setSelectedDiscount(null);
-      const today = new Date().toISOString().split('T')[0];
-      setFormData({
-        discount_name: '',
-        discount_type: 'PERCENTAGE',
-        value: '',
-        start_date: today,
-        end_date: today,
-      });
-    }
-    setIsModalOpen(true);
+  const handleCreateClick = () => {
+    router.push('/branch/discounts/new');
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedDiscount(null);
+  const handleEditClick = (discount: Discount) => {
+    router.push(`/branch/discounts/${discount.discount_rule_id}/edit`);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      const payload = {
-        discount_name: formData.discount_name,
-        discount_type: formData.discount_type,
-        value: Number(formData.value),
-        start_date: formData.start_date,
-        end_date: formData.end_date,
-      };
-
-      if (selectedDiscount) {
-        await branchDiscountAPI.update(selectedDiscount.discount_rule_id, payload);
-      } else {
-        await branchDiscountAPI.create(payload);
-      }
-
-      await loadData();
-      handleCloseModal();
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan diskon';
-      alert(errorMessage);
-    } finally {
-      setIsSubmitting(false);
-    }
+  const handleOverrideClick = (discount: Discount) => {
+    router.push(`/branch/discounts/${discount.discount_rule_id}/override`);
   };
 
-  // --- HANDLERS UNTUK OVERRIDE (GENERAL) ---
-
-  const handleOpenOverrideModal = (discount: Discount) => {
-    setSelectedDiscount(discount);
-    setOverrideData({
-      is_active_at_branch: true, // Default active, user can change to inactive to hide general discount
-      value: discount.value.toString(), // Pre-fill dengan nilai saat ini (baik itu asli atau sudah di-override sebelumnya)
-    });
-    setIsOverrideModalOpen(true);
-  };
-
-  const handleCloseOverrideModal = () => {
-    setIsOverrideModalOpen(false);
-    setSelectedDiscount(null);
-  };
-
-  const handleOverrideSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedDiscount) return;
-
-    setIsSubmitting(true);
-
-    try {
-      const payload = {
-        is_active_at_branch: overrideData.is_active_at_branch,
-        value: Number(overrideData.value),
-      };
-
-      // Memanggil endpoint override setting
-      // Ini hanya akan menyimpan konfigurasi untuk cabang ini, tidak mengubah data master di Mitra
-      await branchDiscountAPI.setOverride(selectedDiscount.discount_rule_id, payload);
-
-      await loadData(); // Reload untuk melihat nilai 'value' yang sudah ter-update dari backend
-      handleCloseOverrideModal();
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan override diskon';
-      alert(errorMessage);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // --- HANDLERS LAINNYA ---
-
-  const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setFormData({ ...formData, value });
-  };
-
-  const handleOverrideValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setOverrideData({ ...overrideData, value });
-  };
+  // --- DELETE & RESTORE HANDLERS ---
 
   const handleSoftDelete = async () => {
     if (!selectedDiscount) return;
@@ -283,7 +200,6 @@ export default function BranchDiscountsPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
-      // Logic restore manual jika API restore khusus tidak ada, atau gunakan update
       await branchDiscountAPI.update(selectedDiscount.discount_rule_id, {
         ...selectedDiscount,
         is_active: true
@@ -314,23 +230,39 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // --- FILTER & PAGINATION LOGIC ---
+  // --- FILTER LOGIC & COUNTS ---
+  
+  const checkActive = (d: Discount) => showArchived ? d.is_active === false : d.is_active !== false;
+
+  // Hitung jumlah item
+  // General: Tidak ada branch_id DAN TIDAK overridden
+  const generalCount = discounts.filter((d) => !d.branch_id && !d.is_overridden && checkActive(d)).length;
+  // Local: Ada branch_id
+  const localCount = discounts.filter((d) => d.branch_id && checkActive(d)).length;
+  // Override: Tidak ada branch_id TAPI overridden
+  const overrideCount = discounts.filter((d) => !d.branch_id && d.is_overridden && checkActive(d)).length;
+  // All: General Murni + Local (Exclude Override)
+  const allCount = discounts.filter((d) => checkActive(d) && !d.is_overridden).length;
+
   const filteredDiscounts = discounts.filter((discount) => {
-    const matchesArchive = showArchived ? discount.is_active === false : discount.is_active !== false;
-    const matchesScope =
-      scopeFilter === 'all'
-        ? true
-        : scopeFilter === 'general'
-        ? !discount.branch_id
-        : scopeFilter === 'local'
-        ? !!discount.branch_id
-        : true;
-    return matchesArchive && matchesScope;
+    // 1. Filter Archive
+    if (!checkActive(discount)) return false;
+    
+    // 2. Filter Scope
+    if (scopeFilter === 'general') {
+      // Tampilkan General Murni Saja (Tidak Override)
+      return !discount.branch_id && !discount.is_overridden;
+    } else if (scopeFilter === 'local') {
+      return !!discount.branch_id;
+    } else if (scopeFilter === 'override') {
+      return !discount.branch_id && !!discount.is_overridden;
+    }
+    
+    // Default 'all': Tampilkan General & Lokal, TAPI sembunyikan yang Override
+    return !discount.is_overridden;
   });
 
-  const generalCount = discounts.filter((d) => !d.branch_id && d.is_active !== false).length;
-  const localCount = discounts.filter((d) => d.branch_id && d.is_active !== false).length;
-
+  // --- PAGINATION LOGIC ---
   const totalItems = filteredDiscounts.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -345,13 +277,16 @@ export default function BranchDiscountsPage() {
   };
 
   const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    try {
+      return new Date(dateString).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return '-';
+    }
   };
 
-  // --- RENDER ---
   if (isLoading) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
@@ -388,7 +323,7 @@ export default function BranchDiscountsPage() {
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
           <Button 
-            onClick={() => handleOpenModal()}
+            onClick={handleCreateClick}
             className="w-full @md:w-auto"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -413,7 +348,7 @@ export default function BranchDiscountsPage() {
           Diskon <strong>Lokal</strong> dikelola sepenuhnya oleh cabang.
           <br/>
           <span className="text-xs text-muted-foreground mt-1 block">
-            Total: {generalCount} General, {localCount} Lokal
+            Total: {generalCount} General, {localCount} Lokal, {overrideCount} Override
           </span>
         </AlertDescription>
       </Alert>
@@ -431,7 +366,7 @@ export default function BranchDiscountsPage() {
               size="sm"
               onClick={() => setScopeFilter('all')}
             >
-              Semua ({filteredDiscounts.length})
+              Semua ({allCount})
             </Button>
             <Button
               variant={scopeFilter === 'general' ? 'default' : 'outline'}
@@ -448,6 +383,14 @@ export default function BranchDiscountsPage() {
             >
               <Building2 className="mr-2 h-3 w-3" />
               Lokal ({localCount})
+            </Button>
+            <Button
+              variant={scopeFilter === 'override' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setScopeFilter('override')}
+            >
+              <Settings className="mr-2 h-3 w-3" />
+              Override ({overrideCount})
             </Button>
           </div>
         </div>
@@ -475,7 +418,12 @@ export default function BranchDiscountsPage() {
                   <TableCell colSpan={8} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
-                      {showArchived ? 'Tidak ada diskon di arsip' : 'Belum ada diskon'}
+                      {showArchived 
+                        ? 'Tidak ada diskon di arsip' 
+                        : scopeFilter === 'override'
+                          ? 'Belum ada diskon yang di-override'
+                          : 'Belum ada diskon yang sesuai filter'
+                      }
                     </p>
                   </TableCell>
                 </TableRow>
@@ -511,9 +459,12 @@ export default function BranchDiscountsPage() {
                         ? `${discount.value}%` 
                         : formatRupiah(discount.value)
                       }
-                      {/* Indikator visual jika nilai ini hasil override (opsional, tergantung data backend) */}
                       {discount.is_overridden && (
-                        <sup className="text-xs text-orange-500 ml-1">(Override)</sup>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-200 text-orange-600 bg-orange-50">
+                            Override
+                          </Badge>
+                        </div>
                       )}
                     </TableCell>
                     <TableCell>
@@ -571,7 +522,7 @@ export default function BranchDiscountsPage() {
                               {discount.branch_id ? (
                                 // --- AKSI UNTUK DISKON LOKAL ---
                                 <>
-                                  <DropdownMenuItem onClick={() => handleOpenModal(discount)}>
+                                  <DropdownMenuItem onClick={() => handleEditClick(discount)}>
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Edit
                                   </DropdownMenuItem>
@@ -589,7 +540,7 @@ export default function BranchDiscountsPage() {
                                 </>
                               ) : (
                                 // --- AKSI UNTUK DISKON GENERAL (OVERRIDE) ---
-                                <DropdownMenuItem onClick={() => handleOpenOverrideModal(discount)}>
+                                <DropdownMenuItem onClick={() => handleOverrideClick(discount)}>
                                   <Settings className="mr-2 h-4 w-4" />
                                   Override Setting
                                 </DropdownMenuItem>
@@ -649,7 +600,6 @@ export default function BranchDiscountsPage() {
                     className={currentPage <= 1 ? 'pointer-events-none opacity-50' : ''}
                   />
                 </PaginationItem>
-
                 {Array.from({ length: totalPages }).map((_, i) => (
                   <PaginationItem key={i}>
                     <PaginationLink 
@@ -661,7 +611,6 @@ export default function BranchDiscountsPage() {
                     </PaginationLink>
                   </PaginationItem>
                 ))}
-
                 <PaginationItem>
                   <PaginationNext
                     href="#"
@@ -675,164 +624,13 @@ export default function BranchDiscountsPage() {
         )}
       </Card>
 
-      {/* Modal: Create/Edit Discount Lokal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{selectedDiscount ? 'Edit Diskon Lokal' : 'Tambah Diskon Lokal Baru'}</DialogTitle>
-            <DialogDescription>
-              {selectedDiscount ? 'Perbarui informasi diskon lokal' : 'Diskon hanya berlaku untuk cabang ini'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="discount_name">Nama Diskon *</Label>
-                <Input
-                  id="discount_name"
-                  value={formData.discount_name}
-                  onChange={(e) => setFormData({ ...formData, discount_name: e.target.value })}
-                  placeholder="Contoh: Promo Warga Lokal"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="discount_type">Tipe Diskon *</Label>
-                <Select
-                  value={formData.discount_type}
-                  onValueChange={(value: 'PERCENTAGE' | 'NOMINAL') => setFormData({ ...formData, discount_type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PERCENTAGE">Persentase (%)</SelectItem>
-                    <SelectItem value="NOMINAL">Nominal (Rp)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="value">Nilai Diskon *</Label>
-                <Input
-                  id="value"
-                  type="text"
-                  value={formData.value}
-                  onChange={handleValueChange}
-                  placeholder={formData.discount_type === 'PERCENTAGE' ? 'Contoh: 10' : 'Contoh: 5000'}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="start_date">Tanggal Mulai *</Label>
-                  <Input
-                    id="start_date"
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="end_date">Tanggal Selesai *</Label>
-                  <Input
-                    id="end_date"
-                    type="date"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedDiscount ? 'Update' : 'Simpan'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal: Override Discount General */}
-      <Dialog open={isOverrideModalOpen} onOpenChange={setIsOverrideModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Override Diskon General</DialogTitle>
-            <DialogDescription>
-              Ubah nilai atau status diskon <strong>{selectedDiscount?.discount_name}</strong> khusus untuk cabang ini.
-              Perubahan ini tidak akan mempengaruhi data pusat.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleOverrideSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="override_value">Nilai Override *</Label>
-                <Input
-                  id="override_value"
-                  type="text"
-                  value={overrideData.value}
-                  onChange={handleOverrideValueChange}
-                  placeholder="Masukkan nilai baru"
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  Nilai saat ini:{' '}
-                  {selectedDiscount?.discount_type === 'PERCENTAGE'
-                    ? `${selectedDiscount?.value}%`
-                    : formatRupiah(selectedDiscount?.value || 0)}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="is_active">Status di Cabang</Label>
-                <Select
-                  value={overrideData.is_active_at_branch.toString()}
-                  onValueChange={(value) => setOverrideData({ ...overrideData, is_active_at_branch: value === 'true' })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="true">Aktif</SelectItem>
-                    <SelectItem value="false">Non-Aktif (Sembunyikan)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Jika Non-Aktif, diskon ini tidak akan berlaku di cabang meskipun di pusat aktif.
-                </p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseOverrideModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan Override
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog: Soft Delete (Archive) */}
+      {/* Dialog: Soft Delete */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Arsipkan Diskon?</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengarsipkan diskon <strong>{selectedDiscount?.discount_name}</strong>?
-              <br />
-              Diskon akan dinonaktifkan (Soft Delete).
+              Diskon <strong>{selectedDiscount?.discount_name}</strong> akan dinonaktifkan.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -853,7 +651,7 @@ export default function BranchDiscountsPage() {
           <DialogHeader>
             <DialogTitle>Aktifkan Kembali?</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengaktifkan kembali diskon <strong>{selectedDiscount?.discount_name}</strong>?
+              Diskon <strong>{selectedDiscount?.discount_name}</strong> akan diaktifkan kembali.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -877,8 +675,7 @@ export default function BranchDiscountsPage() {
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin menghapus diskon <strong>{selectedDiscount?.discount_name}</strong> secara permanen?
-              Tindakan ini tidak dapat dibatalkan.
+              Tindakan ini tidak dapat dibatalkan. Diskon <strong>{selectedDiscount?.discount_name}</strong> akan dihapus selamanya.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

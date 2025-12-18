@@ -330,10 +330,12 @@ export default function CategoriesPage() {
 
       {/* Filter */}
       <Card className="p-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Filter Scope:</span>
-          <div className="flex gap-2">
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={scopeFilter === 'all' ? 'default' : 'outline'}
               size="sm"
