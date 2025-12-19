@@ -62,7 +62,7 @@ import {
 } from 'lucide-react';
 import { formatRupiah } from '@/lib/utils';
 
-// Helper: Parse product_ids/category_ids dari backend
+// Helper: Parse product_ids/category_ids
 const parseArrayField = (field: any, relatedField?: any[]): string[] => {
   if (relatedField && Array.isArray(relatedField) && relatedField.length > 0) {
     const ids = relatedField.map(item => item.product_id || item.category_id).filter(Boolean);
@@ -118,7 +118,7 @@ export default function DiscountsPage() {
   // Helper Delay
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Initial Load (Dependencies)
+  // Initial Load
   useEffect(() => {
     const loadDependencies = async () => {
       try {
@@ -138,12 +138,12 @@ export default function DiscountsPage() {
     loadDependencies();
   }, []);
 
-  // Load Discounts on Filter/Page Change
+  // Load Discounts
   useEffect(() => {
     loadDiscounts();
   }, [currentPage, showArchived, scopeFilter]);
 
-  // Reset pagination saat filter berubah
+  // Reset page when filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [scopeFilter, showArchived]);
@@ -152,22 +152,19 @@ export default function DiscountsPage() {
     try {
       setIsLoading(true);
       
-      // Construct Parameters
+      // ✅ PERBAIKAN: Menggunakan parameter 'status' sesuai backend baru
       const params: any = {
         page: currentPage,
         limit: ITEMS_PER_PAGE,
-        is_active: showArchived ? 'false' : 'true'
+        status: showArchived ? 'archived' : 'active' // Ubah dari is_active ke status
       };
 
-      // Pass scope filter if backend supports it (optional)
       if (scopeFilter === 'local') params.type = 'local';
       if (scopeFilter === 'general') params.type = 'general';
 
       const response = await discountAPI.getAll(params);
-      
       const discountsList = Array.isArray(response.data) ? response.data : [];
       
-      // Mapping logic (tetap dilakukan di client jika backend tidak melakukan join lengkap)
       const discountsWithBranch = discountsList.map(discount => {
         const branch = discount.branch_id 
           ? branches.find(b => b.branch_id === discount.branch_id)
@@ -191,13 +188,17 @@ export default function DiscountsPage() {
     }
   };
 
+  // Actions Handlers
   const handleArchive = async () => {
     if (!selectedDiscount) return;
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await discountAPI.softDelete(selectedDiscount.discount_rule_id);
+      
+      // Refresh list (item akan hilang dari view Active)
       await loadDiscounts();
+      
       setIsSoftDeleteOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -211,12 +212,13 @@ export default function DiscountsPage() {
     if (!selectedDiscount) return;
     setIsSubmitting(true);
     try {
-      await delay(2000);
-      // Asumsi backend support partial update untuk restore
+      await delay(1000);
+      // Kirim is_active: true agar backend melakukan restore (sesuai logika updateDiscountRule)
       const restoreData = {
         is_active: true,
         discount_name: selectedDiscount.discount_name,
         discount_type: selectedDiscount.discount_type,
+        // Pastikan format nilai sesuai
         value: selectedDiscount.value.toString(),
         start_date: selectedDiscount.start_date,
         end_date: selectedDiscount.end_date,
@@ -224,7 +226,10 @@ export default function DiscountsPage() {
       };
       
       await discountAPI.update(selectedDiscount.discount_rule_id, restoreData);
+      
+      // Refresh list (item akan hilang dari view Archive)
       await loadDiscounts();
+      
       setIsRestoreOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -238,7 +243,7 @@ export default function DiscountsPage() {
     if (!selectedDiscount) return;
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await discountAPI.hardDelete(selectedDiscount.discount_rule_id);
       await loadDiscounts();
       setIsHardDeleteModalOpen(false);
@@ -257,13 +262,7 @@ export default function DiscountsPage() {
     }
   };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('id-ID', {
-      day: '2-digit', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    });
-  };
-
+  // Formatters
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('id-ID', {
       day: '2-digit', month: 'short', year: 'numeric'
@@ -276,10 +275,17 @@ export default function DiscountsPage() {
     });
   };
 
-  // Hitung counts (Hanya estimasi di client karena pagination, 
-  // idealnya backend menyediakan endpoint summary count)
-  const generalCount = discounts.filter(d => !d.branch_id).length;
-  const localCount = discounts.filter(d => d.branch_id).length;
+  const renderStatusBadge = (discount: DiscountRule) => {
+    if (!discount.is_active) {
+      return <Badge variant="secondary" className="bg-gray-200 text-gray-700 hover:bg-gray-300">Diarsipkan</Badge>;
+    }
+    const now = new Date();
+    const endDate = new Date(discount.end_date);
+    if (now > endDate) {
+      return <Badge className='bg-white text-black border-black' variant="destructive">Tdk Aktif</Badge>;
+    }
+    return <Badge className="bg-green-600 text-white">Aktif</Badge>;
+  };
 
   if (isLoading) {
     return (
@@ -390,13 +396,14 @@ export default function DiscountsPage() {
                 <TableHead>Waktu Mulai</TableHead>
                 <TableHead>Waktu Selesai</TableHead>
                 <TableHead>Scope</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {discounts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12">
+                  <TableCell colSpan={9} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
                       {showArchived ? 'Tidak ada Promo di arsip' : 'Tidak ada Promo'}
@@ -461,6 +468,9 @@ export default function DiscountsPage() {
                       <Badge variant={discount.branch_id ? 'secondary' : 'default'}>
                         {discount.branch_id ? 'Lokal' : 'General'}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {renderStatusBadge(discount)}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -540,13 +550,11 @@ export default function DiscountsPage() {
                     className={!meta.has_prev_page ? "pointer-events-none opacity-50" : ""}
                   />
                 </PaginationItem>
-                
                 <PaginationItem>
                     <span className="text-sm px-4">
                         Halaman {meta.current_page} dari {meta.total_pages}
                     </span>
                 </PaginationItem>
-
                 <PaginationItem>
                   <PaginationNext 
                     href="#" 
@@ -560,7 +568,7 @@ export default function DiscountsPage() {
         )}
       </Card>
 
-      {/* Archive Confirmation */}
+      {/* Dialogs */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -583,7 +591,6 @@ export default function DiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Restore Confirmation */}
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
@@ -604,7 +611,6 @@ export default function DiscountsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Hard Delete Confirmation */}
       <Dialog open={isHardDeleteModalOpen} onOpenChange={setIsHardDeleteModalOpen}>
         <DialogContent>
           <DialogHeader>

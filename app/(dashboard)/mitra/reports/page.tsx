@@ -182,10 +182,6 @@ export default function ReportsPage() {
         // Request SEMUA status untuk filter void
         const allData = await reportAPI.getSales(params) as any;
         
-        console.log('✅ Completed Sales Report:', completedData);
-        console.log('📊 All Transactions (for void filter):', allData);
-        console.log('📊 Sample Transaction:', completedData.data?.[0]);
-        
         if (completedData.data && Array.isArray(completedData.data)) {
           // Sort berdasarkan transaction_time (terlama di atas)
           completedData.data.sort((a: any, b: any) => {
@@ -194,9 +190,6 @@ export default function ReportsPage() {
             return dateA - dateB;
           });
 
-          // Summary sudah benar dari backend (hanya COMPLETED)
-          console.log('✅ Summary from Backend:', completedData.summary);
-          
           setSalesReport({
             data: completedData.data,
             summary: completedData.summary,
@@ -208,7 +201,6 @@ export default function ReportsPage() {
         
       } else if (type === 'expenses') {
         const data = await reportAPI.getExpenses(params) as any;
-        console.log('✅ Expenses Report Data:', data);
         
         // Sort data berdasarkan expense_date (terlama di atas)
         if (data.data && Array.isArray(data.data)) {
@@ -221,11 +213,16 @@ export default function ReportsPage() {
         
         setExpensesReport(data);
       } else if (type === 'items') {
-        // Kirim status=COMPLETED untuk item terlaris
-        const itemsParams = { ...params, status: 'COMPLETED' };
-        const data = await reportAPI.getItems(itemsParams) as any;
-        console.log('✅ Items Report Data:', data);
-        setItemsReport(Array.isArray(data) ? data : []);
+        // ✅ PERBAIKAN DI SINI
+        // 1. Tambahkan limit besar (100) agar Client-Side Pagination mendapatkan cukup data
+        const itemsParams = { ...params, status: 'COMPLETED', limit: 100 };
+        const response = await reportAPI.getItems(itemsParams) as any;
+        
+        console.log('✅ Items Report Data:', response);
+        
+        // 2. Ambil array dari properti .data karena backend mengembalikan { meta, data }
+        const itemsList = response.data || (Array.isArray(response) ? response : []);
+        setItemsReport(itemsList);
       }
     } catch (err: any) {
       console.error('❌ Error fetching report:', err);
@@ -366,12 +363,6 @@ export default function ReportsPage() {
         sum + parseFloat(item.total_tax || 0), 0
       ).toString()
     };
-  };
-
-  // Cek apakah tanggal berubah dari default
-  const hasDateChanged = () => {
-    return dateRange.start !== initialDateRange.start || 
-           dateRange.end !== initialDateRange.end;
   };
 
   // Pagination data
@@ -558,7 +549,6 @@ export default function ReportsPage() {
                       paginatedSalesData.map((item: any, index: number) => {
                         const globalIndex = (salesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
                         
-                        // Ekstrak informasi kasir dan operator dari struktur backend
                         const operatorName = item.user?.full_name || '-';
                         const cashierName = item.shift?.cashier?.full_name || '-';
                         const showBothRoles = operatorName !== cashierName && cashierName !== '-';
@@ -579,10 +569,8 @@ export default function ReportsPage() {
                               {item.branch?.branch_name || 'N/A'}
                             </TableCell>
                             
-                            {/* Kolom Kasir/Operator */}
                             <TableCell className="text-sm">
                               <div className="space-y-1.5">
-                                {/* Nama Kasir */}
                                 <div className="flex items-center gap-2">
                                   <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
                                   <div>
@@ -592,7 +580,6 @@ export default function ReportsPage() {
                                   </div>
                                 </div>
                                 
-                                {/* Nama Operator (jika berbeda) */}
                                 {showBothRoles && (
                                   <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
                                     <div>
@@ -638,7 +625,6 @@ export default function ReportsPage() {
                   </TableBody>
                 </Table>
 
-                {/* Pagination untuk Sales */}
                 {salesTotalPages > 1 && (
                   <div className="py-4">
                     <Pagination>
@@ -752,9 +738,8 @@ export default function ReportsPage() {
                       paginatedExpensesData.map((item: any, index: number) => {
                         const globalIndex = (expensesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
                         
-                        // Ekstrak informasi kasir dan operator dari struktur backend
-                        const operatorName = item.user?.full_name || '-'; // User yang input pengeluaran
-                        const cashierName = item.shift?.cashier?.full_name || '-'; // Kasir pemilik shift
+                        const operatorName = item.user?.full_name || '-';
+                        const cashierName = item.shift?.cashier?.full_name || '-';
                         const showBothRoles = operatorName !== cashierName && cashierName !== '-';
                         
                         return (
@@ -774,10 +759,8 @@ export default function ReportsPage() {
                               {item.branch?.branch_name || 'N/A'}
                             </TableCell>
                             
-                            {/* Kolom Input Oleh - Sama seperti di tabel penjualan */}
                             <TableCell className="text-sm">
                               <div className="space-y-1.5">
-                                {/* Nama Kasir (Shift Owner) */}
                                 <div className="flex items-center gap-2">
                                   <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
                                   <div>
@@ -787,7 +770,6 @@ export default function ReportsPage() {
                                   </div>
                                 </div>
                                 
-                                {/* Nama Operator (jika berbeda dari kasir) */}
                                 {showBothRoles && (
                                   <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
                                     <div>

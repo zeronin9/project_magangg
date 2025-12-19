@@ -21,7 +21,6 @@ import {
   AlertCircle,
   Loader2,
   Upload,
-  Globe,
   ImageIcon,
   Package,
   X
@@ -29,10 +28,11 @@ import {
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Helper URL Gambar
+// --- HELPER: URL Gambar ---
 const getImageUrl = (path: string | null | undefined) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
+  
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api';
   const serverUrl = apiBaseUrl.replace(/\/api\/?$/, '');
   const cleanPath = path.replace(/\\/g, '/').replace(/^\//, '');
@@ -44,12 +44,15 @@ export default function EditProductPage() {
   const params = useParams();
   const productId = params.id as string;
 
+  // --- STATE ---
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [imageError, setImageError] = useState('');
+  
   const [imagePreview, setImagePreview] = useState<string>('');
   const [existingImage, setExistingImage] = useState<string>('');
   
@@ -60,75 +63,98 @@ export default function EditProductPage() {
     image_url: null as File | null,
   });
 
+  // --- LOAD DATA ---
   useEffect(() => {
-    loadData();
+    if (productId) {
+      loadData();
+    }
   }, [productId]);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [productData, categoriesData] = await Promise.all([
-        productAPI.getAll(false),
-        categoryAPI.getAll(),
-      ]);
+      setError('');
+      console.log("DEBUG: Memulai fetch data untuk ID:", productId);
 
-      const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
+      // 1. Fetch Parallel
+      const [categoriesRes, productRes] = await Promise.all([
+        categoryAPI.getAll({ type: 'general', limit: 100 }),
+        productAPI.getById(productId)
+      ]) as [any, any];
+
+      // 2. Debugging Data Response
+      console.log("DEBUG: Categories Response:", categoriesRes);
+      console.log("DEBUG: Product Response:", productRes);
+
+      // 3. Set Kategori (Handle struktur Paginated atau Array biasa)
+      const categoriesList = categoriesRes.data || (Array.isArray(categoriesRes) ? categoriesRes : []);
       setCategories(categoriesList);
 
-      // Find product by ID
-      const productsList = Array.isArray(productData) ? productData : [];
-      const foundProduct = productsList.find((p: any) => p.product_id === productId);
-
-      if (!foundProduct) {
-        setError('Produk tidak ditemukan');
-        return;
+      // 4. Validasi & Set Produk
+      // Backend mungkin mengembalikan object langsung atau { data: object }
+      const productData = productRes.data || productRes;
+      
+      if (!productData || !productData.product_id) {
+        throw new Error('Data produk tidak valid atau tidak ditemukan.');
       }
 
-      setProduct(foundProduct);
+      setProduct(productData);
+
+      // 5. Konversi Data ke Form (Safety Checks)
+      const safeName = productData.product_name || '';
+      const safePrice = productData.base_price ? productData.base_price.toString() : '';
+      const safeCategory = productData.category_id || '';
+
+      console.log("DEBUG: Setting Form Data:", { safeName, safePrice, safeCategory });
+
       setFormData({
-        product_name: foundProduct.product_name,
-        base_price: foundProduct.base_price.toString(),
-        category_id: foundProduct.category_id,
+        product_name: safeName,
+        base_price: safePrice,
+        category_id: safeCategory,
         image_url: null,
       });
 
-      const imageUrl = getImageUrl(foundProduct.image_url);
-      setExistingImage(imageUrl);
-      setImagePreview(imageUrl);
+      // 6. Set Preview Gambar
+      if (productData.image_url) {
+        const fullImageUrl = getImageUrl(productData.image_url);
+        console.log("DEBUG: Image URL:", fullImageUrl);
+        setExistingImage(fullImageUrl);
+        setImagePreview(fullImageUrl);
+      }
+
     } catch (err: any) {
-      setError(err.message || 'Gagal memuat data produk');
+      console.error("ERROR loadData:", err);
+      // Detil error untuk user
+      let msg = err.message || 'Gagal memuat data produk';
+      if (err.response?.status === 404) msg = 'Produk tidak ditemukan di database.';
+      if (err.response?.status === 500) msg = 'Terjadi kesalahan server.';
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --- HANDLERS ---
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
       
       if (!allowedTypes.includes(file.type)) {
-        setImageError('Format file tidak valid! Gunakan JPEG, JPG, PNG, atau GIF.');
+        setImageError('Format file tidak valid!');
         e.target.value = '';
         setFormData({ ...formData, image_url: null });
         setImagePreview(existingImage);
         return;
       }
 
-      if (file.size > 1024 * 1024) {
-        setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
+      if (file.size > 1024 * 1024) { 
+        setImageError('Ukuran gambar maksimal 1MB.');
         e.target.value = '';
         setFormData({ ...formData, image_url: null });
         setImagePreview(existingImage);
         return;
       }
-
-      console.log('File selected:', {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        lastModified: new Date(file.lastModified)
-      });
 
       setImageError('');
       setFormData({ ...formData, image_url: file });
@@ -145,12 +171,8 @@ export default function EditProductPage() {
     setFormData({ ...formData, image_url: null });
     setImagePreview(existingImage);
     setImageError('');
-    
-    // Reset file input
     const fileInput = document.getElementById('image_url') as HTMLInputElement;
-    if (fileInput) {
-      fileInput.value = '';
-    }
+    if (fileInput) fileInput.value = '';
   };
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,21 +194,16 @@ export default function EditProductPage() {
       formDataToSend.append('category_id', formData.category_id);
       
       if (formData.image_url) {
-        console.log('Uploading new file:', {
-          name: formData.image_url.name,
-          type: formData.image_url.type,
-          size: formData.image_url.size
-        });
-        
         formDataToSend.append('product_image', formData.image_url);
       }
 
       await productAPI.update(productId, formDataToSend);
       router.push('/mitra/products');
+      router.refresh(); 
+
     } catch (err: any) {
-      console.error('Error response:', err.response?.data);
-      const errorMessage = err.response?.data?.message || err.message || 'Gagal memperbarui produk';
-      setError(errorMessage);
+      console.error('Submit Error:', err.response?.data);
+      setError(err.response?.data?.message || err.message || 'Gagal update produk');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsSubmitting(false);
@@ -194,46 +211,23 @@ export default function EditProductPage() {
   };
 
   const handleCancel = () => {
-    if (window.confirm('Batalkan perubahan? Data yang diubah akan hilang.')) {
-      router.push('/mitra/products');
-    }
+    router.push('/mitra/products');
   };
 
+  // --- RENDER ---
   if (isLoading) {
     return (
-      <div className="flex-1 space-y-6 p-4 pt-6 md:p-6 lg:p-8 @container">
+      <div className="flex-1 space-y-6 p-4 pt-6 md:p-6 lg:p-8">
         <div className="flex flex-col gap-4">
           <Skeleton className="h-10 w-48" />
-          <div>
-            <Skeleton className="h-8 w-64 mb-2" />
-            <Skeleton className="h-4 w-96" />
-          </div>
+          <Skeleton className="h-8 w-64" />
         </div>
-        <Skeleton className="h-12 w-full max-w-2xl" />
-        <Card className="max-w-2xl p-6 md:p-8">
+        <Card className="max-w-2xl p-6">
           <div className="space-y-6">
-            <div className="space-y-3">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="aspect-video w-full" />
-            </div>
-            <Skeleton className="h-px w-full" />
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-            <Skeleton className="h-px w-full" />
-            <div className="flex gap-3">
-              <Skeleton className="h-10 flex-1" />
-              <Skeleton className="h-10 flex-1" />
-            </div>
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
           </div>
         </Card>
       </div>
@@ -243,17 +237,16 @@ export default function EditProductPage() {
   if (error && !product) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
-        <Button
-          variant="ghost"
-          className="w-fit -ml-4"
-          onClick={() => router.push('/mitra/products')}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Kembali ke Daftar Produk
+        <Button variant="ghost" onClick={handleCancel}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Kembali
         </Button>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error}
+            <br />
+            <span className="text-xs opacity-70">Cek console browser (F12) untuk detail debug.</span>
+          </AlertDescription>
         </Alert>
       </div>
     );
@@ -261,29 +254,18 @@ export default function EditProductPage() {
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 md:p-6 lg:p-8 @container">
-      {/* Header */}
       <div className="flex flex-col gap-4">
-        <Button
-          variant="ghost"
-          className="w-fit -ml-4"
-          onClick={handleCancel}
-          disabled={isSubmitting}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Kembali ke Daftar Produk
+        <Button variant="ghost" className="w-fit -ml-4" onClick={handleCancel} disabled={isSubmitting}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Kembali ke Daftar Produk
         </Button>
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Package className="h-8 w-8" />
-            Edit Produk
+            <Package className="h-8 w-8" /> Edit Produk
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Perbarui informasi produk <strong>{product?.product_name}</strong>
-          </p>
+          <p className="text-muted-foreground mt-1">Perbarui informasi produk</p>
         </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -291,48 +273,32 @@ export default function EditProductPage() {
         </Alert>
       )}
 
-      {/* Form Card */}
       <Card className="">
         <form onSubmit={handleSubmit} className="p-6 md:p-8" id="edit-product-form">
           <div className="space-y-6">
-            {/* Image Upload */}
+            
+            {/* GAMBAR */}
             <div className="space-y-3">
               <Label className="text-base font-semibold">Gambar Produk</Label>
-              
               {imageError && (
-                <Alert variant="destructive" className="py-3">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription className="text-sm font-medium">{imageError}</AlertDescription>
+                <Alert variant="destructive" className="py-2">
+                  <AlertDescription className="text-sm">{imageError}</AlertDescription>
                 </Alert>
               )}
-
               <div className="flex flex-col gap-4">
                 {imagePreview ? (
-                  <div className="relative aspect-video w-100 rounded-lg overflow-hidden border-2 border-muted group">
-                    <Image
-                      src={imagePreview}
-                      alt="Preview"
-                      fill
-                      className="object-cover"
-                      unoptimized={true}
-                    />
+                  <div className="relative aspect-video w-full max-w-md rounded-lg overflow-hidden border-2 border-muted group">
+                    <Image src={imagePreview} alt="Preview" fill className="object-cover" unoptimized={true} />
                     {formData.image_url && (
                       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          onClick={handleRemoveImage}
-                          disabled={isSubmitting}
-                        >
-                          <X className="mr-2 h-4 w-4" />
-                          Batalkan Gambar Baru
+                        <Button className='bg-black hover:bg-gray-800' type="button" variant="destructive" size="sm" onClick={handleRemoveImage}>
+                          <X className="mr-2 h-4 w-4" /> Batalkan Gambar Baru
                         </Button>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="aspect-video w-full rounded-lg overflow-hidden border-2 border-dashed border-muted bg-muted/30 flex items-center justify-center">
+                  <div className="aspect-video w-full max-w-md rounded-lg border-2 border-dashed border-muted bg-muted/30 flex items-center justify-center">
                     <div className="text-center space-y-2">
                       <ImageIcon className="h-12 w-12 text-muted-foreground/50 mx-auto" />
                       <p className="text-sm text-muted-foreground">Tidak ada gambar</p>
@@ -340,133 +306,91 @@ export default function EditProductPage() {
                   </div>
                 )}
                 
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/gif"
-                    onChange={handleImageChange}
-                    className="hidden"
-                    id="image_url"
-                    disabled={isSubmitting}
-                  />
-                  <Label
-                    htmlFor="image_url"
-                    className={`flex-1 ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                  >
-                    <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${
-                      imageError 
-                        ? 'border-destructive bg-destructive/5' 
-                        : 'hover:bg-muted/50 hover:border-primary'
-                    }`}>
-                      <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
-                      <span className={`text-sm font-medium ${imageError ? 'text-destructive' : 'text-muted-foreground'}`}>
+                <div className="flex items-center gap-2 max-w-md">
+                  <Input type="file" accept="image/*" onChange={handleImageChange} className="hidden" id="image_url" disabled={isSubmitting} />
+                  <Label htmlFor="image_url" className={`flex-1 ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                    <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'}`}>
+                      <Upload className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-sm font-medium text-muted-foreground">
                         {formData.image_url ? 'Ganti Gambar Lagi' : 'Upload Gambar Baru'}
                       </span>
                     </div>
                   </Label>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Format: JPEG, JPG, PNG, atau GIF. Maksimal ukuran 1MB. 
-                  {!formData.image_url && ' Kosongkan jika tidak ingin mengubah gambar.'}
-                </p>
               </div>
             </div>
 
-            <div className="border-t pt-6" />
+            <div className="border-t pt-2" />
 
-            {/* Product Name */}
+            {/* NAMA PRODUK */}
             <div className="space-y-2">
-              <Label htmlFor="product_name" className="text-base font-semibold">
-                Nama Produk <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="product_name">Nama Produk <span className="text-destructive">*</span></Label>
               <Input
                 id="product_name"
-                value={formData.product_name}
+                value={formData.product_name} // Pastikan ini terikat state
                 onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                placeholder="Contoh: Nasi Goreng Spesial"
                 required
                 disabled={isSubmitting}
-                className="text-base"
+                placeholder="Nama Produk"
               />
             </div>
 
-            {/* Base Price */}
+            {/* HARGA */}
             <div className="space-y-2">
-              <Label htmlFor="base_price" className="text-base font-semibold">
-                Harga <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="base_price">Harga <span className="text-destructive">*</span></Label>
               <Input
                 id="base_price"
-                type="text"
                 value={formData.base_price ? `Rp. ${Number(formData.base_price).toLocaleString('id-ID')}` : ''}
                 onChange={handlePriceChange}
-                placeholder="Masukkan harga produk"
                 required
                 disabled={isSubmitting}
-                className="text-base"
+                placeholder="0"
               />
-              <p className="text-xs text-muted-foreground">
-                Masukkan hanya angka, format Rupiah akan otomatis ditambahkan
-              </p>
             </div>
 
-            {/* Category */}
+            {/* KATEGORI */}
             <div className="space-y-2">
-              <Label htmlFor="category_id" className="text-base font-semibold">
-                Kategori <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="category_id">Kategori <span className="text-destructive">*</span></Label>
               <Select
-                value={formData.category_id}
+                value={formData.category_id} // Pastikan ID ini ada di list categories
                 onValueChange={(value) => setFormData({ ...formData, category_id: value })}
                 required
                 disabled={isSubmitting}
               >
-                <SelectTrigger className="text-base">
-                  <SelectValue placeholder="Pilih kategori produk" />
+                <SelectTrigger>
+                  <SelectValue placeholder={categories.length > 0 ? "Pilih kategori" : "Memuat kategori..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.filter((category) => !category.branch_id).length > 0 ? (
-                    categories
-                      .filter((category) => !category.branch_id)
-                      .map((category) => (
-                        <SelectItem key={category.category_id} value={category.category_id}>
-                          {category.category_name}
-                        </SelectItem>
-                      ))
+                  {categories.length > 0 ? (
+                    categories.map((category) => (
+                      <SelectItem key={category.category_id} value={category.category_id}>
+                        {category.category_name}
+                      </SelectItem>
+                    ))
                   ) : (
-                    <div className="px-2 py-8 text-center text-sm text-muted-foreground">
-                      <Package className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-                      <p>Tidak ada kategori general tersedia</p>
-                      <p className="text-xs mt-1">Silakan buat kategori terlebih dahulu</p>
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                      Tidak ada kategori general.
                     </div>
                   )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                Hanya kategori general yang dapat dipilih untuk produk general
-              </p>
             </div>
+
           </div>
         </form>
       </Card>
 
-      {/* Action Buttons */}
-      <div className="flex justify-end gap-4 sticky bottom-0 bg-background py-4 border-t">
-        <Button 
-          type="button" 
-          variant="outline" 
-          onClick={handleCancel} 
-          disabled={isSubmitting}
-        >
+      <div className="flex justify-end gap-4 sticky bottom-0 bg-background py-4 border-t z-10">
+        <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
           Batal
         </Button>
         <Button 
           type="submit" 
-          disabled={isSubmitting || !!imageError || !formData.product_name || !formData.base_price || !formData.category_id}
+          disabled={isSubmitting || !!imageError || !formData.product_name}
           form="edit-product-form"
         >
           {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
+          Simpan Perubahan
         </Button>
       </div>
     </div>

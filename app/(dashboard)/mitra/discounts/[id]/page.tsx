@@ -12,7 +12,6 @@ import {
   ArrowLeft,
   AlertCircle,
   Loader2,
-  Pencil,
   Tag,
   Ticket,
   Calendar,
@@ -20,9 +19,8 @@ import {
   Globe,
   Building2,
   Archive,
-  RotateCcw,
-  AlertTriangle,
-  Clock
+  Clock,
+  AlertTriangle // ✅ TAMBAHKAN INI
 } from 'lucide-react';
 import { formatRupiah } from '@/lib/utils';
 import {
@@ -34,7 +32,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-// Helper: Parse product_ids/category_ids dari backend
+// Helper: Parse product_ids/category_ids
 const parseArrayField = (field: any, relatedField?: any[]): string[] => {
   if (relatedField && Array.isArray(relatedField) && relatedField.length > 0) {
     const ids = relatedField.map(item => item.product_id || item.category_id).filter(Boolean);
@@ -76,7 +74,9 @@ export default function DiscountDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    loadData();
+    if (discountId) {
+      loadData();
+    }
   }, [discountId]);
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -84,35 +84,42 @@ export default function DiscountDetailPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [discountsData, categoriesData, productsData, branchesData] = await Promise.all([
-        discountAPI.getAll(),
+      
+      // ✅ FIX: Tambahkan 'as [any, any, any, any]' agar TypeScript mengenali tipe data array
+      const [discountRes, categoriesData, productsData, branchesData] = await Promise.all([
+        discountAPI.getById(discountId),
         categoryAPI.getAll(),
         productAPI.getAll(),
         branchAPI.getAll(),
-      ]);
+      ]) as [any, any, any, any];
       
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      setProducts(Array.isArray(productsData) ? productsData : []);
-      setBranches(Array.isArray(branchesData) ? branchesData : []);
+      const cats = Array.isArray(categoriesData) ? categoriesData : (categoriesData as any).data || [];
+      const prods = Array.isArray(productsData) ? productsData : (productsData as any).data || [];
+      const brs = Array.isArray(branchesData) ? branchesData : [];
 
-      // Find the specific discount
-      const discountsList = Array.isArray(discountsData) ? discountsData : [];
-      const foundDiscount = discountsList.find(d => d.discount_rule_id === discountId);
-      
-      if (!foundDiscount) {
+      setCategories(cats);
+      setProducts(prods);
+      setBranches(brs);
+
+      // Handle response structure (Support { data: ... } or direct object)
+      const foundDiscount = discountRes.data || discountRes;
+
+      if (!foundDiscount || !foundDiscount.discount_rule_id) {
         setError('Promo tidak ditemukan');
         return;
       }
 
+      // Process relations
       const processed = {
         ...foundDiscount,
-        product_ids: parseArrayField(foundDiscount.product_ids, (foundDiscount as any).products),
-        category_ids: parseArrayField(foundDiscount.category_ids, (foundDiscount as any).categories),
+        product_ids: parseArrayField(foundDiscount.product_ids, foundDiscount.products),
+        category_ids: parseArrayField(foundDiscount.category_ids, foundDiscount.categories),
       };
 
       setDiscount(processed);
 
     } catch (err: any) {
+      console.error(err);
       setError(err.message || 'Gagal memuat data');
     } finally {
       setIsLoading(false);
@@ -124,7 +131,7 @@ export default function DiscountDetailPage() {
     
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await discountAPI.softDelete(discount.discount_rule_id);
       router.push('/mitra/discounts');
     } catch (err: any) {
@@ -139,7 +146,7 @@ export default function DiscountDetailPage() {
     
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       const restoreData = {
         is_active: true,
         discount_name: discount.discount_name,
@@ -151,7 +158,7 @@ export default function DiscountDetailPage() {
       };
       
       await discountAPI.update(discount.discount_rule_id, restoreData);
-      await loadData();
+      await loadData(); // Reload data untuk update UI
       setIsRestoreOpen(false);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Gagal mengaktifkan kembali promo');
@@ -165,7 +172,7 @@ export default function DiscountDetailPage() {
     
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await discountAPI.hardDelete(discount.discount_rule_id);
       router.push('/mitra/discounts');
     } catch (err: any) {
@@ -173,16 +180,6 @@ export default function DiscountDetailPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('id-ID', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
   };
 
   const formatDate = (dateString: string) => {
@@ -421,7 +418,7 @@ export default function DiscountDetailPage() {
               </div>
             </div>
 
-            <div className="bg-gray-50 p-3 rounded-lg ">
+            <div className="bg-gray-50 p-3 rounded-lg mt-4">
               <p className="text-sm font-medium text-black ">
                 <strong>Durasi:</strong> {Math.ceil((new Date(discount.end_date).getTime() - new Date(discount.start_date).getTime()) / (1000 * 60 * 60 * 24))} hari
               </p>

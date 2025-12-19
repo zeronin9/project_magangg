@@ -1,5 +1,3 @@
-// app/(dashboard)/branch/categories/page.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -69,7 +67,6 @@ interface Category {
 
 export default function BranchCategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
-  // ✅ State untuk Meta Pagination
   const [meta, setMeta] = useState<MetaPagination | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -92,16 +89,16 @@ export default function BranchCategoriesPage() {
     category_name: '',
   });
 
-  // ✅ Trigger loadData saat parameter berubah
+  // Load data ketika filter berubah
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, scopeFilter]); 
+  }, [currentPage, searchQuery, scopeFilter, showArchived]); 
 
-  // Reset halaman ke 1 saat filter berubah
+  // Reset pagination saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, scopeFilter]);
+  }, [searchQuery, scopeFilter, showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -110,20 +107,30 @@ export default function BranchCategoriesPage() {
       setIsLoading(true);
       setError('');
 
-      // ✅ Mapping scopeFilter ke parameter API
       let typeParam: string | undefined = undefined;
       if (scopeFilter === 'local') typeParam = 'local';
       if (scopeFilter === 'general') typeParam = 'general';
 
-      // ✅ Panggil API dengan parameter Pagination & Search
-      const response = await branchCategoryAPI.getAll({
+      // ✅ FIX FINAL: Kirim KEDUA parameter untuk memastikan Backend menangkapnya
+      // Backend Logic: if (status === 'archived' || is_active === 'false')
+      const queryParams = {
         page: currentPage,
         limit: 10,
         search: searchQuery,
-        type: typeParam
-      });
+        type: typeParam,
+        // Kirim 'status' (Style Baru)
+        status: showArchived ? 'archived' : 'active',
+        // Kirim 'is_active' (Style Lama) sebagai String agar aman
+        is_active: showArchived ? 'false' : 'true'
+      };
 
-      setCategories(response.items);
+      const response = await branchCategoryAPI.getAll(queryParams as any);
+
+      // Handle response structure { data: [...], meta: ... }
+      const responseData = response as any;
+      const categoryList = responseData.data || responseData.items || [];
+      
+      setCategories(categoryList);
       setMeta(response.meta);
 
     } catch (err: any) {
@@ -162,7 +169,7 @@ export default function BranchCategoriesPage() {
     setIsSubmitting(true);
 
     try {
-      await delay(3000);
+      await delay(1000);
 
       if (selectedCategory) {
         await branchCategoryAPI.update(selectedCategory.category_id, formData);
@@ -185,10 +192,11 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(3000);
+      await delay(1000);
       
       await branchCategoryAPI.softDelete(selectedCategory.category_id);
       
+      // Reload akan memicu filter ulang (item hilang dari list Aktif)
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedCategory(null);
@@ -204,13 +212,14 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(3000);
+      await delay(1000);
 
       await branchCategoryAPI.update(selectedCategory.category_id, {
         category_name: selectedCategory.category_name,
         is_active: true,
       });
 
+      // Reload akan memicu filter ulang (item hilang dari list Arsip)
       await loadData();
       setIsRestoreOpen(false);
       setSelectedCategory(null);
@@ -226,7 +235,7 @@ export default function BranchCategoriesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(3000);
+      await delay(1000);
       
       await branchCategoryAPI.hardDelete(selectedCategory.category_id);
       
@@ -241,7 +250,6 @@ export default function BranchCategoriesPage() {
     }
   };
 
-  // ✅ Helper untuk Pagination
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
     if (meta && page > 0 && page <= meta.total_pages) {
@@ -249,10 +257,6 @@ export default function BranchCategoriesPage() {
     }
   };
 
-  // Hitung jumlah sederhana dari data yang tampil (opsional, karena total_items ada di meta)
-  // Catatan: Server-side pagination tidak selalu mengirim hitungan terpisah 'local' vs 'general' 
-  // kecuali ada endpoint khusus statistik. Kita gunakan total_items dari meta untuk display.
-  
   if (isLoading) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
@@ -282,7 +286,6 @@ export default function BranchCategoriesPage() {
           <p className="text-muted-foreground">Kelola kategori produk (General & Lokal)</p>
         </div>
         <div className="grid grid-cols-2 gap-2 @md:flex">
-          {/* Tombol Arsip mungkin tidak berfungsi penuh tanpa filter server-side khusus, tergantung backend */}
           <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
@@ -315,7 +318,7 @@ export default function BranchCategoriesPage() {
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           
-          {/* ✅ Input Search */}
+          {/* Input Search */}
           <div className="flex-1 max-w-sm">
              <Input 
                 placeholder="Cari kategori..." 
@@ -359,7 +362,7 @@ export default function BranchCategoriesPage() {
       {/* Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Daftar Kategori</CardTitle>
+          <CardTitle>Daftar Kategori {showArchived ? '(Arsip)' : '(Aktif)'}</CardTitle>
           <CardDescription>
             {meta ? `Total ${meta.total_items} kategori` : 'Memuat data...'}
           </CardDescription>
@@ -371,7 +374,7 @@ export default function BranchCategoriesPage() {
               <p className="text-muted-foreground">
                 {searchQuery
                   ? 'Tidak ada hasil pencarian'
-                  : 'Belum ada kategori'}
+                  : showArchived ? 'Tidak ada kategori di arsip' : 'Belum ada kategori aktif'}
               </p>
             </div>
           ) : (
@@ -386,9 +389,8 @@ export default function BranchCategoriesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* ✅ Mapping langsung dari categories (bukan paginatedCategories) */}
                   {categories.map((category) => (
-                    <TableRow key={category.category_id} className={category.is_active === false ? 'opacity-60' : ''}>
+                    <TableRow key={category.category_id} className={category.is_active === false ? 'opacity-60 bg-muted/50' : ''}>
                       <TableCell className="font-medium">{category.category_name}</TableCell>
                       <TableCell>
                         <Badge variant={category.branch_id ? 'secondary' : 'default'}>
@@ -406,10 +408,10 @@ export default function BranchCategoriesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {category.is_active === false ? (
+                        {!category.is_active ? (
                           <Badge variant="secondary">Diarsipkan</Badge>
                         ) : (
-                          <Badge variant="default" className="bg-black">
+                          <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-white">
                             Aktif
                           </Badge>
                         )}
@@ -426,7 +428,7 @@ export default function BranchCategoriesPage() {
 
                             {category.branch_id ? (
                               <>
-                                {/* Logika Aksi berdasarkan status Active/Inactive */}
+                                {/* Logika Aksi: Jika Aktif -> Edit/Archive/Hapus. Jika Arsip -> Restore. */}
                                 {category.is_active !== false ? (
                                   <>
                                     <DropdownMenuItem onClick={() => handleOpenModal(category)}>
@@ -444,17 +446,6 @@ export default function BranchCategoriesPage() {
                                       <Archive className="mr-2 h-4 w-4" />
                                       Arsipkan
                                     </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        setSelectedCategory(category);
-                                        setIsHardDeleteOpen(true);
-                                      }}
-                                      className="text-destructive focus:text-destructive"
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Hapus Permanen
-                                    </DropdownMenuItem>
                                   </>
                                 ) : (
                                   <DropdownMenuItem
@@ -468,6 +459,18 @@ export default function BranchCategoriesPage() {
                                     Aktifkan Kembali
                                   </DropdownMenuItem>
                                 )}
+                                
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedCategory(category);
+                                    setIsHardDeleteOpen(true);
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Hapus Permanen
+                                </DropdownMenuItem>
                               </>
                             ) : (
                               <DropdownMenuItem disabled className="text-muted-foreground">
@@ -486,7 +489,7 @@ export default function BranchCategoriesPage() {
         </CardContent>
       </Card>
 
-      {/* ✅ Server-Side Pagination Component */}
+      {/* Pagination */}
       {meta && meta.total_pages > 1 && (
         <div className="py-4 flex justify-center">
           <Pagination>
@@ -498,13 +501,11 @@ export default function BranchCategoriesPage() {
                   className={!meta.has_prev_page ? 'pointer-events-none opacity-50' : ''}
                 />
               </PaginationItem>
-
               <PaginationItem>
                   <span className="flex items-center px-4 text-sm font-medium">
                     Halaman {meta.current_page} dari {meta.total_pages}
                   </span>
               </PaginationItem>
-
               <PaginationItem>
                 <PaginationNext
                   href="#"
@@ -554,55 +555,49 @@ export default function BranchCategoriesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Soft Delete Confirmation */}
+      {/* Soft Delete Modal */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Arsipkan Kategori?</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengarsipkan kategori <strong>{selectedCategory?.category_name}</strong>?
-              <br />
-              Kategori akan dinonaktifkan (Soft Delete).
+              Kategori <strong>{selectedCategory?.category_name}</strong> akan dipindahkan ke arsip dan tidak muncul di menu kasir.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)} disabled={isSubmitting}>
-              Batal
-            </Button>
+            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)} disabled={isSubmitting}>Batal</Button>
             <Button className="bg-black text-white hover:bg-gray-800" onClick={handleSoftDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Archive className="mr-2 h-4 w-4" />}
               Arsipkan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Restore Confirmation */}
+      {/* Restore Modal */}
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Aktifkan Kembali?</DialogTitle>
             <DialogDescription>
-              Apakah Anda yakin ingin mengaktifkan kembali kategori <strong>{selectedCategory?.category_name}</strong>?
+              Kategori <strong>{selectedCategory?.category_name}</strong> akan kembali aktif dan muncul di menu kasir.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
-              Batal
-            </Button>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>Batal</Button>
             <Button onClick={handleRestore} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
               Aktifkan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Hard Delete Confirmation */}
+      {/* Hard Delete Modal */}
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-black flex items-center gap-2">
+            <DialogTitle className="text-destructive flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
@@ -612,11 +607,9 @@ export default function BranchCategoriesPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
-              Batal
-            </Button>
-            <Button className="bg-black hover:bg-gray-800" variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>Batal</Button>
+            <Button variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
               Hapus Permanen
             </Button>
           </DialogFooter>

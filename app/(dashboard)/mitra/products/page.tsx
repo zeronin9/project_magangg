@@ -29,7 +29,6 @@ import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
@@ -95,11 +94,10 @@ export default function ProductsPage() {
     const loadDependencies = async () => {
       try {
         const [categoriesData, branchesData] = await Promise.all([
-          categoryAPI.getAll(), // Asumsi category dropdown tidak butuh pagination berat
+          categoryAPI.getAll(), 
           branchAPI.getAll(),
         ]);
         
-        // Handle response structure differences
         setCategories(Array.isArray(categoriesData) ? categoriesData : (categoriesData as any).data || []);
         setBranches(Array.isArray(branchesData) ? branchesData : []);
       } catch (err) {
@@ -127,11 +125,11 @@ export default function ProductsPage() {
       setIsLoading(true);
       setError('');
 
-      // Params construction
+      // ✅ UPDATE: Menggunakan parameter 'status' sesuai backend baru
       const params: any = {
         page: currentPage,
         limit: ITEMS_PER_PAGE,
-        is_active: showArchived ? 'false' : 'true' // Kirim sebagai string query param
+        status: showArchived ? 'archived' : 'active' // 'archived' = non-aktif, 'active' = aktif
       };
 
       if (scopeFilter === 'local') params.type = 'local';
@@ -139,16 +137,16 @@ export default function ProductsPage() {
 
       const response = await productAPI.getAll(params);
       
-      const productsList = Array.isArray(response.data) ? response.data : [];
+      // ✅ UPDATE: Langsung ambil data dari response (Backend sudah memfilter)
+      // Tidak perlu lagi .filter() client-side untuk is_active
+      let productsList = Array.isArray(response.data) ? response.data : [];
       
-      // Client-side relation mapping (if backend doesn't join)
-      // Note: Idealnya backend mengirim data yang sudah di-join
+      // Map relations (Category & Branch)
       const productsWithRelations = productsList.map((product: any) => {
         const branch = product.branch_id 
           ? branches.find(b => b.branch_id === product.branch_id)
           : null;
         
-        // Fallback jika category tidak di-join backend, cari di state local
         const category = product.category || categories.find(c => c.category_id === product.category_id);
         
         return {
@@ -159,7 +157,7 @@ export default function ProductsPage() {
       });
       
       setProducts(productsWithRelations);
-      setMeta(response.meta); // Simpan metadata pagination dari server
+      setMeta(response.meta); 
 
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data produk');
@@ -178,7 +176,10 @@ export default function ProductsPage() {
     try {
       await delay(1000); 
       await productAPI.softDelete(selectedProduct.product_id);
-      await loadProducts();
+      
+      // Reload akan mengambil data terbaru (produk akan hilang dari list Active)
+      await loadProducts(); 
+      
       setIsSoftDeleteOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -193,15 +194,15 @@ export default function ProductsPage() {
     setIsSubmitting(true);
     try {
       await delay(1000); 
-      // Asumsi backend support update field partial
+      // Update status menjadi aktif
       const payload = {
         is_active: true,
         product_name: selectedProduct.product_name,
-        base_price: selectedProduct.base_price,
         category_id: selectedProduct.category_id
       };
+      
       await productAPI.update(selectedProduct.product_id, payload);
-      await loadProducts();
+      await loadProducts(); // Produk akan hilang dari list Archived
       setIsRestoreOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -554,19 +555,23 @@ export default function ProductsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-black flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedProduct?.product_name}</strong> secara permanen?
               <br/>
+              <span className="text-red-600 text-xs mt-2 block font-medium">
+                Peringatan: Data yang dihapus tidak dapat dikembalikan.
+                Jika produk sudah memiliki transaksi, penghapusan mungkin ditolak.
+              </span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button className='bg-red-600 hover:bg-red-700 text-white' onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>

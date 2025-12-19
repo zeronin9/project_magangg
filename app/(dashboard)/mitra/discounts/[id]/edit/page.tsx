@@ -86,27 +86,33 @@ export default function EditDiscountPage() {
   });
 
   useEffect(() => {
-    loadData();
+    if (discountId) {
+      loadData();
+    }
   }, [discountId]);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [discountsData, categoriesData, productsData, branchesData] = await Promise.all([
-        discountAPI.getAll(),
+      
+      // ✅ FIX: Tambahkan 'as [any, any, any, any]' untuk casting tipe data
+      const [discountData, categoriesData, productsData, branchesData] = await Promise.all([
+        discountAPI.getById(discountId),
         categoryAPI.getAll(),
         productAPI.getAll(),
         branchAPI.getAll(),
-      ]);
+      ]) as [any, any, any, any];
       
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
-      setProducts(Array.isArray(productsData) ? productsData : []);
-      setBranches(Array.isArray(branchesData) ? branchesData : []);
+      // Handle data structure
+      const foundDiscount = discountData.data || discountData; 
+      const cats = Array.isArray(categoriesData) ? categoriesData : (categoriesData as any).data || [];
+      const prods = Array.isArray(productsData) ? productsData : (productsData as any).data || [];
+      const brs = Array.isArray(branchesData) ? branchesData : [];
 
-      // Find the specific discount
-      const discountsList = Array.isArray(discountsData) ? discountsData : [];
-      const foundDiscount = discountsList.find(d => d.discount_rule_id === discountId);
-      
+      setCategories(cats);
+      setProducts(prods);
+      setBranches(brs);
+
       if (!foundDiscount) {
         setError('Promo tidak ditemukan');
         return;
@@ -114,16 +120,17 @@ export default function EditDiscountPage() {
 
       setDiscount(foundDiscount);
 
-      // Extract date and time from ISO string
+      // Parsing Dates
       const startDateTime = new Date(foundDiscount.start_date);
       const endDateTime = new Date(foundDiscount.end_date);
 
-      const startDate = startDateTime.toISOString().split('T')[0];
-      const startTime = startDateTime.toTimeString().slice(0, 5);
-      const endDate = endDateTime.toISOString().split('T')[0];
+      // Handle timezone offset manually or use local parts
+      const startDate = startDateTime.toLocaleDateString('en-CA'); // YYYY-MM-DD
+      const startTime = startDateTime.toTimeString().slice(0, 5); // HH:MM
+      
+      const endDate = endDateTime.toLocaleDateString('en-CA');
       const endTime = endDateTime.toTimeString().slice(0, 5);
 
-      // Populate form with discount data
       setFormData({
         discount_name: foundDiscount.discount_name,
         discount_code: foundDiscount.discount_code || '',
@@ -134,8 +141,8 @@ export default function EditDiscountPage() {
         end_date: endDate,
         end_time: endTime,
         applies_to: foundDiscount.applies_to,
-        product_ids: parseArrayField(foundDiscount.product_ids, (foundDiscount as any).products),
-        category_ids: parseArrayField(foundDiscount.category_ids, (foundDiscount as any).categories),
+        product_ids: parseArrayField(foundDiscount.product_ids, foundDiscount.products),
+        category_ids: parseArrayField(foundDiscount.category_ids, foundDiscount.categories),
         min_transaction_amount: foundDiscount.min_transaction_amount?.toString() || '',
         max_transaction_amount: foundDiscount.max_transaction_amount?.toString() || '',
         min_item_quantity: foundDiscount.min_item_quantity?.toString() || '',
@@ -145,6 +152,7 @@ export default function EditDiscountPage() {
       });
 
     } catch (err: any) {
+      console.error(err);
       setError(err.message || 'Gagal memuat data');
     } finally {
       setIsLoading(false);
@@ -179,16 +187,12 @@ export default function EditDiscountPage() {
     }));
   };
 
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError('');
 
     try {
-      await delay(2000);
-
       // Gabungkan tanggal dan waktu
       const startDateTime = `${formData.start_date}T${formData.start_time}:00`;
       const endDateTime = `${formData.end_date}T${formData.end_time}:00`;
@@ -197,40 +201,55 @@ export default function EditDiscountPage() {
         discount_name: formData.discount_name,
         discount_type: formData.discount_type,
         value: formData.value,
-        start_date: startDateTime,
-        end_date: endDateTime,
+        start_date: new Date(startDateTime).toISOString(),
+        end_date: new Date(endDateTime).toISOString(),
         applies_to: formData.applies_to,
-        is_active: true,
+        is_active: true, // Pastikan tetap aktif setelah edit
+        // Kode diskon opsional
+        discount_code: formData.discount_code ? formData.discount_code.trim().toUpperCase() : "",
       };
 
-      if (formData.discount_code && formData.discount_code.trim() !== '') {
-        dataToSend.discount_code = formData.discount_code.trim().toUpperCase();
-      }
-
+      // Handle Relations
       if (formData.applies_to === 'SPECIFIC_PRODUCTS') {
         dataToSend.product_ids = formData.product_ids;
-      }
-
-      if (formData.applies_to === 'SPECIFIC_CATEGORIES') {
+        dataToSend.category_ids = []; // Reset kategori
+      } else if (formData.applies_to === 'SPECIFIC_CATEGORIES') {
         dataToSend.category_ids = formData.category_ids;
+        dataToSend.product_ids = []; // Reset produk
+      } else {
+        dataToSend.product_ids = [];
+        dataToSend.category_ids = [];
       }
 
+      // Handle Optional Constraints (kirim null jika string kosong)
       if (formData.min_transaction_amount) dataToSend.min_transaction_amount = formData.min_transaction_amount;
-      if (formData.max_transaction_amount) dataToSend.max_transaction_amount = formData.max_transaction_amount;
-      if (formData.min_item_quantity) dataToSend.min_item_quantity = parseInt(formData.min_item_quantity);
-      if (formData.max_item_quantity) dataToSend.max_item_quantity = parseInt(formData.max_item_quantity);
-      if (formData.min_discount_amount) dataToSend.min_discount_amount = formData.min_discount_amount;
-      if (formData.max_discount_amount) dataToSend.max_discount_amount = formData.max_discount_amount;
+      else dataToSend.min_transaction_amount = null;
 
-      console.log('=== DATA YANG DIKIRIM ===');
-      console.log(JSON.stringify(dataToSend, null, 2));
-      console.log('========================');
+      if (formData.max_transaction_amount) dataToSend.max_transaction_amount = formData.max_transaction_amount;
+      else dataToSend.max_transaction_amount = null;
+
+      if (formData.min_item_quantity) dataToSend.min_item_quantity = formData.min_item_quantity;
+      else dataToSend.min_item_quantity = null;
+
+      if (formData.max_item_quantity) dataToSend.max_item_quantity = formData.max_item_quantity;
+      else dataToSend.max_item_quantity = null;
+
+      if (formData.min_discount_amount) dataToSend.min_discount_amount = formData.min_discount_amount;
+      else dataToSend.min_discount_amount = null;
+
+      if (formData.max_discount_amount) dataToSend.max_discount_amount = formData.max_discount_amount;
+      else dataToSend.max_discount_amount = null;
 
       await discountAPI.update(discountId, dataToSend);
+      
+      // Refresh router untuk update data di list page
+      router.refresh();
       router.push('/mitra/discounts');
+      
     } catch (err: any) {
       console.error('Error:', err);
       setError(err.response?.data?.message || 'Gagal menyimpan promo');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setIsSubmitting(false);
     }
@@ -500,7 +519,7 @@ export default function EditDiscountPage() {
               <Label htmlFor="applies_to">Berlaku Untuk *</Label>
               <Select
                 value={formData.applies_to}
-                onValueChange={(value: any) => setFormData({ ...formData, applies_to: value, product_ids: [], category_ids: [] })}
+                onValueChange={(value: any) => setFormData({ ...formData, applies_to: value })}
                 required
               >
                 <SelectTrigger>

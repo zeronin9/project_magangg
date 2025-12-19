@@ -21,7 +21,6 @@ import {
   AlertCircle,
   Loader2,
   Upload,
-  Globe,
   ImageIcon
 } from 'lucide-react';
 import Image from 'next/image';
@@ -49,8 +48,10 @@ export default function NewProductPage() {
   const loadCategories = async () => {
     try {
       setIsLoading(true);
-      const categoriesData = await categoryAPI.getAll();
-      const categoriesList = Array.isArray(categoriesData) ? categoriesData : [];
+      // PERBAIKAN: Request khusus tipe 'general' dan limit besar agar tampil semua
+      const response = await categoryAPI.getAll({ type: 'general', limit: 100 });
+      // PERBAIKAN: Ambil array dari property .data (sesuai struktur PaginatedResponse)
+      const categoriesList = response.data || [];
       setCategories(categoriesList);
     } catch (err: any) {
       setError(err.message || 'Gagal memuat kategori');
@@ -279,14 +280,13 @@ export default function NewProductPage() {
                   <SelectValue placeholder="Pilih Kategori" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.filter((category) => !category.branch_id).length > 0 ? (
-                    categories
-                      .filter((category) => !category.branch_id)
-                      .map((category) => (
-                        <SelectItem key={category.category_id} value={category.category_id}>
-                          {category.category_name}
-                        </SelectItem>
-                      ))
+                  {/* PERBAIKAN: Langsung mapping karena data categories sudah difilter 'general' dari API */}
+                  {categories.length > 0 ? (
+                    categories.map((category) => (
+                      <SelectItem key={category.category_id} value={category.category_id}>
+                        {category.category_name}
+                      </SelectItem>
+                    ))
                   ) : (
                     <div className="px-2 py-6 text-center text-sm text-muted-foreground">
                       Tidak ada kategori general tersedia
