@@ -175,12 +175,11 @@ export const expenseAPI = {
 
 // ==================== VOID REQUESTS ====================
 export const voidRequestAPI = {
-  // ✅ Update: Menggunakan fetchData untuk Pagination
-  getAll: async (params: { page?: number; limit?: number } = {}) => {
-    return fetchData('/transaction/void-requests', params.page, params.limit);
-  },
+  // ✅ PERBAIKAN: Menggunakan apiClient.get langsung karena endpoint ini
+  // mengembalikan array murni tanpa metadata pagination server-side.
+  getAll: () => apiClient.get('/transaction/void-requests'),
 
-  // ✅ Update: Sesuai route backend (POST /transaction/:id/void-review)
+  // Fungsi review tetap sama
   review: (id: string, approve: boolean) =>
     apiClient.post(`/transaction/${id}/void-review`, { approve }),
 };
@@ -207,9 +206,20 @@ export const branchLicenseAPI = {
 
 // ==================== SETTINGS ====================
 export const branchSettingsAPI = {
+  // --- PAJAK (Endpoint: /branch/tax sesuai routes/branch.js) ---
+  getTax: () => 
+    apiClient.get('/branch/tax'),
+
   updateTax: (data: { tax_name: string; tax_percentage: number }) =>
-    apiClient.put('/branch/tax-setting', data),
+    apiClient.put('/branch/tax', data),
+
+  deleteTax: () => 
+    apiClient.delete('/branch/tax'), // Untuk non-aktifkan pajak (reset ke 0)
   
+  // --- PEMBAYARAN (Endpoint: /payment sesuai routes/payment.js) ---
+  getPaymentMethods: () =>
+    apiClient.get('/payment'),
+
   updatePaymentMethod: (data: { payment_method_id: string; is_active: boolean }) =>
     apiClient.post('/payment/setting', data),
 };

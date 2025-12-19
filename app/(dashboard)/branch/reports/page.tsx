@@ -2,8 +2,8 @@
 
 'use client';
 
-import { useState } from 'react';
-import { branchReportAPI } from '@/lib/api/branch';
+import { useState, useEffect } from 'react';
+import { apiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,177 +22,179 @@ import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from '@/components/ui/pagination';
-import { BarChart3, AlertCircle, Loader2, Download, Calendar, TrendingUp } from 'lucide-react';
-import { formatRupiah } from '@/lib/utils';
-import { format } from 'date-fns';
-import { id } from 'date-fns/locale';
-import { MetaPagination } from '@/lib/services/fetchData';
+} from "@/components/ui/pagination";
+import { 
+  FileText,
+  AlertCircle,
+  Loader2,
+  User,
+  CreditCard,
+  XCircle
+} from 'lucide-react';
 
-// Interface Transaksi Individual
-interface TransactionItem {
-  transaction_id: string;
-  transaction_date: string;
-  total_amount: number;
-  payment_method?: string;
-  items_count?: number;
-  status?: string;
-}
-
-// Interface Response Lengkap (Summary + Meta + Data)
-interface SalesReportData {
-  summary: {
-    total_sales: string | number; // Backend mungkin kirim string untuk BigInt
-    transaction_count: number;
-    total_items_sold?: number;
-  };
-  meta: MetaPagination;
-  data: TransactionItem[];
-}
-
+// Konfigurasi Pagination
 const ITEMS_PER_PAGE = 10;
 
 export default function ReportsPage() {
+  const [dateRange, setDateRange] = useState({
+    start: '',
+    end: '',
+  });
+  
+  const [salesReport, setSalesReport] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  
-  // State utama untuk menampung response lengkap
-  const [reportData, setReportData] = useState<SalesReportData | null>(null);
+  const [showVoidOnly, setShowVoidOnly] = useState(false);
+  const [hasInitialLoad, setHasInitialLoad] = useState(false);
 
-  const today = new Date().toISOString().split('T')[0];
-  const [formData, setFormData] = useState({
-    tanggalMulai: today,
-    tanggalSelesai: today,
-  });
+  // Pagination states
+  const [salesCurrentPage, setSalesCurrentPage] = useState(1);
 
-  // State untuk pagination saat ini
-  const [currentPage, setCurrentPage] = useState(1);
+  useEffect(() => {
+    // Set default date range: Hari Ini s/d Besok
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-  // Fungsi Fetch Data
-  const fetchReport = async (page: number) => {
-    if (!formData.tanggalMulai || !formData.tanggalSelesai) {
-      alert('Harap isi tanggal mulai dan selesai');
-      return;
+    // Format YYYY-MM-DD
+    const startDate = today.toISOString().split('T')[0];
+    const endDate = tomorrow.toISOString().split('T')[0];
+    
+    setDateRange({
+      start: startDate,
+      end: endDate,
+    });
+  }, []);
+
+  // Auto-generate laporan saat pertama kali load (setelah tanggal terisi)
+  useEffect(() => {
+    if (dateRange.start && dateRange.end && !hasInitialLoad) {
+      setHasInitialLoad(true);
+      // Panggil fungsi generate report otomatis
+      handleGenerateReport(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange.start, dateRange.end, hasInitialLoad]);
+
+  // Handler utama untuk mengambil data laporan penjualan
+  const handleGenerateReport = async (isAutoLoad = false) => {
+    // Validasi sederhana jika tanggal belum siap
+    if (!dateRange.start || !dateRange.end) return;
 
     setIsLoading(true);
     setError('');
-
+    
+    // Hanya reset void filter dan pagination jika tombol diklik manual (bukan auto load)
+    if (!isAutoLoad) {
+      setShowVoidOnly(false);
+      setSalesCurrentPage(1);
+    }
+    
     try {
-      // Panggil API dengan parameter page & limit
-      const response = await branchReportAPI.getSales(
-        formData.tanggalMulai, 
-        formData.tanggalSelesai, 
-        page, 
-        ITEMS_PER_PAGE
-      );
+      const page = isAutoLoad ? salesCurrentPage : 1;
       
-      // Response dari fetchData sudah diparsing, namun struktur report sedikit beda
-      // fetchData return { items, meta, ... }. 
-      // Jika branch.ts sudah disesuaikan untuk return raw object atau di-map, sesuaikan di sini.
-      // Asumsi berdasarkan kode API sebelumnya: return object lengkap.
-      
-      setReportData(response as unknown as SalesReportData);
-      setCurrentPage(page);
+      const params: any = {
+        tanggalMulai: dateRange.start,
+        tanggalSelesai: dateRange.end,
+        limit: ITEMS_PER_PAGE,
+        page: page,
+        status: 'COMPLETED' // Default ambil data sukses
+      };
+
+      const res = await apiClient.get('/report/sales?' + new URLSearchParams(params));
+      setSalesReport(res.data);
+
     } catch (err: any) {
-      setError(err.message || 'Gagal mengambil laporan penjualan');
-      setReportData(null);
+      console.error('❌ Error fetching report:', err);
+      setError(err.message || 'Gagal memuat laporan');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handler Tombol Generate (Reset ke halaman 1)
-  const handleGenerateReport = () => {
-    fetchReport(1);
-  };
+  // Handler Pagination
+  const onPageChange = async (newPage: number) => {
+    setSalesCurrentPage(newPage);
+    setIsLoading(true);
+    try {
+        const params: any = {
+            tanggalMulai: dateRange.start,
+            tanggalSelesai: dateRange.end,
+            page: newPage,
+            limit: ITEMS_PER_PAGE,
+            status: showVoidOnly ? 'VOID_REQUESTED,VOIDED' : 'COMPLETED'
+        };
 
-  // Handler Ganti Halaman
-  const handlePageChange = (newPage: number) => {
-    if (reportData?.meta && newPage > 0 && newPage <= reportData.meta.total_pages) {
-      fetchReport(newPage);
+        const res = await apiClient.get('/report/sales?' + new URLSearchParams(params));
+        setSalesReport(res.data);
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setIsLoading(false);
     }
   };
 
-  const handleExport = () => {
-    if (!reportData || !reportData.data.length) return;
+  // Handler Toggle Filter Void
+  const handleToggleVoidFilter = async () => {
+    const newVoidState = !showVoidOnly;
+    setShowVoidOnly(newVoidState);
+    setSalesCurrentPage(1);
+    setIsLoading(true);
 
-    // Catatan: Ini hanya export halaman yang sedang tampil (Current View)
-    let csv = 'ID Transaksi,Tanggal,Total,Metode Pembayaran,Status\n';
-    reportData.data.forEach((row) => {
-      csv += `${row.transaction_id},${format(new Date(row.transaction_date), 'dd/MM/yyyy HH:mm')},${row.total_amount},${
-        row.payment_method || '-'
-      },${row.status || 'COMPLETED'}\n`;
+    try {
+        const params: any = {
+            tanggalMulai: dateRange.start,
+            tanggalSelesai: dateRange.end,
+            page: 1,
+            limit: ITEMS_PER_PAGE,
+            status: newVoidState ? 'VOID_REQUESTED,VOIDED' : 'COMPLETED'
+        };
+        
+        const res = await apiClient.get('/report/sales?' + new URLSearchParams(params));
+        setSalesReport(res.data);
+    } catch (err) {
+        console.error(err);
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const formatCurrency = (value: string | number) => {
+    const numValue = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+    return 'Rp. ' + Math.round(numValue).toLocaleString('id-ID');
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
+  };
 
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `laporan-penjualan-${formData.tanggalMulai}-${formData.tanggalSelesai}-hal${currentPage}.csv`;
-    a.click();
+  // Helper Badge Style
+  const getStatusBadgeStyle = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return { variant: 'default' as const, className: 'bg-black hover:bg-green-700' };
+      case 'VOID_REQUESTED': return { variant: 'outline' as const, className: 'text-black border-black' };
+      case 'VOIDED': return { variant: 'destructive' as const, className: 'bg-black' };
+      default: return { variant: 'secondary' as const, className: '' };
+    }
   };
 
   return (
-    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
       {/* Header */}
-      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Laporan Penjualan</h1>
-          <p className="text-muted-foreground">Generate laporan penjualan harian cabang</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Laporan Penjualan</h1>
+        <p className="text-muted-foreground">
+          Lihat ringkasan dan detail transaksi penjualan harian
+        </p>
       </div>
-
-      {/* Info Alert */}
-      <Alert>
-        <BarChart3 className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Laporan Penjualan:</strong> Pilih rentang tanggal untuk melihat ringkasan penjualan dan detail
-          transaksi. Data ditampilkan per halaman.
-        </AlertDescription>
-      </Alert>
-
-      {/* Filter Form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filter Laporan</CardTitle>
-          <CardDescription>Pilih periode laporan yang ingin dilihat</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="tanggalMulai">Tanggal Mulai</Label>
-              <Input
-                id="tanggalMulai"
-                type="date"
-                value={formData.tanggalMulai}
-                onChange={(e) => setFormData({ ...formData, tanggalMulai: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tanggalSelesai">Tanggal Selesai</Label>
-              <Input
-                id="tanggalSelesai"
-                type="date"
-                value={formData.tanggalSelesai}
-                onChange={(e) => setFormData({ ...formData, tanggalSelesai: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="opacity-0">Action</Label>
-              <Button className="w-full" onClick={handleGenerateReport} disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isLoading ? 'Memuat...' : 'Generate Laporan'}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Error Alert */}
       {error && (
@@ -202,156 +204,205 @@ export default function ReportsPage() {
         </Alert>
       )}
 
-      {/* Report Result */}
-      {reportData && (
-        <>
-          {/* Summary Cards */}
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Filter Periode</CardTitle>
+          <CardDescription>Rentang tanggal laporan (Default: Hari ini sampai Besok)</CardDescription>
+        </CardHeader>
+        <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Penjualan (Periode)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-primary">
-                  {/* Total Sales diambil dari summary (Total keseluruhan query, bukan cuma page ini) */}
-                  {formatRupiah(Number(reportData.summary.total_sales))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {format(new Date(formData.tanggalMulai), 'dd MMM', { locale: id })} -{' '}
-                  {format(new Date(formData.tanggalSelesai), 'dd MMM yyyy', { locale: id })}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="space-y-2">
+              <Label htmlFor="start_date">Tanggal Mulai</Label>
+              <Input
+                id="start_date"
+                type="date"
+                value={dateRange.start}
+                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+              />
+            </div>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Transaksi</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {reportData.summary.transaction_count}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Transaksi tercatat</p>
-              </CardContent>
-            </Card>
+            <div className="space-y-2">
+              <Label htmlFor="end_date">Tanggal Selesai</Label>
+              <Input
+                id="end_date"
+                type="date"
+                value={dateRange.end}
+                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+              />
+            </div>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Rata-rata Transaksi</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {reportData.summary.transaction_count > 0
-                    ? formatRupiah(Number(reportData.summary.total_sales) / reportData.summary.transaction_count)
-                    : formatRupiah(0)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Per transaksi</p>
-              </CardContent>
-            </Card>
+            <div className="space-y-2">
+              <Label className="invisible">Action</Label>
+              <Button 
+                onClick={() => handleGenerateReport(false)} 
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <FileText className="mr-2 h-4 w-4" />
+                Apply
+              </Button>
+            </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Detail Table */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Detail Transaksi</CardTitle>
-                  <CardDescription>
-                    Halaman {reportData.meta.current_page} dari {reportData.meta.total_pages}
-                  </CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={handleExport}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export CSV (Halaman Ini)
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {reportData.data.length === 0 ? (
-                <div className="text-center py-12">
-                  <TrendingUp className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                  <p className="text-muted-foreground">Tidak ada transaksi pada halaman ini</p>
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>ID Transaksi</TableHead>
-                          <TableHead>Tanggal & Waktu</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Metode Pembayaran</TableHead>
-                          <TableHead>Items</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {reportData.data.map((transaction) => (
-                          <TableRow key={transaction.transaction_id}>
-                            <TableCell className="font-mono text-xs">
-                              {transaction.transaction_id.substring(0, 8)}...
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1 text-sm">
-                                <Calendar className="h-3 w-3 text-muted-foreground" />
-                                {format(new Date(transaction.transaction_date), 'dd MMM yyyy HH:mm', { locale: id })}
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-semibold text-primary">
-                              {formatRupiah(Number(transaction.total_amount))}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{transaction.payment_method || 'Cash'}</Badge>
-                            </TableCell>
-                            <TableCell>{transaction.items_count || '-'} item</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+      {/* Content Area */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-semibold">Ringkasan Penjualan</h3>
+          <div className="flex gap-2">
+            <Button className='bg-black text-white hover:bg-gray-900 hover:text-white'
+              onClick={handleToggleVoidFilter} 
+              variant={showVoidOnly ? "destructive" : "outline"}
+              disabled={isLoading}
+              size="sm"
+            >
+              {showVoidOnly ? <XCircle className="mr-2 h-4 w-4" /> : <AlertCircle className="mr-2 h-4 w-4" />}
+              {showVoidOnly ? 'Kembali ke Transaksi Sukses' : 'Lihat Transaksi Void'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Loading State Skeleton (Optional Visual) */}
+        {isLoading && !salesReport && (
+          <div className="py-12 flex justify-center items-center">
+             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+             <span className="ml-2 text-muted-foreground">Memuat laporan...</span>
+          </div>
+        )}
+
+        {salesReport && (
+          <>
+            {/* Summary Cards */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className={showVoidOnly ? "border-gray-200 bg-white" : "border-gray-200 bg-white"}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">
+                    {showVoidOnly ? 'Total Void' : 'Total Penjualan'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {formatCurrency(salesReport.summary?.total_sales || 0)}
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* Pagination Component */}
-                  {reportData.meta.total_pages > 1 && (
-                    <div className="py-4 flex justify-center">
-                      <Pagination>
-                        <PaginationContent>
-                          <PaginationItem>
-                            <PaginationPrevious
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handlePageChange(currentPage - 1);
-                              }}
-                              className={!reportData.meta.has_prev_page ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                            />
-                          </PaginationItem>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">
+                    {showVoidOnly ? 'Jumlah Transaksi Void' : 'Jumlah Transaksi Sukses'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {salesReport.summary?.transaction_count || 0}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
 
-                          <PaginationItem>
-                            <span className="flex items-center px-4 text-sm font-medium">
-                              Halaman {reportData.meta.current_page} dari {reportData.meta.total_pages}
-                            </span>
-                          </PaginationItem>
-
-                          <PaginationItem>
-                            <PaginationNext
-                              href="#"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handlePageChange(currentPage + 1);
-                              }}
-                              className={!reportData.meta.has_next_page ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                            />
-                          </PaginationItem>
-                        </PaginationContent>
-                      </Pagination>
-                    </div>
+            {/* Data Table */}
+            <Card>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-16">No</TableHead>
+                    <TableHead>No. Struk</TableHead>
+                    <TableHead>Waktu</TableHead>
+                    <TableHead>Kasir</TableHead>
+                    <TableHead>Metode</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {salesReport.data && salesReport.data.length > 0 ? (
+                    salesReport.data.map((item: any, index: number) => {
+                      const globalIndex = (salesCurrentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                      const badgeStyle = getStatusBadgeStyle(item.status);
+                      
+                      return (
+                        <TableRow key={item.transaction_id || index}>
+                          <TableCell className="text-center">{globalIndex}</TableCell>
+                          <TableCell className="font-mono text-xs">{item.receipt_number || '-'}</TableCell>
+                          <TableCell className="text-sm">
+                            {item.transaction_time ? formatDate(item.transaction_time) : '-'}
+                          </TableCell>
+                          <TableCell>
+                              <div className="flex items-center gap-2">
+                                  <User className="h-3 w-3 text-muted-foreground" />
+                                  <span className="text-sm">{item.shift?.cashier?.full_name || '-'}</span>
+                              </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              <CreditCard className="mr-1 h-3 w-3" />
+                              {item.payment_method || '-'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            {formatCurrency(item.total_amount || 0)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={badgeStyle.variant} className={`text-xs ${badgeStyle.className}`}>
+                              {item.status || '-'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-12">
+                        <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+                        <p className="text-muted-foreground">Tidak ada data transaksi</p>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </>
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              {salesReport.meta && salesReport.meta.total_pages > 1 && (
+                  <div className="py-4">
+                      <Pagination>
+                          <PaginationContent>
+                              <PaginationItem>
+                                  <PaginationPrevious 
+                                      href="#"
+                                      onClick={(e) => { e.preventDefault(); onPageChange(salesCurrentPage - 1); }}
+                                      className={!salesReport.meta.has_prev_page ? "pointer-events-none opacity-50" : ""}
+                                  />
+                              </PaginationItem>
+                              <PaginationItem>
+                                  <span className="px-4 text-sm font-medium">Halaman {salesCurrentPage} dari {salesReport.meta.total_pages}</span>
+                              </PaginationItem>
+                              <PaginationItem>
+                                  <PaginationNext
+                                      href="#"
+                                      onClick={(e) => { e.preventDefault(); onPageChange(salesCurrentPage + 1); }}
+                                      className={!salesReport.meta.has_next_page ? "pointer-events-none opacity-50" : ""}
+                                  />
+                              </PaginationItem>
+                          </PaginationContent>
+                      </Pagination>
+                  </div>
               )}
-            </CardContent>
-          </Card>
-        </>
-      )}
+            </Card>
+          </>
+        )}
+
+        {/* Empty State jika belum ada data dan tidak loading */}
+        {!salesReport && !isLoading && !hasInitialLoad && (
+           <div className="text-center py-12 border rounded-md bg-muted/10">
+             <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
+             <p className="text-muted-foreground">Menyiapkan laporan...</p>
+           </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -264,8 +264,6 @@ export default function LicensesPage() {
                     <TableHead>Kode Aktivasi</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Nama Perangkat</TableHead>
-                    <TableHead>Tanggal Aktivasi</TableHead>
-                    <TableHead>Kadaluarsa</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -282,26 +280,6 @@ export default function LicensesPage() {
                           </div>
                         ) : (
                           <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {license.activated_at
-                          ? format(new Date(license.activated_at), 'dd MMM yyyy', { locale: id })
-                          : '-'}
-                      </TableCell>
-                      <TableCell>
-                        {license.expires_at ? (
-                          <span
-                            className={
-                              new Date(license.expires_at) < new Date()
-                                ? 'text-destructive font-medium'
-                                : 'text-muted-foreground'
-                            }
-                          >
-                            {format(new Date(license.expires_at), 'dd MMM yyyy', { locale: id })}
-                          </span>
-                        ) : (
-                          '-'
                         )}
                       </TableCell>
                       <TableCell className="text-right">
