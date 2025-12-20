@@ -1,5 +1,3 @@
-// app/(dashboard)/branch/products/page.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -230,11 +228,11 @@ export default function BranchProductsPage() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, scopeFilter, searchQuery]);
+  }, [currentPage, scopeFilter, searchQuery, showArchived]); // ✅ Added showArchived
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [scopeFilter, searchQuery]);
+  }, [scopeFilter, searchQuery, showArchived]); // ✅ Added showArchived
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -248,16 +246,7 @@ export default function BranchProductsPage() {
 
       if (scopeFilter === 'overridden') {
         // ✅ FETCH DARI /cashier/menu
-        // Asumsi backend support pagination di endpoint ini, atau kita kirim paramsnya
-        // Jika API wrapper cashierMenuAPI belum update, gunakan axios langsung atau update wrapper
-        // Di sini saya asumsikan structure response sama { items, meta } via fetchData
-        // Jika tidak, Anda perlu menyesuaikan di sini.
-        // Untuk amannya, kita fetch standard dan handle response.
-        
         try {
-            // Kita coba pakai fetchData pattern jika wrapper mendukung, 
-            // atau panggil API wrapper yang sudah ada
-            // Note: cashierMenuAPI.getMenu biasanya return axios response
             const res = await cashierMenuAPI.getMenu(); 
             
             // Handle jika backend return { meta, data } atau array langsung
@@ -269,6 +258,10 @@ export default function BranchProductsPage() {
             if (searchQuery) {
                filtered = filtered.filter((p: any) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
             }
+
+            // Note: Menu Kasir biasanya tidak menampilkan item arsip. 
+            // Jika showArchived aktif, logic filtering visual di bawah akan menyembunyikan items aktif,
+            // sehingga list mungkin terlihat kosong (ini perilaku normal untuk tab Menu Kasir).
 
             // Pagination manual jika meta null (fallback)
             if (!metaData) {
@@ -297,11 +290,13 @@ export default function BranchProductsPage() {
         if (scopeFilter === 'local') typeParam = 'local';
         if (scopeFilter === 'general') typeParam = 'general';
 
+        // ✅ PERBAIKAN: Kirim parameter status berdasarkan toggle arsip
         response = await branchProductAPI.getAll({
           page: currentPage,
           limit: 10,
           search: searchQuery,
-          type: typeParam
+          type: typeParam,
+          status: showArchived ? 'archived' : 'active' 
         });
         
         setProducts(response.items);
@@ -664,6 +659,7 @@ export default function BranchProductsPage() {
               Lokal {scopeFilter === 'local' && meta && `(${meta.total_items})`}
             </Button>
           </div>
+          
         </div>
       </Card>
 
@@ -674,7 +670,9 @@ export default function BranchProductsPage() {
             <div className="text-center">
               <Package className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {searchQuery ? 'Tidak ada hasil pencarian' : 'Tidak ada produk'}
+                {searchQuery
+                  ? 'Tidak ada hasil pencarian'
+                  : showArchived ? 'Tidak ada produk di arsip' : 'Tidak ada produk'}
               </p>
             </div>
           </Card>
@@ -685,10 +683,22 @@ export default function BranchProductsPage() {
                ? product.is_available 
                : (product.is_active !== false && (!product.branch_setting || product.branch_setting.is_available_at_branch));
             
-            // Logic visual: jika showArchived true, tampilkan yang TIDAK aktif.
-            // jika showArchived false, tampilkan yang AKTIF.
-            if (showArchived && isActive) return null;
-            if (!showArchived && !isActive) return null;
+            // Logic visual: 
+            // - Jika mode Arsip (showArchived=true): Tampilkan yang TIDAK aktif.
+            // - Jika mode Aktif (showArchived=false): Tampilkan yang AKTIF.
+            // Pengecualian: Jika backend sudah memfilter (via api), kita bisa skip logic ini atau biarkan sebagai double check.
+            
+            // Karena kita sudah mengirim params status ke API, data yang datang sudah sesuai.
+            // Namun untuk keamanan visual (terutama jika cache/delay), kita bisa pertahankan logic ini, 
+            // TAPI harus hati-hati karena definisi 'isActive' mungkin beda antara view Menu Kasir dan Management.
+            
+            // Jika di mode Management (scope != overridden), kita percaya data dari API.
+            if (scopeFilter !== 'overridden') {
+                 // Logic render langsung, karena API sudah memfilter
+            } else {
+                 // Di mode Menu Kasir, biasanya tidak ada konsep 'Archived' yang ditampilkan.
+                 if (showArchived && isActive) return null;
+            }
 
             return (
             <Card

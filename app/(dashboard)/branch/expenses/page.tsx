@@ -1,5 +1,3 @@
-// app/(dashboard)/branch/expenses/page.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -59,6 +57,8 @@ import {
   FileText,
   User,
   Search,
+  ShieldCheck, 
+  Store,
 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
@@ -81,6 +81,13 @@ interface Expense {
     cashier?: {
       full_name: string;
     };
+    // ✅ Handle variasi response backend (camelCase atau snake_case)
+    shiftSchedule?: {
+      shift_name: string;
+    };
+    shift_schedule?: {
+      shift_name: string;
+    };
   };
 }
 
@@ -95,7 +102,6 @@ const getImageUrl = (path: string | null | undefined) => {
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  // ✅ State untuk Meta Pagination
   const [meta, setMeta] = useState<MetaPagination | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -128,13 +134,11 @@ export default function ExpensesPage() {
     proof_image: null as File | null,
   });
 
-  // ✅ Trigger loadData saat page atau search berubah
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchQuery]);
 
-  // Reset page ke 1 saat melakukan pencarian
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
@@ -146,17 +150,20 @@ export default function ExpensesPage() {
       setIsLoading(true);
       setError('');
 
-      // ✅ Panggil API dengan parameter Pagination & Search
       const response = await expenseAPI.getAll({
         page: currentPage,
         limit: 10,
         search: searchQuery
       });
 
+      // Debugging: Cek di console browser apakah shiftSchedule masuk
+      console.log('Expense Data:', response.items);
+
       setExpenses(response.items);
       setMeta(response.meta);
 
     } catch (err: any) {
+      console.error(err);
       setError(err.message || 'Gagal memuat data kas keluar');
     } finally {
       setIsLoading(false);
@@ -217,8 +224,8 @@ export default function ExpensesPage() {
         return;
       }
 
-      if (file.size > 2 * 1024 * 1024) {
-        setImageError('Ukuran gambar terlalu besar! Maksimal 2MB.');
+      if (file.size > 1 * 1024 * 1024) {
+        setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
         e.target.value = '';
         setFormData({ ...formData, proof_image: null });
         setImagePreview('');
@@ -248,7 +255,7 @@ export default function ExpensesPage() {
     setIsSubmitting(true);
 
     try {
-      await delay(2000);
+      await delay(1000);
       const formDataToSend = new FormData();
       formDataToSend.append('amount', formData.amount);
       formDataToSend.append('description', formData.description);
@@ -276,7 +283,7 @@ export default function ExpensesPage() {
 
     setIsSubmitting(true);
     try {
-      await delay(2000);
+      await delay(1000);
       await expenseAPI.delete(selectedExpense.expense_id);
       await loadData();
       setIsDeleteOpen(false);
@@ -289,14 +296,12 @@ export default function ExpensesPage() {
     }
   };
 
-  // ✅ Helper Pagination
   const handlePageChange = (page: number) => {
     if (meta && page > 0 && page <= meta.total_pages) {
       setCurrentPage(page);
     }
   };
 
-  // Hitung total halaman ini (karena pagination server-side tidak return total sum semua data kecuali endpoint khusus report)
   const currentPageTotal = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
 
   if (isLoading) {
@@ -356,7 +361,6 @@ export default function ExpensesPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Jumlah Pengeluaran</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Menggunakan meta.total_items untuk total keseluruhan */}
             <div className="text-3xl font-bold text-black">{meta ? meta.total_items : 0} item</div>
           </CardContent>
         </Card>
@@ -393,12 +397,19 @@ export default function ExpensesPage() {
                   </TableHeader>
                   <TableBody>
                     {expenses.map((expense, index) => {
-                      // Hitung nomor urut global
                       const globalIndex = meta ? (meta.current_page - 1) * 10 + index + 1 : index + 1;
                       
-                      const operatorName = expense.user?.full_name || '-';
-                      const cashierName = expense.shift?.cashier?.full_name || '-';
-                      const showBothRoles = operatorName !== cashierName && cashierName !== '-';
+                      const operatorName = expense.user?.full_name || 'System'; 
+                      const shiftCashierName = expense.shift?.cashier?.full_name; 
+                      
+                      const displayName = shiftCashierName || operatorName;
+                      const isShift = !!shiftCashierName;
+                      const isSurrogateInput = shiftCashierName && operatorName !== shiftCashierName;
+
+                      // ✅ LOGIC PERBAIKAN: Ambil Nama Shift
+                      // Cek kedua kemungkinan format key (camelCase atau snake_case)
+                      const shiftNameData = expense.shift?.shiftSchedule?.shift_name || expense.shift?.shift_schedule?.shift_name;
+                      const shiftName = shiftNameData || 'Shift';
 
                       return (
                         <TableRow key={expense.expense_id}>
@@ -411,9 +422,10 @@ export default function ExpensesPage() {
                                 <Calendar className="h-3 w-3 text-muted-foreground" />
                                 {format(new Date(expense.expense_date), 'dd MMM yyyy', { locale: id })}
                               </span>
+                              {/* ✅ Badge Menampilkan Nama Shift */}
                               {expense.shift_id && (
                                 <Badge variant="outline" className="w-fit text-[10px] h-5">
-                                  Shift
+                                  {shiftName}
                                 </Badge>
                               )}
                             </div>
@@ -423,23 +435,18 @@ export default function ExpensesPage() {
                           </TableCell>
                           
                           <TableCell className="text-sm">
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <User className="h-3.5 w-3.5 text-black flex-shrink-0" />
                                 <div>
                                   <div className="font-medium text-gray-900 text-sm">
-                                    {cashierName}
+                                    {displayName}
                                   </div>
                                 </div>
                               </div>
                               
-                              {showBothRoles && (
-                                <div className="flex items-center gap-2 pl-1 pt-1 border-t border-gray-100">
-                                  <div>
-                                    <div className="font-medium text-gray-700 text-xs">
-                                      {operatorName}
-                                    </div>
-                                  </div>
+                              {isSurrogateInput && (
+                                <div className="text-[12px] text-muted-foreground">
+                                {operatorName}
                                 </div>
                               )}
                             </div>
@@ -493,7 +500,6 @@ export default function ExpensesPage() {
                 </Table>
               </div>
 
-              {/* ✅ Pagination Component */}
               {meta && meta.total_pages > 1 && (
                 <div className="py-4">
                   <Pagination>
@@ -603,7 +609,7 @@ export default function ExpensesPage() {
                       <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'}`}>
                         <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
                         <span className={`text-sm ${imageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                          {imagePreview ? 'Ganti Bukti' : 'Upload Bukti (Max 2MB)'}
+                          {imagePreview ? 'Ganti Bukti' : 'Upload Bukti (Max 1MB)'}
                         </span>
                       </div>
                     </Label>
@@ -636,7 +642,6 @@ export default function ExpensesPage() {
           
           {selectedProof && (
             <div className="space-y-4 py-4">
-              {/* Gambar Bukti */}
               <div className="space-y-2 pt-2 border-t">
                 <p className="text-sm font-medium text-gray-900">Foto Bukti</p>
                 <div className="relative w-full min-h-[300px] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200">
@@ -657,7 +662,6 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex justify-end gap-2 pt-4 border-t sticky bottom-0 bg-white">
                 <Button variant="outline" onClick={() => setIsProofModalOpen(false)}>
                   <X className="mr-2 h-4 w-4" />

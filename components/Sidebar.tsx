@@ -248,8 +248,8 @@ export default function Sidebar({ role, onCollapsedChange }: SidebarProps) {
         },
         { 
           href: '/branch/settings', 
-          icon: '/images/icons/pajak.png',
-          label: 'Pajak & Pembayaran',
+          icon: '/images/icons/pengaturan.png',
+          label: 'Pengaturan',
           badge: null,
           exact: false
         },

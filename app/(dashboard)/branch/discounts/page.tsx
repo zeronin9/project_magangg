@@ -1,5 +1,3 @@
-// app/(dashboard)/branch/discounts/page.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -63,6 +61,7 @@ import {
   Percent,
   Ticket,
   Search,
+  Eye, // ✅ Tambahkan ikon Eye
 } from 'lucide-react';
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
@@ -134,7 +133,6 @@ export default function BranchDiscountsPage() {
         });
         localItems = localResponse.items;
         
-        // Simpan meta hanya jika sedang filter 'local' atau 'all' (dan override logic paging untuk 'all' nanti)
         if (scopeFilter === 'local') {
             newMeta = localResponse.meta;
         }
@@ -147,7 +145,6 @@ export default function BranchDiscountsPage() {
           const rawData = generalResponse.data.data || generalResponse.data;
           const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
-          // Mapping General Data
           generalItems = generalDataArr.map((item: any) => {
             const branchSetting = item.branch_setting || {};
             
@@ -168,14 +165,13 @@ export default function BranchDiscountsPage() {
               value: branchValue,
               start_date: item.start_date || new Date().toISOString(),
               end_date: item.end_date || new Date().toISOString(),
-              branch_id: null, // General selalu null
+              branch_id: null, 
               is_active: isActive,
               original_value: masterValue,
               is_overridden: isOverridden
             };
           });
 
-          // Client-side filtering untuk general search
           if (searchQuery) {
             generalItems = generalItems.filter(d => 
               d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -188,42 +184,25 @@ export default function BranchDiscountsPage() {
         }
       }
 
-      // 3. Gabungkan Data Sesuai Filter
       let finalDiscounts: Discount[] = [];
 
       if (scopeFilter === 'local') {
-        // HANYA LOKAL (branch_id != null)
         finalDiscounts = localItems;
       } else if (scopeFilter === 'general') {
-        // HANYA GENERAL MURNI (branch_id == null DAN TIDAK OVERRIDE)
         finalDiscounts = generalItems.filter(d => !d.is_overridden);
-        newMeta = null; // Reset pagination server-side karena ini list client-side
+        newMeta = null; 
       } else if (scopeFilter === 'override') {
-        // HANYA OVERRIDE (branch_id == null DAN OVERRIDE)
         finalDiscounts = generalItems.filter(d => d.is_overridden);
         newMeta = null;
       } else {
-        // ALL (Gabungan Semuanya dengan Deduplikasi ID)
-        // Gabungkan localItems (paginated) + generalItems (all)
-        // Note: Pagination server-side di 'all' jadi agak aneh karena general items tidak ter-paginate dari server.
-        // Biasanya untuk 'all' kita load semua general + local page 1.
-        
         const combined = [...localItems, ...generalItems];
-        
-        // Deduplikasi ID
         const uniqueMap = new Map();
         combined.forEach(item => {
             if(!uniqueMap.has(item.discount_rule_id)) {
                 uniqueMap.set(item.discount_rule_id, item);
             }
         });
-        
         finalDiscounts = Array.from(uniqueMap.values());
-        
-        // Jika di mode 'all', meta pagination local mungkin tidak relevan untuk total gabungan, 
-        // tapi kita bisa tetap tampilkan untuk navigasi bagian lokalnya.
-        // Atau set null jika ingin client-side pagination untuk gabungan.
-        // Di sini kita biarkan null agar konsisten client-side paging untuk 'all' view.
         newMeta = null; 
       }
 
@@ -238,10 +217,11 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // --- NAVIGATION & ACTION HANDLERS ---
   const handleCreateClick = () => router.push('/branch/discounts/new');
   const handleEditClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/edit`);
   const handleOverrideClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/override`);
+  // ✅ Handler baru untuk navigasi detail
+  const handleDetailClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}`);
 
   const handleSoftDelete = async () => {
     if (!selectedDiscount) return;
@@ -294,23 +274,17 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // --- FILTER DISPLAY LOGIC ---
-  // Filter final sebelum render (terutama untuk Archive)
   const filteredDiscounts = discounts.filter((discount) => {
-    // 1. Filter Archive Status
     const isActiveMatch = showArchived ? discount.is_active === false : discount.is_active !== false;
     if (!isActiveMatch) return false;
 
-    // 2. Filter Scope (Double Check)
-    // Meskipun sudah difilter di loadData, kita pastikan lagi di sini untuk konsistensi visual
     if (scopeFilter === 'general') return !discount.branch_id && !discount.is_overridden;
     if (scopeFilter === 'local') return !!discount.branch_id;
     if (scopeFilter === 'override') return !discount.branch_id && !!discount.is_overridden;
     
-    return true; // All
+    return true; 
   });
 
-  // Client-Side Pagination (jika meta server-side null, misal filter General/Override/All)
   const itemsToShow = meta ? filteredDiscounts : filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
   const totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
 
@@ -322,10 +296,8 @@ export default function BranchDiscountsPage() {
 
   const handlePageChange = (page: number) => {
     if (meta) {
-        // Server side
         if (page > 0 && page <= meta.total_pages) setCurrentPage(page);
     } else {
-        // Client side
         if (page > 0 && page <= totalPagesClient) setCurrentPage(page);
     }
   };
@@ -396,6 +368,14 @@ export default function BranchDiscountsPage() {
             <Button variant={scopeFilter === 'general' ? 'default' : 'outline'} size="sm" onClick={() => setScopeFilter('general')}><Globe className="mr-2 h-3 w-3" /> General</Button>
             <Button variant={scopeFilter === 'local' ? 'default' : 'outline'} size="sm" onClick={() => setScopeFilter('local')}><Building2 className="mr-2 h-3 w-3" /> Lokal</Button>
             <Button variant={scopeFilter === 'override' ? 'default' : 'outline'} size="sm" onClick={() => setScopeFilter('override')}><Settings className="mr-2 h-3 w-3" /> Override</Button>
+          </div>
+          
+           <div className="flex-1 max-w-sm ml-auto">
+             <Input 
+                placeholder="Cari diskon..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+             />
           </div>
         </div>
       </Card>
@@ -475,6 +455,11 @@ export default function BranchDiscountsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                          {/* ✅ Tambahkan Menu Detail */}
+                          <DropdownMenuItem onClick={() => handleDetailClick(discount)}>
+                            <Eye className="mr-2 h-4 w-4" /> Detail
+                          </DropdownMenuItem>
+                          
                           <DropdownMenuSeparator />
                           {!showArchived ? (
                             <>
@@ -505,7 +490,7 @@ export default function BranchDiscountsPage() {
           </Table>
         </div>
 
-        {/* Pagination Logic: Support both Server-Side (meta) & Client-Side */}
+        {/* Pagination Logic */}
         <div className="py-4 flex justify-center">
             <Pagination>
               <PaginationContent>

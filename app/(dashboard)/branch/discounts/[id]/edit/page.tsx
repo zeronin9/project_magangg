@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
-// Definisi Tipe Data (Sesuaikan dengan response API Cabang)
+// Definisi Tipe Data
 interface Category {
   category_id: string;
   category_name: string;
@@ -56,7 +56,7 @@ interface DiscountRule {
   start_date: string;
   end_date: string;
   applies_to: 'ENTIRE_TRANSACTION' | 'SPECIFIC_PRODUCTS' | 'SPECIFIC_CATEGORIES';
-  product_ids?: string[] | string; // Bisa array atau string JSON
+  product_ids?: string[] | string;
   category_ids?: string[] | string;
   min_transaction_amount?: number;
   max_transaction_amount?: number;
@@ -64,25 +64,17 @@ interface DiscountRule {
   max_item_quantity?: number;
   min_discount_amount?: number;
   max_discount_amount?: number;
-  // Field relasi opsional jika ada dari include
   products?: { product_id: string }[];
   categories?: { category_id: string }[];
 }
 
 // Helper: Parse product_ids/category_ids dari backend
 const parseArrayField = (field: any, relatedField?: any[]): string[] => {
-  // Jika backend mengirim relation object (misal include: products)
   if (relatedField && Array.isArray(relatedField) && relatedField.length > 0) {
     const ids = relatedField.map(item => item.product_id || item.category_id).filter(Boolean);
     return ids;
   }
-  
-  // Jika field sudah berupa array
-  if (Array.isArray(field)) {
-    return field;
-  }
-  
-  // Jika field berupa string JSON (misal dari raw query)
+  if (Array.isArray(field)) return field;
   if (typeof field === 'string') {
     try {
       const parsed = JSON.parse(field);
@@ -91,7 +83,6 @@ const parseArrayField = (field: any, relatedField?: any[]): string[] => {
       return [];
     }
   }
-  
   return [];
 };
 
@@ -137,29 +128,37 @@ export default function EditBranchDiscountPage() {
     try {
       setIsLoading(true);
       
-      // Ambil semua data yang diperlukan secara paralel
-      // Menggunakan branchDiscountAPI bukan discountAPI (mitra)
-      const [discountsData, categoriesData, productsData] = await Promise.all([
-        branchDiscountAPI.getAll().catch(() => ({ data: [] })),
-        branchCategoryAPI.getAll().catch(() => ({ data: [] })),
-        branchProductAPI.getAll().catch(() => ({ data: [] })),
+      // ✅ PERBAIKAN: Gunakan getById untuk diskon, dan naikkan limit untuk produk/kategori
+      const [discountRes, categoriesData, productsData] = await Promise.all([
+        branchDiscountAPI.getById(discountId).catch(() => null),
+        branchCategoryAPI.getAll({ limit: 100 }).catch(() => ({ items: [] })), // Gunakan limit besar agar semua opsi muncul
+        branchProductAPI.getAll({ limit: 100 }).catch(() => ({ items: [] })), 
       ]);
       
-      setCategories(Array.isArray(categoriesData.data) ? categoriesData.data : []);
-      setProducts(Array.isArray(productsData.data) ? productsData.data : []);
-
-      // Cari diskon spesifik dari list (karena API getById mungkin belum tersedia/sama strukturnya)
-      const discountsList = Array.isArray(discountsData.data) ? discountsData.data : [];
-      const foundDiscount = discountsList.find((d: any) => d.discount_rule_id === discountId);
+      const categoriesList = categoriesData?.items || [];
+      const productsList = productsData?.items || [];
       
-      if (!foundDiscount) {
+      setCategories(categoriesList);
+      setProducts(productsList);
+
+      // ✅ Handle response getById (biasanya mengembalikan { data: { ... } })
+      // Cek struktur response backend Anda, biasanya discountRes.data atau discountRes.data.data
+      if (!discountRes || !discountRes.data) {
         setError('Promo tidak ditemukan');
         return;
+      }
+      
+      // Sesuaikan jika backend membungkus data dalam properti 'data'
+      const foundDiscount = discountRes.data.data || discountRes.data; 
+
+      if (!foundDiscount) {
+         setError('Data Promo kosong');
+         return;
       }
 
       setDiscount(foundDiscount);
 
-      // Extract date and time from ISO string
+      // Extract date and time
       const startDateTime = new Date(foundDiscount.start_date);
       const endDateTime = new Date(foundDiscount.end_date);
 
@@ -168,10 +167,8 @@ export default function EditBranchDiscountPage() {
       const endDate = endDateTime.toISOString().split('T')[0];
       const endTime = endDateTime.toTimeString().slice(0, 5);
 
-      // Mapping tipe diskon (Backend mungkin return NOMINAL, Frontend pakai FIXED_AMOUNT untuk dropdown)
       const discountType = foundDiscount.discount_type === 'NOMINAL' ? 'FIXED_AMOUNT' : foundDiscount.discount_type;
 
-      // Populate form with discount data
       setFormData({
         discount_name: foundDiscount.discount_name,
         discount_code: foundDiscount.discount_code || '',
@@ -228,21 +225,16 @@ export default function EditBranchDiscountPage() {
     }));
   };
 
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError('');
 
     try {
-      await delay(1000);
-
       // Gabungkan tanggal dan waktu
       const startDateTime = `${formData.start_date}T${formData.start_time}:00`;
       const endDateTime = `${formData.end_date}T${formData.end_time}:00`;
 
-      // Kembalikan tipe ke format backend (FIXED_AMOUNT -> NOMINAL)
       const backendDiscountType = formData.discount_type === 'FIXED_AMOUNT' ? 'NOMINAL' : formData.discount_type;
 
       const dataToSend: any = {
@@ -252,34 +244,34 @@ export default function EditBranchDiscountPage() {
         start_date: startDateTime,
         end_date: endDateTime,
         applies_to: formData.applies_to,
-        is_active: true,
       };
 
       if (formData.discount_code && formData.discount_code.trim() !== '') {
         dataToSend.discount_code = formData.discount_code.trim().toUpperCase();
+      } else {
+        dataToSend.discount_code = null;
       }
 
+      // Bersihkan array IDs berdasarkan applies_to
       if (formData.applies_to === 'SPECIFIC_PRODUCTS') {
         dataToSend.product_ids = formData.product_ids;
-      }
-
-      if (formData.applies_to === 'SPECIFIC_CATEGORIES') {
+        dataToSend.category_ids = [];
+      } else if (formData.applies_to === 'SPECIFIC_CATEGORIES') {
         dataToSend.category_ids = formData.category_ids;
+        dataToSend.product_ids = [];
+      } else {
+        dataToSend.product_ids = [];
+        dataToSend.category_ids = [];
       }
 
-      // Helper konversi ke number
-      const toNumber = (val: string) => val ? Number(val) : undefined;
+      const toNumber = (val: string) => val ? Number(val) : null;
 
-      if (formData.min_transaction_amount) dataToSend.min_transaction_amount = toNumber(formData.min_transaction_amount);
-      if (formData.max_transaction_amount) dataToSend.max_transaction_amount = toNumber(formData.max_transaction_amount);
-      if (formData.min_item_quantity) dataToSend.min_item_quantity = toNumber(formData.min_item_quantity);
-      if (formData.max_item_quantity) dataToSend.max_item_quantity = toNumber(formData.max_item_quantity);
-      if (formData.min_discount_amount) dataToSend.min_discount_amount = toNumber(formData.min_discount_amount);
-      if (formData.max_discount_amount) dataToSend.max_discount_amount = toNumber(formData.max_discount_amount);
-
-      console.log('=== DATA YANG DIKIRIM ===');
-      console.log(JSON.stringify(dataToSend, null, 2));
-      console.log('========================');
+      dataToSend.min_transaction_amount = toNumber(formData.min_transaction_amount);
+      dataToSend.max_transaction_amount = toNumber(formData.max_transaction_amount);
+      dataToSend.min_item_quantity = toNumber(formData.min_item_quantity);
+      dataToSend.max_item_quantity = toNumber(formData.max_item_quantity);
+      dataToSend.min_discount_amount = toNumber(formData.min_discount_amount);
+      dataToSend.max_discount_amount = toNumber(formData.max_discount_amount);
 
       await branchDiscountAPI.update(discountId, dataToSend);
       router.push('/branch/discounts');

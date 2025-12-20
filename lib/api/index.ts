@@ -1,4 +1,3 @@
-// types/index.ts
 // lib/api/index.ts
 
 // ✅ Export apiClient dari file api.ts
@@ -6,7 +5,8 @@ export { apiClient, fetchWithAuth } from '../api';
 
 // Export modul API lainnya
 export * from './mitra';
-// export * from './branch'; // Uncomment ini nanti jika branch.ts sudah fix
+// export * from './branch'; 
+
 export interface User {
   name: string;
   role: 'admin_platform' | 'super_admin' | 'branch_admin';
@@ -36,6 +36,11 @@ export interface Branch {
   address: string;
   phone_number: string;
   is_active: boolean;
+  // ✅ UPDATE: Tambahkan field pengaturan sesuai Model Backend
+  tax_name?: string | null;
+  tax_percentage?: number | null;
+  receipt_header?: string | null;
+  receipt_footer?: string | null;
 }
 
 export interface SubscriptionPlan {
@@ -49,7 +54,6 @@ export interface SubscriptionPlan {
   is_active: boolean;
 }
 
-// Interface Baru untuk Pesanan (Order)
 export interface SubscriptionOrder {
   order_id: string;
   created_at: string;

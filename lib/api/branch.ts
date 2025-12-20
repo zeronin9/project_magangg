@@ -68,12 +68,12 @@ export const cashierMenuAPI = {
 
 // ==================== PRODUCTS ====================
 export const branchProductAPI = {
-  // ✅ Update: Menggunakan fetchData untuk Pagination
-  getAll: async (params: { page?: number; limit?: number; search?: string; category_id?: string; type?: string } = {}) => {
+  getAll: async (params: { page?: number; limit?: number; search?: string; category_id?: string; type?: string; status?: string } = {}) => {
     return fetchData('/product', params.page, params.limit, {
       search: params.search,
       category_id: params.category_id,
-      type: params.type
+      type: params.type,
+      status: params.status
     });
   },
   
@@ -98,11 +98,11 @@ export const branchProductAPI = {
 
 // ==================== CATEGORIES ====================
 export const branchCategoryAPI = {
-  // ✅ Update: Menggunakan fetchData untuk Pagination
-  getAll: async (params: { page?: number; limit?: number; search?: string; type?: string } = {}) => {
+  getAll: async (params: { page?: number; limit?: number; search?: string; type?: string; is_active?: string } = {}) => {
     return fetchData('/category', params.page, params.limit, {
       search: params.search,
-      type: params.type
+      type: params.type,
+      is_active: params.is_active
     });
   },
   
@@ -121,24 +121,22 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
-  // ✅ Update: Menggunakan fetchData untuk Pagination (Local & Search)
-  getAll: async (params: { page?: number; limit?: number; search?: string } = {}) => {
+  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string } = {}) => {
     return fetchData('/discount-rule', params.page, params.limit, {
-      search: params.search
+      search: params.search,
+      status: params.status,
+      type: params.type
     });
   },
 
-  // Get General Discounts (Diskon pusat) - Tetap axios biasa karena struktur beda/belum tentu paginated
+  // ✅ BARU: Tambahkan fungsi ini untuk ambil detail diskon
+  getById: (id: string) => 
+    apiClient.get(`/discount-rule/${id}`),
+
   getGeneral: () =>
     apiClient.get('/branch-discount-setting'),
   
-  create: (data: {
-    discount_name: string;
-    discount_type: 'PERCENTAGE' | 'NOMINAL';
-    value: number;
-    start_date: string;
-    end_date: string;
-  }) =>
+  create: (data: any) =>
     apiClient.post('/discount-rule', data),
   
   update: (id: string, data: any) =>
@@ -150,7 +148,6 @@ export const branchDiscountAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/discount-rule/permanent/${id}`),
   
-  // Override General Discount
   setOverride: (discountRuleId: string, data: { is_active_at_branch: boolean; value?: number }) =>
     apiClient.post(`/branch-discount-setting/${discountRuleId}`, data),
 };
@@ -206,7 +203,10 @@ export const branchLicenseAPI = {
 
 // ==================== SETTINGS ====================
 export const branchSettingsAPI = {
-  // --- PAJAK (Endpoint: /branch/tax sesuai routes/branch.js) ---
+  // ✅ PERBAIKAN: Gunakan prefix '/branch' karena route ini ada di dalam branch.js
+  getMe: () => 
+    apiClient.get('/branch/me'),
+
   getTax: () => 
     apiClient.get('/branch/tax'),
 
@@ -214,9 +214,8 @@ export const branchSettingsAPI = {
     apiClient.put('/branch/tax', data),
 
   deleteTax: () => 
-    apiClient.delete('/branch/tax'), // Untuk non-aktifkan pajak (reset ke 0)
+    apiClient.delete('/branch/tax'), 
   
-  // --- PEMBAYARAN (Endpoint: /payment sesuai routes/payment.js) ---
   getPaymentMethods: () =>
     apiClient.get('/payment'),
 
