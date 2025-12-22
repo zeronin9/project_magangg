@@ -203,10 +203,16 @@ export const branchLicenseAPI = {
 
 // ==================== SETTINGS ====================
 export const branchSettingsAPI = {
-  // ✅ PERBAIKAN: Gunakan prefix '/branch' karena route ini ada di dalam branch.js
-  getMe: () => 
-    apiClient.get('/branch/me'),
+  // ✅ GET Data Struk
+  getReceipt: () => 
+    apiClient.get('/branch/receipt'),
 
+  // ✅ UPDATE Data Struk (Gunakan PUT ke endpoint /branch/receipt)
+  // Backend sekarang sudah punya route khusus untuk menangani ini.
+  updateReceipt: (data: { receipt_header?: string; receipt_footer?: string }) =>
+    apiClient.put('/branch/receipt', data),
+
+  // Endpoint Pajak
   getTax: () => 
     apiClient.get('/branch/tax'),
 
@@ -216,9 +222,13 @@ export const branchSettingsAPI = {
   deleteTax: () => 
     apiClient.delete('/branch/tax'), 
   
+  // Endpoint Pembayaran
   getPaymentMethods: () =>
     apiClient.get('/payment'),
 
   updatePaymentMethod: (data: { payment_method_id: string; is_active: boolean }) =>
     apiClient.post('/payment/setting', data),
+  
+  getMe: () => 
+    apiClient.get('/branch/me'),
 };
