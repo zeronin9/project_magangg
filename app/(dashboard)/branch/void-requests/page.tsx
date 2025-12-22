@@ -366,13 +366,6 @@ export default function VoidRequestsPage() {
                     <span className="font-bold">{selectedRequest?.total_amount ? formatRupiah(Number(selectedRequest.total_amount)) : '-'}</span>
                   </div>
                 </div>
-
-                <Alert variant="destructive" className="py-2">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription className="text-xs">
-                    Transaksi akan dibatalkan permanen dan stok akan dikembalikan (jika diatur demikian).
-                  </AlertDescription>
-                </Alert>
               </div>
             ) : (
               <div className="space-y-4">
@@ -403,14 +396,14 @@ export default function VoidRequestsPage() {
             <Button
               className={
                 reviewAction === 'approve'
-                  ? 'bg-green-600 hover:bg-green-700'
-                  : 'bg-destructive hover:bg-destructive/90'
+                  ? 'bg-black'
+                  : 'bg-black'
               }
               onClick={handleReview}
               disabled={isSubmitting}
             >
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {reviewAction === 'approve' ? 'Ya, Setujui' : 'Ya, Tolak'}
+              {reviewAction === 'approve' ? 'Setujui' : 'Tolak'}
             </Button>
           </DialogFooter>
         </DialogContent>

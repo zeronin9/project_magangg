@@ -109,16 +109,19 @@ export default function BranchSettingsPage() {
     }
   };
 
-  // ✅ HANDLER: Simpan Struk
+  // ✅ HANDLER: Simpan Struk (dengan delay 3 detik)
   const handleReceiptSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!receiptData) return;
+    if (!receiptData || isSubmitting) return;
 
     setIsSubmitting(true);
     setError('');
     setSuccess('');
 
     try {
+      // Delay 3 detik
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
       await branchSettingsAPI.updateReceipt({
         receipt_header: receiptData.receipt_header,
         receipt_footer: receiptData.receipt_footer,
@@ -132,13 +135,19 @@ export default function BranchSettingsPage() {
     }
   };
 
-  // --- Handler Lainnya ---
+  // ✅ HANDLER: Simpan Pengaturan Pajak (dengan delay 3 detik)
   const handleTaxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    
     setIsSubmitting(true);
     setError('');
     setSuccess('');
+    
     try {
+      // Delay 3 detik
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
       await branchSettingsAPI.updateTax({
         tax_name: taxSettings.tax_name,
         tax_percentage: Number(taxSettings.tax_percentage),
@@ -153,11 +162,18 @@ export default function BranchSettingsPage() {
     }
   };
 
+  // ✅ HANDLER: Hapus Pajak (dengan delay 3 detik)
   const handleDeleteTax = async () => {
+    if (isSubmitting) return;
+    
     setIsSubmitting(true);
     setError('');
     setSuccess('');
+    
     try {
+      // Delay 3 detik
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
       await branchSettingsAPI.deleteTax();
       setTaxSettings({ tax_name: '', tax_percentage: '0' });
       setSuccess('Pajak berhasil dihapus.');
@@ -172,15 +188,22 @@ export default function BranchSettingsPage() {
   };
 
   const handleOpenPaymentDialog = (method: PaymentMethod) => {
+    if (isSubmitting) return;
     setSelectedPayment(method);
     setIsPaymentDialogOpen(true);
   };
 
+  // ✅ HANDLER: Aktifkan/Matikan Metode Pembayaran (dengan delay 3 detik)
   const handleUpdatePaymentStatus = async () => {
-    if (!selectedPayment) return;
+    if (!selectedPayment || isSubmitting) return;
+    
     setIsSubmitting(true);
     const newStatus = !selectedPayment.is_active;
+    
     try {
+      // Delay 3 detik
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
       await branchSettingsAPI.updatePaymentMethod({
         payment_method_id: selectedPayment.payment_method_id,
         is_active: newStatus
@@ -204,7 +227,7 @@ export default function BranchSettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
+        <TabsList className=' w-full'>
           <TabsTrigger value="receipt" className="gap-2"><Receipt className="h-4 w-4"/> Struk & Profil</TabsTrigger>
           <TabsTrigger value="tax" className="gap-2"><Percent className="h-4 w-4"/> Pajak</TabsTrigger>
           <TabsTrigger value="payment" className="gap-2"><CreditCard className="h-4 w-4"/> Pembayaran</TabsTrigger>
@@ -231,15 +254,29 @@ export default function BranchSettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Pesan Pembuka</Label>
-                    <Input value={receiptData?.receipt_header || ''} onChange={e => setReceiptData(prev => prev ? {...prev, receipt_header: e.target.value} : null)} placeholder="Contoh: Selamat Datang" />
+                    <Input 
+                      value={receiptData?.receipt_header || ''} 
+                      onChange={e => setReceiptData(prev => prev ? {...prev, receipt_header: e.target.value} : null)} 
+                      placeholder="Contoh: Selamat Datang" 
+                      disabled={isSubmitting}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Pesan Penutup</Label>
-                    <Input value={receiptData?.receipt_footer || ''} onChange={e => setReceiptData(prev => prev ? {...prev, receipt_footer: e.target.value} : null)} placeholder="Contoh: Terima Kasih" />
+                    <Input 
+                      value={receiptData?.receipt_footer || ''} 
+                      onChange={e => setReceiptData(prev => prev ? {...prev, receipt_footer: e.target.value} : null)} 
+                      placeholder="Contoh: Terima Kasih" 
+                      disabled={isSubmitting}
+                    />
                   </div>
+                  <p className="text-xs text-muted-foreground"></p>
                 </CardContent>
                 <CardFooter className="border-t px-6 py-4">
-                  <Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} Simpan</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Simpan
+                  </Button>
                 </CardFooter>
               </form>
             </Card>
@@ -267,7 +304,7 @@ export default function BranchSettingsPage() {
                     </div>
                   )}
                   
-                  {/* ✅ INFO TRANSAKSI (DITAMBAHKAN) */}
+                  {/* INFO TRANSAKSI */}
                   <div className="w-full mb-3 pb-3 border-b border-dashed border-gray-300 space-y-1">
                     <div className="flex justify-between">
                       <span>Kasir : {receiptData?.current_operator?.name || 'Kasir'}</span>
@@ -321,7 +358,7 @@ export default function BranchSettingsPage() {
           </div>
         </TabsContent>
 
-        {/* Tab Tax & Payment sama seperti sebelumnya (saya persingkat untuk fokus pada solusi) */}
+        {/* TAB PAJAK */}
         <TabsContent value="tax">
             <Card>
             <CardHeader>
@@ -338,6 +375,7 @@ export default function BranchSettingsPage() {
                     value={taxSettings.tax_name}
                     onChange={(e) => setTaxSettings({...taxSettings, tax_name: e.target.value})}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div className="grid w-full items-center gap-1.5">
@@ -351,8 +389,11 @@ export default function BranchSettingsPage() {
                     value={taxSettings.tax_percentage}
                     onChange={(e) => setTaxSettings({...taxSettings, tax_percentage: e.target.value})}
                     required
+                    disabled={isSubmitting}
                   />
-                  <p className="text-xs text-muted-foreground">Isi 0 untuk menonaktifkan pajak.</p>
+                  <p className="text-xs text-muted-foreground"></p>
+                  <p className="text-xs text-muted-foreground"></p>
+                  <p className="text-xs text-muted-foreground"></p>
                 </div>
               </CardContent>
               <CardFooter className="border-t px-6 py-4 flex justify-between items-center">
@@ -363,6 +404,7 @@ export default function BranchSettingsPage() {
                   onClick={() => setIsDeleteTaxDialogOpen(true)}
                   disabled={isSubmitting || (!taxSettings.tax_name && !taxSettings.tax_percentage)}
                 >
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   <Trash2 className="mr-2 h-4 w-4" />
                   Hapus Pengaturan
                 </Button>
@@ -377,6 +419,7 @@ export default function BranchSettingsPage() {
           </Card>
         </TabsContent>
 
+        {/* TAB PEMBAYARAN */}
         <TabsContent value="payment">
             <Card>
             <CardHeader>
@@ -422,12 +465,14 @@ export default function BranchSettingsPage() {
                         variant="outline" 
                         size="sm"
                         onClick={() => handleOpenPaymentDialog(method)}
+                        disabled={isSubmitting}
                         className={`min-w-[100px] rounded-full font-medium transition-all shadow-sm ${
                           method.is_active 
                             ? 'border-gray-200 text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200' 
                             : 'border-green-600 text-green-600 hover:bg-green-50 hover:text-green-700'
                         }`}
                       >
+                        {isSubmitting && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
                         <Power className={`mr-2 h-3.5 w-3.5 ${method.is_active}`} />
                         {method.is_active ? 'Matikan' : 'Aktifkan'}
                       </Button>
@@ -440,26 +485,56 @@ export default function BranchSettingsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialogs */}
+      {/* Dialog Hapus Pajak */}
       <Dialog open={isDeleteTaxDialogOpen} onOpenChange={setIsDeleteTaxDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Hapus Pajak?</DialogTitle><DialogDescription>Pajak akan menjadi 0%.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Hapus Pajak?</DialogTitle>
+            <DialogDescription>Pajak akan menjadi 0%.</DialogDescription>
+          </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteTaxDialogOpen(false)}>Batal</Button>
-            <Button variant="destructive" onClick={handleDeleteTax}>Hapus</Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsDeleteTaxDialogOpen(false)}
+              disabled={isSubmitting}
+            >
+              Batal
+            </Button>
+            <Button 
+              className='bg-black hover:bg-gray-800'
+              variant="destructive" 
+              onClick={handleDeleteTax}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Konfirmasi Pembayaran */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Konfirmasi Pembayaran</DialogTitle>
+            <DialogTitle>Konfirmasi Metode Pembayaran</DialogTitle>
             <DialogDescription>Ubah status pembayaran {selectedPayment?.method_name}?</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Batal</Button>
-            <Button onClick={handleUpdatePaymentStatus}>Ya, Ubah</Button>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsPaymentDialogOpen(false)}
+              disabled={isSubmitting}
+            >
+              Batal
+            </Button>
+            <Button 
+              onClick={handleUpdatePaymentStatus}
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Ya, Ubah
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

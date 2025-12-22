@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { expenseAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +36,6 @@ import {
   Pagination,
   PaginationContent,
   PaginationItem,
-  PaginationLink,
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
@@ -48,17 +46,12 @@ import {
   AlertCircle,
   Loader2,
   AlertTriangle,
-  Upload,
   Calendar,
   Eye,
-  Image as ImageIcon,
   X,
   Download,
   FileText,
-  User,
-  Search,
-  ShieldCheck, 
-  Store,
+  Image as ImageIcon,
 } from 'lucide-react';
 import Image from 'next/image';
 import { format } from 'date-fns';
@@ -81,7 +74,6 @@ interface Expense {
     cashier?: {
       full_name: string;
     };
-    // ✅ Handle variasi response backend (camelCase atau snake_case)
     shiftSchedule?: {
       shift_name: string;
     };
@@ -101,6 +93,7 @@ const getImageUrl = (path: string | null | undefined) => {
 };
 
 export default function ExpensesPage() {
+  const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [meta, setMeta] = useState<MetaPagination | null>(null);
   
@@ -111,7 +104,6 @@ export default function ExpensesPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isProofModalOpen, setIsProofModalOpen] = useState(false);
   
@@ -124,15 +116,6 @@ export default function ExpensesPage() {
   } | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imageError, setImageError] = useState('');
-  const [imagePreview, setImagePreview] = useState<string>('');
-
-  const [formData, setFormData] = useState({
-    amount: '',
-    description: '',
-    expense_date: '',
-    proof_image: null as File | null,
-  });
 
   useEffect(() => {
     loadData();
@@ -156,7 +139,6 @@ export default function ExpensesPage() {
         search: searchQuery
       });
 
-      // Debugging: Cek di console browser apakah shiftSchedule masuk
       console.log('Expense Data:', response.items);
 
       setExpenses(response.items);
@@ -170,35 +152,6 @@ export default function ExpensesPage() {
     }
   };
 
-  // --- Handlers Modal Create ---
-  const handleOpenModal = () => {
-    setSelectedExpense(null);
-    const today = new Date().toISOString().split('T')[0];
-    setFormData({
-      amount: '',
-      description: '',
-      expense_date: today,
-      proof_image: null,
-    });
-    setImagePreview('');
-    setImageError('');
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedExpense(null);
-    setFormData({
-      amount: '',
-      description: '',
-      expense_date: '',
-      proof_image: null,
-    });
-    setImagePreview('');
-    setImageError('');
-  };
-
-  // --- Handlers Modal View Proof ---
   const handleViewProof = (expense: Expense) => {
     const imageUrl = getImageUrl(expense.proof_image);
     
@@ -211,79 +164,12 @@ export default function ExpensesPage() {
     setIsProofModalOpen(true);
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-
-      if (!allowedTypes.includes(file.type)) {
-        setImageError('Format file tidak valid! Gunakan JPEG, JPG, atau PNG.');
-        e.target.value = '';
-        setFormData({ ...formData, proof_image: null });
-        setImagePreview('');
-        return;
-      }
-
-      if (file.size > 1 * 1024 * 1024) {
-        setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
-        e.target.value = '';
-        setFormData({ ...formData, proof_image: null });
-        setImagePreview('');
-        return;
-      }
-
-      setImageError('');
-      setFormData({ ...formData, proof_image: file });
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/[^0-9]/g, '');
-    setFormData({ ...formData, amount: value });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (imageError) return;
-
-    setIsSubmitting(true);
-
-    try {
-      await delay(1000);
-      const formDataToSend = new FormData();
-      formDataToSend.append('amount', formData.amount);
-      formDataToSend.append('description', formData.description);
-      formDataToSend.append('expense_date', formData.expense_date);
-
-      if (formData.proof_image) {
-        formDataToSend.append('proof_image', formData.proof_image);
-      }
-
-      await expenseAPI.create(formDataToSend);
-
-      await loadData();
-      handleCloseModal();
-    } catch (err: any) {
-      console.error('Error response:', err.response?.data);
-      const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan kas keluar';
-      alert(errorMessage);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleDelete = async () => {
     if (!selectedExpense) return;
 
     setIsSubmitting(true);
     try {
-      await delay(1000);
+      await delay(3000); // 3 detik delay
       await expenseAPI.delete(selectedExpense.expense_id);
       await loadData();
       setIsDeleteOpen(false);
@@ -332,7 +218,7 @@ export default function ExpensesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Kas Keluar</h1>
           <p className="text-muted-foreground">Catat dan kelola pengeluaran operasional cabang</p>
         </div>
-        <Button onClick={handleOpenModal}>
+        <Button onClick={() => router.push('/branch/expenses/new')}>
           <Plus className="mr-2 h-4 w-4" />
           Tambah Pengeluaran
         </Button>
@@ -403,11 +289,8 @@ export default function ExpensesPage() {
                       const shiftCashierName = expense.shift?.cashier?.full_name; 
                       
                       const displayName = shiftCashierName || operatorName;
-                      const isShift = !!shiftCashierName;
                       const isSurrogateInput = shiftCashierName && operatorName !== shiftCashierName;
 
-                      // ✅ LOGIC PERBAIKAN: Ambil Nama Shift
-                      // Cek kedua kemungkinan format key (camelCase atau snake_case)
                       const shiftNameData = expense.shift?.shiftSchedule?.shift_name || expense.shift?.shift_schedule?.shift_name;
                       const shiftName = shiftNameData || 'Shift';
 
@@ -422,7 +305,6 @@ export default function ExpensesPage() {
                                 <Calendar className="h-3 w-3 text-muted-foreground" />
                                 {format(new Date(expense.expense_date), 'dd MMM yyyy', { locale: id })}
                               </span>
-                              {/* ✅ Badge Menampilkan Nama Shift */}
                               {expense.shift_id && (
                                 <Badge variant="outline" className="w-fit text-[10px] h-5">
                                   {shiftName}
@@ -539,96 +421,6 @@ export default function ExpensesPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Modal Create Expense */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Tambah Kas Keluar</DialogTitle>
-            <DialogDescription>Catat pengeluaran baru dengan bukti (opsional)</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Jumlah Pengeluaran *</Label>
-                <Input
-                  id="amount"
-                  type="text"
-                  value={formData.amount ? `Rp. ${Number(formData.amount).toLocaleString('id-ID')}` : ''}
-                  onChange={handleAmountChange}
-                  placeholder="Masukkan jumlah"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Deskripsi *</Label>
-                <Input
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Contoh: Beli Token Listrik"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="expense_date">Tanggal *</Label>
-                <Input
-                  id="expense_date"
-                  type="date"
-                  value={formData.expense_date}
-                  onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Bukti Pengeluaran (Opsional)</Label>
-                {imageError && (
-                  <Alert variant="destructive" className="mb-2 py-2">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="text-xs font-medium">{imageError}</AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex flex-col gap-4">
-                  {imagePreview && (
-                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
-                      <Image src={imagePreview} alt="Preview" fill className="object-cover" unoptimized={true} />
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      id="proof_image"
-                    />
-                    <Label htmlFor="proof_image" className="flex-1 cursor-pointer">
-                      <div className={`flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 transition-colors ${imageError ? 'border-destructive bg-destructive/5' : 'hover:bg-muted/50'}`}>
-                        <Upload className={`h-5 w-5 ${imageError ? 'text-destructive' : 'text-muted-foreground'}`} />
-                        <span className={`text-sm ${imageError ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                          {imagePreview ? 'Ganti Bukti' : 'Upload Bukti (Max 1MB)'}
-                        </span>
-                      </div>
-                    </Label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting || !!imageError}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Simpan
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Modal View Proof */}
       <Dialog open={isProofModalOpen} onOpenChange={setIsProofModalOpen}>
