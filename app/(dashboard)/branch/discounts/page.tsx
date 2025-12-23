@@ -63,6 +63,23 @@ import {
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
 
+// Interface helper untuk type safety
+interface DiscountMeta {
+  discount_name: string;
+  discount_code?: string;
+  discount_type: 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT';
+  start_date: string;
+  end_date: string;
+}
+
+interface GeneralItem {
+  id: string | number;
+  meta?: Partial<DiscountMeta>;
+  global_config?: { value?: number };
+  branch_override?: { exists?: boolean };
+  final_effective?: { value?: number; is_active?: boolean };
+}
+
 // Interface diperbarui untuk support response backend baru
 interface Discount {
   discount_rule_id: string;
@@ -160,43 +177,54 @@ export default function BranchDiscountsPage() {
       if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
         try {
           const generalResponse = await branchDiscountAPI.getGeneral();
-          const rawData = generalResponse?.data || generalResponse || [];
-          const generalDataArr = Array.isArray(rawData) ? rawData : [];
+
+          // Deteksi aman tanpa 'as any[]'
+          const raw = (generalResponse as any)?.data ?? generalResponse;
+          const generalDataArr: GeneralItem[] = Array.isArray(raw) ? raw : [];
 
           generalItems = generalDataArr
-            .filter((item: any) => item?.id && item?.meta && item?.meta?.discount_name)
-            .map((item: any) => {
-              const meta = item.meta || {};
-              const globalConfig = item.global_config || {};
-              const branchOverride = item.branch_override || {};
-              const finalEffective = item.final_effective || {};
-              
+            .filter((item) => {
+              // Hard-guard: pastikan meta & discount_name ada sebelum dipakai
+              if (!item || !item.id) return false;
+              if (!item.meta || !item.meta.discount_name) {
+                console.warn('⚠️ General item tanpa meta.discount_name, di-skip:', item);
+                return false;
+              }
+              return true;
+            })
+            .map((item) => {
+              const meta = item.meta as DiscountMeta;
+              const globalConfig = item.global_config ?? {};
+              const branchOverride = item.branch_override ?? {};
+              const finalEffective = item.final_effective ?? {};
+
               const hasOverride = branchOverride.exists === true;
-              const effectiveValue = Number(finalEffective.value || globalConfig.value || 0);
-              const originalValue = Number(globalConfig.value || 0);
-              const isActive = Boolean(finalEffective.is_active);
+              const effectiveValue = Number(finalEffective.value ?? globalConfig.value ?? 0);
+              const originalValue = Number(globalConfig.value ?? 0);
+              const isActive = finalEffective.is_active ?? true;
 
               return {
-                discount_rule_id: item.id.toString(),
+                discount_rule_id: String(item.id),
                 discount_name: meta.discount_name,
                 discount_code: meta.discount_code,
-                discount_type: meta.discount_type as 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT',
+                discount_type: (meta.discount_type ?? 'PERCENTAGE') as Discount['discount_type'],
                 value: effectiveValue,
-                start_date: meta.start_date || new Date().toISOString(),
-                end_date: meta.end_date || new Date().toISOString(),
+                start_date: meta.start_date ?? new Date().toISOString(),
+                end_date: meta.end_date ?? new Date().toISOString(),
                 branch_id: null,
                 is_active: isActive,
                 original_value: originalValue,
                 is_overridden: hasOverride,
-                scope: 'general' as const
-              };
+                scope: 'general' as const,
+              } satisfies Discount;
             });
 
           // Filter pencarian client-side untuk general items
           if (searchQuery) {
-            generalItems = generalItems.filter(d => 
-              d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-              (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+            const q = searchQuery.toLowerCase();
+            generalItems = generalItems.filter((d) =>
+              d.discount_name.toLowerCase().includes(q) ||
+              (d.discount_code && d.discount_code.toLowerCase().includes(q))
             );
           }
         } catch (err) {
