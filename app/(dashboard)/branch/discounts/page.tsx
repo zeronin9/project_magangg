@@ -61,23 +61,32 @@ import {
   Percent,
   Ticket,
   Search,
-  Eye, // ✅ Tambahkan ikon Eye
+  Eye,
 } from 'lucide-react';
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
 
+// ✅ UPDATE: Interface disesuaikan dengan struktur backend baru
 interface Discount {
-  discount_rule_id: string;
+  id: string; // discount_rule_id
   discount_name: string;
   discount_code?: string;
   discount_type: 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT';
-  value: number;
   start_date: string;
   end_date: string;
-  branch_id?: string | null;
-  is_active: boolean;
-  original_value?: number; 
-  is_overridden?: boolean;
+  applies_to: string;
+  
+  // Nilai efektif yang ditampilkan
+  final_value: number;
+  final_is_active: boolean;
+  
+  // Flag untuk membedakan scope
+  scope: 'GENERAL' | 'LOCAL' | 'OVERRIDE'; 
+  
+  // Data mentah untuk keperluan override/edit
+  global_config?: any;
+  branch_override?: any;
+  final_effective?: any;
 }
 
 export default function BranchDiscountsPage() {
@@ -120,94 +129,113 @@ export default function BranchDiscountsPage() {
       setIsLoading(true);
       setError('');
 
-      let localItems: Discount[] = [];
-      let generalItems: Discount[] = [];
-      let newMeta: MetaPagination | null = null;
+      let allDiscounts: Discount[] = [];
 
-      // 1. Fetch Local Discounts (Hanya jika scope 'all' atau 'local')
+      // 1️⃣ Fetch Diskon LOKAL (branch_id != null)
       if (scopeFilter === 'all' || scopeFilter === 'local') {
         const localResponse = await branchDiscountAPI.getAll({
-          page: currentPage,
-          limit: 10,
+          page: scopeFilter === 'local' ? currentPage : 1,
+          limit: scopeFilter === 'local' ? 10 : 100, // Ambil semua jika mode 'all'
           search: searchQuery
         });
-        localItems = localResponse.items;
         
+        const localItems: Discount[] = localResponse.items.map((item: any) => ({
+          id: item.discount_rule_id,
+          discount_name: item.discount_name,
+          discount_code: item.discount_code,
+          discount_type: item.discount_type,
+          start_date: item.start_date,
+          end_date: item.end_date,
+          applies_to: item.applies_to || 'ALL',
+          final_value: Number(item.value || 0),
+          final_is_active: item.is_active ?? true,
+          scope: 'LOCAL'
+        }));
+
+        allDiscounts = [...allDiscounts, ...localItems];
+
+        // Jika filter 'local', gunakan meta dari response
         if (scopeFilter === 'local') {
-            newMeta = localResponse.meta;
+          setMeta(localResponse.meta);
         }
       }
 
-      // 2. Fetch General/Override Discounts (Hanya jika scope 'all', 'general', atau 'override')
+      // 2️⃣ Fetch Diskon GENERAL & OVERRIDE (branch_id == null)
       if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
         try {
           const generalResponse = await branchDiscountAPI.getGeneral();
-          const rawData = generalResponse.data.data || generalResponse.data;
+          const rawData = generalResponse.data || [];
           const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
-          generalItems = generalDataArr.map((item: any) => {
-            const branchSetting = item.branch_setting || {};
+          const generalItems: Discount[] = generalDataArr.map((item: any) => {
+            const branchOverrideExists = item.branch_override?.exists ?? false;
             
-            const masterValue = Number(item.master_value || item.value || 0);
-            const branchValue = branchSetting.value !== undefined ? Number(branchSetting.value) : masterValue;
-            
-            const isActive = branchSetting.is_active_at_branch !== undefined 
-              ? branchSetting.is_active_at_branch 
-              : (item.is_active ?? true);
-
-            const isOverridden = (branchValue !== masterValue) || (branchSetting.is_active_at_branch !== undefined);
+            // Tentukan scope berdasarkan keberadaan override
+            let itemScope: 'GENERAL' | 'OVERRIDE' = 'GENERAL';
+            if (branchOverrideExists) {
+              itemScope = 'OVERRIDE';
+            }
 
             return {
-              discount_rule_id: item.discount_rule_id,
-              discount_name: item.discount_name,
-              discount_code: item.discount_code,
-              discount_type: item.discount_type,
-              value: branchValue,
-              start_date: item.start_date || new Date().toISOString(),
-              end_date: item.end_date || new Date().toISOString(),
-              branch_id: null, 
-              is_active: isActive,
-              original_value: masterValue,
-              is_overridden: isOverridden
+              id: item.id,
+              discount_name: item.meta.discount_name,
+              discount_code: item.meta.discount_code,
+              discount_type: item.meta.discount_type,
+              start_date: item.meta.start_date,
+              end_date: item.meta.end_date,
+              applies_to: item.meta.applies_to,
+              
+              // Gunakan nilai dari final_effective
+              final_value: Number(item.final_effective?.value || 0),
+              final_is_active: item.final_effective?.is_active ?? true,
+              
+              scope: itemScope,
+              
+              // Simpan data mentah untuk keperluan override/detail
+              global_config: item.global_config,
+              branch_override: item.branch_override,
+              final_effective: item.final_effective
             };
           });
 
-          if (searchQuery) {
-            generalItems = generalItems.filter(d => 
-              d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-              (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
+          // Filter berdasarkan scope
+          if (scopeFilter === 'general') {
+            const filtered = generalItems.filter(d => d.scope === 'GENERAL');
+            allDiscounts = [...allDiscounts, ...filtered];
+          } else if (scopeFilter === 'override') {
+            const filtered = generalItems.filter(d => d.scope === 'OVERRIDE');
+            allDiscounts = [...allDiscounts, ...filtered];
+          } else {
+            // scopeFilter === 'all', ambil semua
+            allDiscounts = [...allDiscounts, ...generalItems];
           }
 
         } catch (err) {
-          console.error("Gagal load general discounts", err);
+          console.error("Gagal load general/override discounts", err);
         }
       }
 
-      let finalDiscounts: Discount[] = [];
-
-      if (scopeFilter === 'local') {
-        finalDiscounts = localItems;
-      } else if (scopeFilter === 'general') {
-        finalDiscounts = generalItems.filter(d => !d.is_overridden);
-        newMeta = null; 
-      } else if (scopeFilter === 'override') {
-        finalDiscounts = generalItems.filter(d => d.is_overridden);
-        newMeta = null;
-      } else {
-        const combined = [...localItems, ...generalItems];
-        const uniqueMap = new Map();
-        combined.forEach(item => {
-            if(!uniqueMap.has(item.discount_rule_id)) {
-                uniqueMap.set(item.discount_rule_id, item);
-            }
-        });
-        finalDiscounts = Array.from(uniqueMap.values());
-        newMeta = null; 
+      // 3️⃣ Filter berdasarkan pencarian (untuk data general/override yang tidak punya pagination)
+      if (searchQuery && (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override')) {
+        allDiscounts = allDiscounts.filter(d => 
+          d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
       }
 
-      setDiscounts(finalDiscounts);
-      setMeta(newMeta);
+      // 4️⃣ Hilangkan duplikasi berdasarkan ID (untuk mode 'all')
+      if (scopeFilter === 'all') {
+        const uniqueMap = new Map();
+        allDiscounts.forEach(item => {
+          if (!uniqueMap.has(item.id)) {
+            uniqueMap.set(item.id, item);
+          }
+        });
+        allDiscounts = Array.from(uniqueMap.values());
+        setMeta(null); // Tidak ada pagination untuk mode 'all'
+      }
+
+      setDiscounts(allDiscounts);
 
     } catch (err: any) {
       console.error("Error loading data:", err);
@@ -218,17 +246,16 @@ export default function BranchDiscountsPage() {
   };
 
   const handleCreateClick = () => router.push('/branch/discounts/new');
-  const handleEditClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/edit`);
-  const handleOverrideClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/override`);
-  // ✅ Handler baru untuk navigasi detail
-  const handleDetailClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}`);
+  const handleEditClick = (discount: Discount) => router.push(`/branch/discounts/${discount.id}/edit`);
+  const handleOverrideClick = (discount: Discount) => router.push(`/branch/discounts/${discount.id}/override`);
+  const handleDetailClick = (discount: Discount) => router.push(`/branch/discounts/${discount.id}`);
 
   const handleSoftDelete = async () => {
     if (!selectedDiscount) return;
     setIsSubmitting(true);
     try {
       await delay(1000);
-      await branchDiscountAPI.softDelete(selectedDiscount.discount_rule_id);
+      await branchDiscountAPI.softDelete(selectedDiscount.id);
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedDiscount(null);
@@ -244,8 +271,7 @@ export default function BranchDiscountsPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
-      await branchDiscountAPI.update(selectedDiscount.discount_rule_id, {
-        ...selectedDiscount,
+      await branchDiscountAPI.update(selectedDiscount.id, {
         is_active: true
       });
       await loadData();
@@ -263,7 +289,7 @@ export default function BranchDiscountsPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
-      await branchDiscountAPI.hardDelete(selectedDiscount.discount_rule_id);
+      await branchDiscountAPI.hardDelete(selectedDiscount.id);
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedDiscount(null);
@@ -274,18 +300,19 @@ export default function BranchDiscountsPage() {
     }
   };
 
+  // Filter untuk archived (aktif/tidak aktif)
   const filteredDiscounts = discounts.filter((discount) => {
-    const isActiveMatch = showArchived ? discount.is_active === false : discount.is_active !== false;
-    if (!isActiveMatch) return false;
-
-    if (scopeFilter === 'general') return !discount.branch_id && !discount.is_overridden;
-    if (scopeFilter === 'local') return !!discount.branch_id;
-    if (scopeFilter === 'override') return !discount.branch_id && !!discount.is_overridden;
-    
-    return true; 
+    const isActiveMatch = showArchived 
+      ? discount.final_is_active === false 
+      : discount.final_is_active !== false;
+    return isActiveMatch;
   });
 
-  const itemsToShow = meta ? filteredDiscounts : filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
+  // Pagination logic
+  const itemsToShow = meta 
+    ? filteredDiscounts 
+    : filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
+  
   const totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
 
   const formatTime = (dateString: string) => {
@@ -296,9 +323,9 @@ export default function BranchDiscountsPage() {
 
   const handlePageChange = (page: number) => {
     if (meta) {
-        if (page > 0 && page <= meta.total_pages) setCurrentPage(page);
+      if (page > 0 && page <= meta.total_pages) setCurrentPage(page);
     } else {
-        if (page > 0 && page <= totalPagesClient) setCurrentPage(page);
+      if (page > 0 && page <= totalPagesClient) setCurrentPage(page);
     }
   };
 
@@ -370,12 +397,12 @@ export default function BranchDiscountsPage() {
             <Button variant={scopeFilter === 'override' ? 'default' : 'outline'} size="sm" onClick={() => setScopeFilter('override')}><Settings className="mr-2 h-3 w-3" /> Override</Button>
           </div>
           
-           <div className="flex-1 max-w-sm ml-auto">
-             <Input 
-                placeholder="Cari diskon..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-             />
+          <div className="flex-1 max-w-sm ml-auto">
+            <Input 
+              placeholder="Cari diskon..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
         </div>
       </Card>
@@ -408,7 +435,7 @@ export default function BranchDiscountsPage() {
                 </TableRow>
               ) : (
                 itemsToShow.map((discount) => (
-                  <TableRow key={discount.discount_rule_id} className={!discount.is_active ? 'opacity-75 bg-muted/30' : ''}>
+                  <TableRow key={discount.id} className={!discount.final_is_active ? 'opacity-75 bg-muted/30' : ''}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <Tag className="h-4 w-4 text-muted-foreground" />
@@ -424,8 +451,8 @@ export default function BranchDiscountsPage() {
                       <Badge variant="outline">{discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}</Badge>
                     </TableCell>
                     <TableCell className="font-semibold text-primary">
-                      {discount.discount_type === 'PERCENTAGE' ? `${discount.value}%` : formatRupiah(discount.value)}
-                      {discount.is_overridden && (
+                      {discount.discount_type === 'PERCENTAGE' ? `${discount.final_value}%` : formatRupiah(discount.final_value)}
+                      {discount.scope === 'OVERRIDE' && (
                         <div className="flex items-center gap-1 mt-1">
                           <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-200 text-orange-600 bg-orange-50">Override</Badge>
                         </div>
@@ -444,9 +471,21 @@ export default function BranchDiscountsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={discount.branch_id ? 'secondary' : 'default'}>
-                        {discount.branch_id ? <><Building2 className="mr-1 h-3 w-3" /> Lokal</> : <><Globe className="mr-1 h-3 w-3" /> General</>}
-                      </Badge>
+                      {discount.scope === 'LOCAL' && (
+                        <Badge variant="secondary">
+                          <Building2 className="mr-1 h-3 w-3" /> Lokal
+                        </Badge>
+                      )}
+                      {discount.scope === 'GENERAL' && (
+                        <Badge variant="default">
+                          <Globe className="mr-1 h-3 w-3" /> General
+                        </Badge>
+                      )}
+                      {discount.scope === 'OVERRIDE' && (
+                        <Badge variant="default" className="border-orange-200 text-orange-600 bg-orange-50">
+                          <Settings className="mr-1 h-3 w-3" /> Override
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -455,7 +494,6 @@ export default function BranchDiscountsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                          {/* ✅ Tambahkan Menu Detail */}
                           <DropdownMenuItem onClick={() => handleDetailClick(discount)}>
                             <Eye className="mr-2 h-4 w-4" /> Detail
                           </DropdownMenuItem>
@@ -463,7 +501,7 @@ export default function BranchDiscountsPage() {
                           <DropdownMenuSeparator />
                           {!showArchived ? (
                             <>
-                              {discount.branch_id ? (
+                              {discount.scope === 'LOCAL' ? (
                                 <>
                                   <DropdownMenuItem onClick={() => handleEditClick(discount)}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
                                   <DropdownMenuSeparator />
@@ -476,7 +514,7 @@ export default function BranchDiscountsPage() {
                               )}
                             </>
                           ) : (
-                            discount.branch_id && (
+                            discount.scope === 'LOCAL' && (
                               <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black"><RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali</DropdownMenuItem>
                             )
                           )}
@@ -492,47 +530,47 @@ export default function BranchDiscountsPage() {
 
         {/* Pagination Logic */}
         <div className="py-4 flex justify-center">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious 
-                    href="#" 
-                    onClick={(e) => { 
-                        e.preventDefault(); 
-                        if ((meta && meta.current_page > 1) || (!meta && currentPage > 1)) {
-                            handlePageChange(currentPage - 1); 
-                        }
-                    }}
-                    className={
-                        (meta && !meta.has_prev_page) || (!meta && currentPage <= 1)
-                        ? 'pointer-events-none opacity-50' 
-                        : 'cursor-pointer'
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious 
+                  href="#" 
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    if ((meta && meta.current_page > 1) || (!meta && currentPage > 1)) {
+                      handlePageChange(currentPage - 1); 
                     }
-                  />
-                </PaginationItem>
-                <PaginationItem>
-                  <span className="flex items-center px-4 text-sm font-medium">
-                    Halaman {currentPage} dari {meta ? meta.total_pages : totalPagesClient}
-                  </span>
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationNext 
-                    href="#" 
-                    onClick={(e) => { 
-                        e.preventDefault(); 
-                        if ((meta && meta.current_page < meta.total_pages) || (!meta && currentPage < totalPagesClient)) {
-                            handlePageChange(currentPage + 1); 
-                        }
-                    }}
-                    className={
-                        (meta && !meta.has_next_page) || (!meta && currentPage >= totalPagesClient)
-                        ? 'pointer-events-none opacity-50' 
-                        : 'cursor-pointer'
+                  }}
+                  className={
+                    (meta && !meta.has_prev_page) || (!meta && currentPage <= 1)
+                      ? 'pointer-events-none opacity-50' 
+                      : 'cursor-pointer'
+                  }
+                />
+              </PaginationItem>
+              <PaginationItem>
+                <span className="flex items-center px-4 text-sm font-medium">
+                  Halaman {currentPage} dari {meta ? meta.total_pages : totalPagesClient}
+                </span>
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext 
+                  href="#" 
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    if ((meta && meta.current_page < meta.total_pages) || (!meta && currentPage < totalPagesClient)) {
+                      handlePageChange(currentPage + 1); 
                     }
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+                  }}
+                  className={
+                    (meta && !meta.has_next_page) || (!meta && currentPage >= totalPagesClient)
+                      ? 'pointer-events-none opacity-50' 
+                      : 'cursor-pointer'
+                  }
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         </div>
       </Card>
 
