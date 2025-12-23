@@ -125,7 +125,7 @@ export default function BranchDiscountsPage() {
       let paginationMeta: MetaPagination | null = null;
 
       // ========================================
-      // FILTER: LOKAL
+      // FILTER: LOKAL (Branch-specific discounts)
       // ========================================
       if (scopeFilter === 'local') {
         try {
@@ -156,51 +156,40 @@ export default function BranchDiscountsPage() {
         }
       }
       // ========================================
-      // FILTER: GENERAL (belum di-override)
+      // FILTER: GENERAL (Not overridden by branch)
       // ========================================
       else if (scopeFilter === 'general') {
         try {
           const generalResponse = await branchDiscountAPI.getGeneral();
           console.log('🔍 General Response:', JSON.stringify(generalResponse, null, 2));
           
-          // Handle berbagai kemungkinan struktur response
           let rawData = generalResponse?.data || generalResponse || [];
           const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
           console.log('📦 General Data Array Length:', generalDataArr.length);
-          if (generalDataArr.length > 0) {
-            console.log('📄 Sample Item:', JSON.stringify(generalDataArr[0], null, 2));
-          }
 
           finalDiscounts = generalDataArr
             .filter((item: any) => {
               if (!item) return false;
+              // General = belum di-override
               const hasOverride = item?.branch_override?.exists ?? false;
               return !hasOverride;
             })
             .map((item: any) => {
               try {
-                // Validasi bertingkat
-                if (!item) {
-                  console.warn('⚠️ Item is null/undefined');
-                  return null;
-                }
-
-                // Cek apakah ada property meta
-                const meta = item?.meta;
-                if (!meta) {
-                  console.warn('⚠️ Item.meta is undefined for item ID:', item?.id);
+                if (!item || !item.meta) {
+                  console.warn('⚠️ Item or meta is undefined');
                   return null;
                 }
 
                 return {
                   id: item?.id || 'unknown',
-                  discount_name: meta?.discount_name || 'Unnamed Discount',
-                  discount_code: meta?.discount_code,
-                  discount_type: meta?.discount_type || 'PERCENTAGE',
-                  start_date: meta?.start_date || new Date().toISOString(),
-                  end_date: meta?.end_date || new Date().toISOString(),
-                  applies_to: meta?.applies_to || 'ALL',
+                  discount_name: item?.meta?.discount_name || 'Unnamed Discount',
+                  discount_code: item?.meta?.discount_code,
+                  discount_type: item?.meta?.discount_type || 'PERCENTAGE',
+                  start_date: item?.meta?.start_date || new Date().toISOString(),
+                  end_date: item?.meta?.end_date || new Date().toISOString(),
+                  applies_to: item?.meta?.applies_to || 'ALL',
                   final_value: Number(item?.final_effective?.value || 0),
                   final_is_active: item?.final_effective?.is_active ?? true,
                   scope: 'GENERAL' as const,
@@ -230,7 +219,7 @@ export default function BranchDiscountsPage() {
         paginationMeta = null;
       }
       // ========================================
-      // FILTER: OVERRIDE (sudah di-override)
+      // FILTER: OVERRIDE (General discounts that have been overridden)
       // ========================================
       else if (scopeFilter === 'override') {
         try {
@@ -242,6 +231,7 @@ export default function BranchDiscountsPage() {
           finalDiscounts = generalDataArr
             .filter((item: any) => {
               if (!item) return false;
+              // Override = sudah di-override
               const hasOverride = item?.branch_override?.exists ?? false;
               return hasOverride;
             })
@@ -286,7 +276,8 @@ export default function BranchDiscountsPage() {
         paginationMeta = null;
       }
       // ========================================
-      // FILTER: SEMUA (General ALL + Lokal)
+      // FILTER: SEMUA (General not overridden + Local)
+      // Logic: Tampilkan General yang BELUM di-override + Lokal
       // ========================================
       else {
         try {
@@ -316,7 +307,7 @@ export default function BranchDiscountsPage() {
             console.error('❌ Error loading local (all filter):', err);
           }
 
-          // 2. Ambil diskon GENERAL
+          // 2. Ambil diskon GENERAL (yang BELUM di-override saja)
           let generalItems: Discount[] = [];
           try {
             const generalResponse = await branchDiscountAPI.getGeneral();
@@ -325,11 +316,15 @@ export default function BranchDiscountsPage() {
             const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
             generalItems = generalDataArr
+              .filter((item: any) => {
+                if (!item) return false;
+                // Hanya ambil yang BELUM di-override
+                const hasOverride = item?.branch_override?.exists ?? false;
+                return !hasOverride;
+              })
               .map((item: any) => {
                 try {
                   if (!item || !item.meta) return null;
-
-                  const hasOverride = item?.branch_override?.exists ?? false;
                   
                   return {
                     id: item?.id || 'unknown',
@@ -341,7 +336,7 @@ export default function BranchDiscountsPage() {
                     applies_to: item?.meta?.applies_to || 'ALL',
                     final_value: Number(item?.final_effective?.value || 0),
                     final_is_active: item?.final_effective?.is_active ?? true,
-                    scope: hasOverride ? 'OVERRIDE' : 'GENERAL',
+                    scope: 'GENERAL' as const,
                     global_config: item?.global_config,
                     branch_override: item?.branch_override,
                     final_effective: item?.final_effective
@@ -356,10 +351,10 @@ export default function BranchDiscountsPage() {
             console.error('❌ Error loading general (all filter):', err);
           }
 
-          // 3. Gabungkan
+          // 3. Gabungkan General (belum override) + Lokal
           const combined = [...generalItems, ...localItems];
 
-          // 4. Deduplicate
+          // 4. Deduplicate berdasarkan ID
           const uniqueMap = new Map();
           combined.forEach(item => {
             if (item && item.id && !uniqueMap.has(item.id)) {
@@ -524,8 +519,10 @@ export default function BranchDiscountsPage() {
       <Alert>
         <Globe className="h-4 w-4" />
         <AlertDescription>
-          <strong>Hybrid Scope:</strong> Diskon <strong>General</strong> berasal dari pusat. Anda dapat melakukan 
-          <em> Override</em> untuk mengubah nilai atau menonaktifkannya khusus di cabang ini.
+          <strong>Filter Scope:</strong> <strong>Semua</strong> = General (belum override) + Lokal. 
+          <strong> General</strong> = hanya diskon pusat belum di-override. 
+          <strong> Lokal</strong> = diskon cabang. 
+          <strong> Override</strong> = diskon pusat yang sudah di-override di cabang ini.
         </AlertDescription>
       </Alert>
 
