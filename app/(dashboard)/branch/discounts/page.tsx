@@ -63,29 +63,10 @@ import {
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
 
-// Interface helper untuk type safety
-interface DiscountMeta {
-  discount_name: string;
-  discount_code?: string;
-  discount_type: 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT';
-  applies_to?: string;
-  start_date: string;
-  end_date: string;
-}
-
-interface GlobalConfig {
-  is_active: boolean;
-  value?: number;
-  min_transaction_amount?: number;
-  min_item_quantity?: number;
-  max_transaction_amount?: number;
-  max_item_quantity?: number;
-  max_discount_amount?: number;
-  min_discount_amount?: number;
-}
-
-interface BranchOverride {
-  exists: boolean;
+// Interface untuk response backend General Discount dari getBranchDiscounts
+interface BranchDiscountSetting {
+  discount_rule_id: string;
+  branch_id: string;
   is_active_at_branch: boolean;
   value?: number | null;
   min_transaction_amount?: number | null;
@@ -96,27 +77,22 @@ interface BranchOverride {
   min_discount_amount?: number | null;
 }
 
-interface FinalEffective {
+interface GeneralDiscountFromBackend {
+  discount_rule_id: string;
+  discount_name: string;
+  discount_code?: string;
+  discount_type: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  value: number;
+  start_date: string;
+  end_date: string;
+  partner_id: string;
+  branch_id: null;
   is_active: boolean;
-  source: 'BRANCH_ADJUSTED' | 'GLOBAL_DEFAULT';
-  value?: number;
-  min_transaction_amount?: number;
-  min_item_quantity?: number;
-  max_transaction_amount?: number;
-  max_item_quantity?: number;
-  max_discount_amount?: number;
-  min_discount_amount?: number;
+  // Include relation dari backend
+  applied_in_branches: BranchDiscountSetting[];
 }
 
-interface GeneralDiscount {
-  id: string | number;
-  meta: DiscountMeta;
-  global_config: GlobalConfig;
-  branch_override: BranchOverride;
-  final_effective: FinalEffective;
-}
-
-// Interface untuk Diskon Lokal
+// Interface untuk Diskon Lokal dari getAll
 interface LocalDiscount {
   discount_rule_id: string;
   discount_name: string;
@@ -129,7 +105,7 @@ interface LocalDiscount {
   is_active: boolean;
 }
 
-// Interface untuk Display di Table
+// Interface untuk Display di Table (unified)
 interface Discount {
   discount_rule_id: string;
   discount_name: string;
@@ -143,7 +119,6 @@ interface Discount {
   original_value?: number;
   is_overridden: boolean;
   scope: 'general' | 'local';
-  source?: 'BRANCH_ADJUSTED' | 'GLOBAL_DEFAULT';
 }
 
 export default function BranchDiscountsPage() {
@@ -187,6 +162,7 @@ export default function BranchDiscountsPage() {
       let newMeta: MetaPagination | null = null;
 
       // 1. Fetch Local Discounts (Diskon yang dibuat langsung di cabang)
+      // Hanya load jika scope filter membutuhkan data lokal
       if (scopeFilter === 'all' || scopeFilter === 'local') {
         try {
           const localResponse = await branchDiscountAPI.getAll({
@@ -212,7 +188,6 @@ export default function BranchDiscountsPage() {
                 original_value: undefined,
                 is_overridden: false,
                 scope: 'local' as const,
-                source: undefined
               }));
           }
           
@@ -221,58 +196,62 @@ export default function BranchDiscountsPage() {
             newMeta = localResponse?.meta || null;
           }
         } catch (err) {
-          console.error("Gagal load local discounts:", err);
-          setError('Gagal memuat diskon lokal');
+          console.error("❌ Gagal load local discounts:", err);
         }
       }
 
-      // 2. Fetch General Discounts (Diskon dari Partner/Pusat dengan kemungkinan override)
+      // 2. Fetch General Discounts (Diskon dari Partner/Pusat)
+      // Hanya load jika scope filter membutuhkan data general
       if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
         try {
           const generalResponse = await branchDiscountAPI.getGeneral();
           
-          // Ambil array data dari response
-          const generalDataArr: GeneralDiscount[] = Array.isArray(generalResponse) 
+          // Backend mengirim array langsung
+          const generalDataArr: GeneralDiscountFromBackend[] = Array.isArray(generalResponse) 
             ? generalResponse 
-            : (generalResponse as any)?.data || [];
+            : [];
 
-          // Validasi dan transformasi data general
+          // Transform data general dengan logic override
           generalItems = generalDataArr
             .filter((item) => {
-              if (!item || !item.id || !item.meta || !item.meta.discount_name) {
+              if (!item || !item.discount_rule_id || !item.discount_name) {
                 console.warn('⚠️ General discount item tidak valid, di-skip:', item);
                 return false;
               }
               return true;
             })
             .map((item) => {
-              const meta = item.meta;
-              const globalConfig = item.global_config;
-              const branchOverride = item.branch_override;
-              const finalEffective = item.final_effective;
+              // Ambil setting override cabang (jika ada)
+              const branchSetting = item.applied_in_branches?.[0] || null;
+              const hasOverride = !!branchSetting;
 
-              // Cek apakah diskon ini di-override atau tidak
-              const isOverridden = branchOverride.exists === true;
-              
-              // Gunakan nilai dari final_effective (sudah di-compute oleh backend)
-              const effectiveValue = Number(finalEffective.value ?? globalConfig.value ?? 0);
-              const originalValue = Number(globalConfig.value ?? 0);
-              const isActive = finalEffective.is_active ?? true;
+              // Tentukan nilai efektif (priority: branch override > global)
+              let effectiveValue = Number(item.value || 0);
+              let originalValue = Number(item.value || 0);
+              let isActive = item.is_active ?? true;
+
+              if (hasOverride) {
+                // Jika ada override dan valuenya tidak null, gunakan value override
+                if (branchSetting.value !== null && branchSetting.value !== undefined) {
+                  effectiveValue = Number(branchSetting.value);
+                }
+                // is_active bergantung pada global DAN branch
+                isActive = item.is_active && branchSetting.is_active_at_branch;
+              }
 
               return {
-                discount_rule_id: String(item.id),
-                discount_name: meta.discount_name,
-                discount_code: meta.discount_code,
-                discount_type: meta.discount_type ?? 'PERCENTAGE',
+                discount_rule_id: item.discount_rule_id,
+                discount_name: item.discount_name,
+                discount_code: item.discount_code,
+                discount_type: item.discount_type,
                 value: effectiveValue,
-                start_date: meta.start_date ?? new Date().toISOString(),
-                end_date: meta.end_date ?? new Date().toISOString(),
+                start_date: item.start_date,
+                end_date: item.end_date,
                 branch_id: null,
                 is_active: isActive,
-                original_value: originalValue,
-                is_overridden: isOverridden,
+                original_value: hasOverride ? originalValue : undefined,
+                is_overridden: hasOverride,
                 scope: 'general' as const,
-                source: finalEffective.source
               } as Discount;
             });
 
@@ -285,38 +264,36 @@ export default function BranchDiscountsPage() {
             );
           }
         } catch (err) {
-          console.error("Gagal load general discounts:", err);
-          setError('Gagal memuat diskon general');
+          console.error("❌ Gagal load general discounts:", err);
         }
       }
 
-      // 3. LOGIKA FILTER SCOPE yang Diperbaiki
+      // 3. LOGIKA FILTER SCOPE
       let finalDiscounts: Discount[] = [];
 
       switch (scopeFilter) {
         case 'all':
-          // Filter "Semua" = Gabungan General (semua) + Lokal
-          // Tidak ada duplikasi karena General (branch_id=null) vs Lokal (branch_id=xxx) berbeda
+          // Filter "Semua" = Gabungan General (semua: override + non-override) + Lokal
           finalDiscounts = [...generalItems, ...localItems];
-          newMeta = null; // Tidak pakai pagination server untuk "all"
+          newMeta = null; // Tidak pakai pagination server
           break;
           
         case 'general':
           // Filter "General" = Hanya diskon General yang BELUM di-override
           finalDiscounts = generalItems.filter(d => !d.is_overridden);
-          newMeta = null; // Tidak pakai pagination server
+          newMeta = null;
           break;
           
         case 'local':
           // Filter "Lokal" = Hanya diskon yang dibuat langsung di cabang
           finalDiscounts = localItems;
-          // newMeta sudah di-set dari localResponse di atas
+          // newMeta sudah di-set dari localResponse
           break;
           
         case 'override':
-          // Filter "Override" = Hanya diskon General yang SUDAH di-override di cabang ini
+          // Filter "Override" = Hanya diskon General yang SUDAH di-override
           finalDiscounts = generalItems.filter(d => d.is_overridden);
-          newMeta = null; // Tidak pakai pagination server
+          newMeta = null;
           break;
           
         default:
@@ -329,7 +306,7 @@ export default function BranchDiscountsPage() {
 
     } catch (err) {
       const error = err as Error;
-      console.error("Error loading data:", error);
+      console.error("❌ Error loading data:", error);
       setError(error.message || 'Gagal memuat data diskon');
     } finally {
       setIsLoading(false);
@@ -469,7 +446,7 @@ export default function BranchDiscountsPage() {
         <Filter className="h-4 w-4" />
         <AlertDescription>
           <strong>Filter Scope:</strong> 
-          <br/>• <strong>Semua</strong> = Diskon General + Lokal (gabungan semua diskon)
+          <br/>• <strong>Semua</strong> = Diskon General + Lokal (semua diskon termasuk yang di-override)
           <br/>• <strong>General</strong> = Hanya diskon pusat yang belum di-override 
           <br/>• <strong>Lokal</strong> = Hanya diskon khusus cabang ini
           <br/>• <strong>Override</strong> = Diskon general yang sudah diubah di cabang ini
@@ -546,16 +523,14 @@ export default function BranchDiscountsPage() {
                         <div>
                           {discount.discount_type === 'PERCENTAGE' ? `${discount.value}%` : formatRupiah(discount.value)}
                         </div>
-                        {discount.is_overridden && (
+                        {discount.is_overridden && discount.original_value !== undefined && (
                           <div className="flex items-center gap-1">
                             <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-200 text-orange-600 bg-orange-50">
                               Override
                             </Badge>
-                            {discount.original_value !== undefined && (
-                              <span className="text-[10px] text-muted-foreground line-through">
-                                {discount.discount_type === 'PERCENTAGE' ? `${discount.original_value}%` : formatRupiah(discount.original_value)}
-                              </span>
-                            )}
+                            <span className="text-[10px] text-muted-foreground line-through">
+                              {discount.discount_type === 'PERCENTAGE' ? `${discount.original_value}%` : formatRupiah(discount.original_value)}
+                            </span>
                           </div>
                         )}
                       </div>
