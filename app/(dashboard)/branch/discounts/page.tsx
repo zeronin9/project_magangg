@@ -128,82 +128,103 @@ export default function BranchDiscountsPage() {
       // FILTER: LOKAL
       // ========================================
       if (scopeFilter === 'local') {
-        const localResponse = await branchDiscountAPI.getAll({
-          page: currentPage,
-          limit: 10,
-          search: searchQuery
-        });
-        
-        finalDiscounts = (localResponse.items || []).map((item: any) => ({
-          id: item.discount_rule_id || item.id,
-          discount_name: item.discount_name || 'Unnamed Discount',
-          discount_code: item.discount_code,
-          discount_type: item.discount_type || 'PERCENTAGE',
-          start_date: item.start_date || new Date().toISOString(),
-          end_date: item.end_date || new Date().toISOString(),
-          applies_to: item.applies_to || 'ALL',
-          final_value: Number(item.value || 0),
-          final_is_active: item.is_active ?? true,
-          scope: 'LOCAL'
-        }));
+        try {
+          const localResponse = await branchDiscountAPI.getAll({
+            page: currentPage,
+            limit: 10,
+            search: searchQuery
+          });
+          
+          const items = localResponse?.items || [];
+          finalDiscounts = items.map((item: any) => ({
+            id: item?.discount_rule_id || item?.id || 'unknown',
+            discount_name: item?.discount_name || 'Unnamed Discount',
+            discount_code: item?.discount_code,
+            discount_type: item?.discount_type || 'PERCENTAGE',
+            start_date: item?.start_date || new Date().toISOString(),
+            end_date: item?.end_date || new Date().toISOString(),
+            applies_to: item?.applies_to || 'ALL',
+            final_value: Number(item?.value || 0),
+            final_is_active: item?.is_active ?? true,
+            scope: 'LOCAL'
+          })).filter(d => d.id !== 'unknown');
 
-        paginationMeta = localResponse.meta;
+          paginationMeta = localResponse?.meta || null;
+        } catch (err) {
+          console.error('❌ Error loading local discounts:', err);
+          finalDiscounts = [];
+        }
       }
       // ========================================
       // FILTER: GENERAL (belum di-override)
       // ========================================
       else if (scopeFilter === 'general') {
-        const generalResponse = await branchDiscountAPI.getGeneral();
-        console.log('🔍 General Response:', generalResponse); // Debug
-        
-        const rawData = generalResponse.data || [];
-        const generalDataArr = Array.isArray(rawData) ? rawData : [];
+        try {
+          const generalResponse = await branchDiscountAPI.getGeneral();
+          console.log('🔍 General Response:', JSON.stringify(generalResponse, null, 2));
+          
+          // Handle berbagai kemungkinan struktur response
+          let rawData = generalResponse?.data || generalResponse || [];
+          const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
-        console.log('📦 General Data Array:', generalDataArr); // Debug
+          console.log('📦 General Data Array Length:', generalDataArr.length);
+          if (generalDataArr.length > 0) {
+            console.log('📄 Sample Item:', JSON.stringify(generalDataArr[0], null, 2));
+          }
 
-        finalDiscounts = generalDataArr
-          .filter((item: any) => {
-            if (!item) return false;
-            // Hanya ambil yang BELUM di-override
-            const hasOverride = item.branch_override?.exists ?? false;
-            return !hasOverride;
-          })
-          .map((item: any) => {
-            // ✅ Validasi: Pastikan item dan item.meta ada
-            if (!item) {
-              console.warn('⚠️ Item is null/undefined');
-              return null;
-            }
-            
-            if (!item.meta) {
-              console.warn('⚠️ Item.meta is undefined for item:', item);
-              return null;
-            }
+          finalDiscounts = generalDataArr
+            .filter((item: any) => {
+              if (!item) return false;
+              const hasOverride = item?.branch_override?.exists ?? false;
+              return !hasOverride;
+            })
+            .map((item: any) => {
+              try {
+                // Validasi bertingkat
+                if (!item) {
+                  console.warn('⚠️ Item is null/undefined');
+                  return null;
+                }
 
-            return {
-              id: item.id || 'unknown',
-              discount_name: item.meta.discount_name || 'Unnamed Discount',
-              discount_code: item.meta.discount_code,
-              discount_type: item.meta.discount_type || 'PERCENTAGE',
-              start_date: item.meta.start_date || new Date().toISOString(),
-              end_date: item.meta.end_date || new Date().toISOString(),
-              applies_to: item.meta.applies_to || 'ALL',
-              final_value: Number(item.final_effective?.value || 0),
-              final_is_active: item.final_effective?.is_active ?? true,
-              scope: 'GENERAL' as const,
-              global_config: item.global_config,
-              branch_override: item.branch_override,
-              final_effective: item.final_effective
-            };
-          })
-          .filter((item): item is Discount => item !== null); // ✅ Filter null items
+                // Cek apakah ada property meta
+                const meta = item?.meta;
+                if (!meta) {
+                  console.warn('⚠️ Item.meta is undefined for item ID:', item?.id);
+                  return null;
+                }
 
-        // Filter search untuk general
-        if (searchQuery) {
-          finalDiscounts = finalDiscounts.filter(d => 
-            d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-            (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
-          );
+                return {
+                  id: item?.id || 'unknown',
+                  discount_name: meta?.discount_name || 'Unnamed Discount',
+                  discount_code: meta?.discount_code,
+                  discount_type: meta?.discount_type || 'PERCENTAGE',
+                  start_date: meta?.start_date || new Date().toISOString(),
+                  end_date: meta?.end_date || new Date().toISOString(),
+                  applies_to: meta?.applies_to || 'ALL',
+                  final_value: Number(item?.final_effective?.value || 0),
+                  final_is_active: item?.final_effective?.is_active ?? true,
+                  scope: 'GENERAL' as const,
+                  global_config: item?.global_config,
+                  branch_override: item?.branch_override,
+                  final_effective: item?.final_effective
+                };
+              } catch (mapError) {
+                console.error('❌ Error mapping general item:', mapError, item);
+                return null;
+              }
+            })
+            .filter((item): item is Discount => item !== null && item.id !== 'unknown');
+
+          // Filter search
+          if (searchQuery) {
+            finalDiscounts = finalDiscounts.filter(d => 
+              d?.discount_name?.toLowerCase()?.includes(searchQuery.toLowerCase()) || 
+              (d?.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+          }
+        } catch (err) {
+          console.error('❌ Error loading general discounts:', err);
+          finalDiscounts = [];
         }
 
         paginationMeta = null;
@@ -212,50 +233,54 @@ export default function BranchDiscountsPage() {
       // FILTER: OVERRIDE (sudah di-override)
       // ========================================
       else if (scopeFilter === 'override') {
-        const generalResponse = await branchDiscountAPI.getGeneral();
-        console.log('🔍 Override Response:', generalResponse); // Debug
-        
-        const rawData = generalResponse.data || [];
-        const generalDataArr = Array.isArray(rawData) ? rawData : [];
+        try {
+          const generalResponse = await branchDiscountAPI.getGeneral();
+          
+          let rawData = generalResponse?.data || generalResponse || [];
+          const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
-        finalDiscounts = generalDataArr
-          .filter((item: any) => {
-            if (!item) return false;
-            // Hanya ambil yang SUDAH di-override
-            const hasOverride = item.branch_override?.exists ?? false;
-            return hasOverride;
-          })
-          .map((item: any) => {
-            // ✅ Validasi: Pastikan item dan item.meta ada
-            if (!item || !item.meta) {
-              console.warn('⚠️ Invalid item in override filter:', item);
-              return null;
-            }
+          finalDiscounts = generalDataArr
+            .filter((item: any) => {
+              if (!item) return false;
+              const hasOverride = item?.branch_override?.exists ?? false;
+              return hasOverride;
+            })
+            .map((item: any) => {
+              try {
+                if (!item || !item.meta) return null;
 
-            return {
-              id: item.id || 'unknown',
-              discount_name: item.meta.discount_name || 'Unnamed Discount',
-              discount_code: item.meta.discount_code,
-              discount_type: item.meta.discount_type || 'PERCENTAGE',
-              start_date: item.meta.start_date || new Date().toISOString(),
-              end_date: item.meta.end_date || new Date().toISOString(),
-              applies_to: item.meta.applies_to || 'ALL',
-              final_value: Number(item.final_effective?.value || 0),
-              final_is_active: item.final_effective?.is_active ?? true,
-              scope: 'OVERRIDE' as const,
-              global_config: item.global_config,
-              branch_override: item.branch_override,
-              final_effective: item.final_effective
-            };
-          })
-          .filter((item): item is Discount => item !== null); // ✅ Filter null items
+                return {
+                  id: item?.id || 'unknown',
+                  discount_name: item?.meta?.discount_name || 'Unnamed Discount',
+                  discount_code: item?.meta?.discount_code,
+                  discount_type: item?.meta?.discount_type || 'PERCENTAGE',
+                  start_date: item?.meta?.start_date || new Date().toISOString(),
+                  end_date: item?.meta?.end_date || new Date().toISOString(),
+                  applies_to: item?.meta?.applies_to || 'ALL',
+                  final_value: Number(item?.final_effective?.value || 0),
+                  final_is_active: item?.final_effective?.is_active ?? true,
+                  scope: 'OVERRIDE' as const,
+                  global_config: item?.global_config,
+                  branch_override: item?.branch_override,
+                  final_effective: item?.final_effective
+                };
+              } catch (mapError) {
+                console.error('❌ Error mapping override item:', mapError);
+                return null;
+              }
+            })
+            .filter((item): item is Discount => item !== null && item.id !== 'unknown');
 
-        // Filter search untuk override
-        if (searchQuery) {
-          finalDiscounts = finalDiscounts.filter(d => 
-            d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-            (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
-          );
+          // Filter search
+          if (searchQuery) {
+            finalDiscounts = finalDiscounts.filter(d => 
+              d?.discount_name?.toLowerCase()?.includes(searchQuery.toLowerCase()) || 
+              (d?.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+          }
+        } catch (err) {
+          console.error('❌ Error loading override discounts:', err);
+          finalDiscounts = [];
         }
 
         paginationMeta = null;
@@ -264,79 +289,95 @@ export default function BranchDiscountsPage() {
       // FILTER: SEMUA (General ALL + Lokal)
       // ========================================
       else {
-        // 1. Ambil semua diskon LOKAL
-        const localResponse = await branchDiscountAPI.getAll({
-          page: 1,
-          limit: 100,
-          search: searchQuery
-        });
-        
-        const localItems: Discount[] = (localResponse.items || []).map((item: any) => ({
-          id: item.discount_rule_id || item.id,
-          discount_name: item.discount_name || 'Unnamed Discount',
-          discount_code: item.discount_code,
-          discount_type: item.discount_type || 'PERCENTAGE',
-          start_date: item.start_date || new Date().toISOString(),
-          end_date: item.end_date || new Date().toISOString(),
-          applies_to: item.applies_to || 'ALL',
-          final_value: Number(item.value || 0),
-          final_is_active: item.is_active ?? true,
-          scope: 'LOCAL'
-        }));
-
-        // 2. Ambil semua diskon GENERAL (baik yang override maupun belum)
-        const generalResponse = await branchDiscountAPI.getGeneral();
-        console.log('🔍 All Response:', generalResponse); // Debug
-        
-        const rawData = generalResponse.data || [];
-        const generalDataArr = Array.isArray(rawData) ? rawData : [];
-
-        const generalItems: Discount[] = generalDataArr
-          .map((item: any) => {
-            // ✅ Validasi: Pastikan item dan item.meta ada
-            if (!item || !item.meta) {
-              console.warn('⚠️ Invalid item in all filter:', item);
-              return null;
-            }
-
-            const hasOverride = item.branch_override?.exists ?? false;
+        try {
+          // 1. Ambil diskon LOKAL
+          let localItems: Discount[] = [];
+          try {
+            const localResponse = await branchDiscountAPI.getAll({
+              page: 1,
+              limit: 100,
+              search: searchQuery
+            });
             
-            return {
-              id: item.id || 'unknown',
-              discount_name: item.meta.discount_name || 'Unnamed Discount',
-              discount_code: item.meta.discount_code,
-              discount_type: item.meta.discount_type || 'PERCENTAGE',
-              start_date: item.meta.start_date || new Date().toISOString(),
-              end_date: item.meta.end_date || new Date().toISOString(),
-              applies_to: item.meta.applies_to || 'ALL',
-              final_value: Number(item.final_effective?.value || 0),
-              final_is_active: item.final_effective?.is_active ?? true,
-              scope: hasOverride ? 'OVERRIDE' : 'GENERAL',
-              global_config: item.global_config,
-              branch_override: item.branch_override,
-              final_effective: item.final_effective
-            };
-          })
-          .filter((item): item is Discount => item !== null); // ✅ Filter null items
-
-        // 3. Gabungkan General + Lokal
-        const combined = [...generalItems, ...localItems];
-
-        // 4. Hilangkan duplikasi berdasarkan ID
-        const uniqueMap = new Map();
-        combined.forEach(item => {
-          if (item && item.id && !uniqueMap.has(item.id)) {
-            uniqueMap.set(item.id, item);
+            const items = localResponse?.items || [];
+            localItems = items.map((item: any) => ({
+              id: item?.discount_rule_id || item?.id || 'unknown',
+              discount_name: item?.discount_name || 'Unnamed Discount',
+              discount_code: item?.discount_code,
+              discount_type: item?.discount_type || 'PERCENTAGE',
+              start_date: item?.start_date || new Date().toISOString(),
+              end_date: item?.end_date || new Date().toISOString(),
+              applies_to: item?.applies_to || 'ALL',
+              final_value: Number(item?.value || 0),
+              final_is_active: item?.is_active ?? true,
+              scope: 'LOCAL'
+            })).filter(d => d.id !== 'unknown');
+          } catch (err) {
+            console.error('❌ Error loading local (all filter):', err);
           }
-        });
-        finalDiscounts = Array.from(uniqueMap.values());
 
-        // 5. Filter search untuk mode 'all'
-        if (searchQuery) {
-          finalDiscounts = finalDiscounts.filter(d => 
-            d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-            (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
-          );
+          // 2. Ambil diskon GENERAL
+          let generalItems: Discount[] = [];
+          try {
+            const generalResponse = await branchDiscountAPI.getGeneral();
+            
+            let rawData = generalResponse?.data || generalResponse || [];
+            const generalDataArr = Array.isArray(rawData) ? rawData : [];
+
+            generalItems = generalDataArr
+              .map((item: any) => {
+                try {
+                  if (!item || !item.meta) return null;
+
+                  const hasOverride = item?.branch_override?.exists ?? false;
+                  
+                  return {
+                    id: item?.id || 'unknown',
+                    discount_name: item?.meta?.discount_name || 'Unnamed Discount',
+                    discount_code: item?.meta?.discount_code,
+                    discount_type: item?.meta?.discount_type || 'PERCENTAGE',
+                    start_date: item?.meta?.start_date || new Date().toISOString(),
+                    end_date: item?.meta?.end_date || new Date().toISOString(),
+                    applies_to: item?.meta?.applies_to || 'ALL',
+                    final_value: Number(item?.final_effective?.value || 0),
+                    final_is_active: item?.final_effective?.is_active ?? true,
+                    scope: hasOverride ? 'OVERRIDE' : 'GENERAL',
+                    global_config: item?.global_config,
+                    branch_override: item?.branch_override,
+                    final_effective: item?.final_effective
+                  };
+                } catch (mapError) {
+                  console.error('❌ Error mapping item (all filter):', mapError);
+                  return null;
+                }
+              })
+              .filter((item): item is Discount => item !== null && item.id !== 'unknown');
+          } catch (err) {
+            console.error('❌ Error loading general (all filter):', err);
+          }
+
+          // 3. Gabungkan
+          const combined = [...generalItems, ...localItems];
+
+          // 4. Deduplicate
+          const uniqueMap = new Map();
+          combined.forEach(item => {
+            if (item && item.id && !uniqueMap.has(item.id)) {
+              uniqueMap.set(item.id, item);
+            }
+          });
+          finalDiscounts = Array.from(uniqueMap.values());
+
+          // 5. Filter search
+          if (searchQuery) {
+            finalDiscounts = finalDiscounts.filter(d => 
+              d?.discount_name?.toLowerCase()?.includes(searchQuery.toLowerCase()) || 
+              (d?.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+          }
+        } catch (err) {
+          console.error('❌ Error loading all discounts:', err);
+          finalDiscounts = [];
         }
 
         paginationMeta = null;
@@ -348,6 +389,7 @@ export default function BranchDiscountsPage() {
     } catch (err: any) {
       console.error("❌ Error loading data:", err);
       setError(err.message || 'Gagal memuat data diskon');
+      setDiscounts([]);
     } finally {
       setIsLoading(false);
     }
@@ -408,7 +450,6 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // Filter untuk archived (aktif/tidak aktif)
   const filteredDiscounts = discounts.filter((discount) => {
     const isActiveMatch = showArchived 
       ? discount.final_is_active === false 
@@ -416,7 +457,6 @@ export default function BranchDiscountsPage() {
     return isActiveMatch;
   });
 
-  // Pagination logic
   const itemsToShow = meta 
     ? filteredDiscounts 
     : filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
@@ -453,7 +493,6 @@ export default function BranchDiscountsPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-      {/* Header */}
       <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Promo & Diskon</h1>
@@ -482,7 +521,6 @@ export default function BranchDiscountsPage() {
         </Alert>
       )}
 
-      {/* Info Hybrid Scope */}
       <Alert>
         <Globe className="h-4 w-4" />
         <AlertDescription>
@@ -491,7 +529,6 @@ export default function BranchDiscountsPage() {
         </AlertDescription>
       </Alert>
 
-      {/* Filter & Search */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-2">
@@ -515,7 +552,6 @@ export default function BranchDiscountsPage() {
         </div>
       </Card>
 
-      {/* Table */}
       <Card>
         <div className="overflow-x-auto">
           <Table>
@@ -636,7 +672,6 @@ export default function BranchDiscountsPage() {
           </Table>
         </div>
 
-        {/* Pagination Logic */}
         <div className="py-4 flex justify-center">
           <Pagination>
             <PaginationContent>
@@ -682,7 +717,6 @@ export default function BranchDiscountsPage() {
         </div>
       </Card>
 
-      {/* Dialogs */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
