@@ -3,6 +3,18 @@
 import { apiClient } from '../api';
 import { fetchData } from '@/lib/services/fetchData';
 
+// --- Definisi Tipe Data untuk Override Diskon (Sesuai Backend) ---
+export interface DiscountOverridePayload {
+  is_active_at_branch: boolean;
+  value?: number | null;
+  min_transaction_amount?: number | null;
+  min_item_quantity?: number | null;
+  max_transaction_amount?: number | null;
+  max_item_quantity?: number | null;
+  min_discount_amount?: number | null;
+  max_discount_amount?: number | null;
+}
+
 // ==================== CASHIER LOGIN ACCOUNTS ====================
 export const cashierAccountAPI = {
   getAll: (showAll = false) =>
@@ -129,7 +141,6 @@ export const branchDiscountAPI = {
     });
   },
 
-  // ✅ BARU: Tambahkan fungsi ini untuk ambil detail diskon
   getById: (id: string) => 
     apiClient.get(`/discount-rule/${id}`),
 
@@ -148,13 +159,13 @@ export const branchDiscountAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/discount-rule/permanent/${id}`),
   
-  setOverride: (discountRuleId: string, data: { is_active_at_branch: boolean; value?: number }) =>
+  // ✅ UPDATE: Menggunakan interface 'DiscountOverridePayload' agar support semua field backend
+  setOverride: (discountRuleId: string, data: DiscountOverridePayload) =>
     apiClient.post(`/branch-discount-setting/${discountRuleId}`, data),
 };
 
 // ==================== EXPENSES ====================
 export const expenseAPI = {
-  // ✅ Update: Menggunakan fetchData untuk Pagination
   getAll: async (params: { page?: number; limit?: number; search?: string; start_date?: string; end_date?: string } = {}) => {
     return fetchData('/expense', params.page, params.limit, {
       search: params.search,
@@ -172,18 +183,14 @@ export const expenseAPI = {
 
 // ==================== VOID REQUESTS ====================
 export const voidRequestAPI = {
-  // ✅ PERBAIKAN: Menggunakan apiClient.get langsung karena endpoint ini
-  // mengembalikan array murni tanpa metadata pagination server-side.
   getAll: () => apiClient.get('/transaction/void-requests'),
 
-  // Fungsi review tetap sama
   review: (id: string, approve: boolean) =>
     apiClient.post(`/transaction/${id}/void-review`, { approve }),
 };
 
 // ==================== REPORTS ====================
 export const branchReportAPI = {
-  // ✅ Update: Menggunakan fetchData untuk Pagination + Filter Tanggal
   getSales: async (tanggalMulai: string, tanggalSelesai: string, page = 1, limit = 10) => {
     return fetchData('/report/sales', page, limit, {
       tanggalMulai,
@@ -203,16 +210,12 @@ export const branchLicenseAPI = {
 
 // ==================== SETTINGS ====================
 export const branchSettingsAPI = {
-  // ✅ GET Data Struk
   getReceipt: () => 
     apiClient.get('/branch/receipt'),
 
-  // ✅ UPDATE Data Struk (Gunakan PUT ke endpoint /branch/receipt)
-  // Backend sekarang sudah punya route khusus untuk menangani ini.
   updateReceipt: (data: { receipt_header?: string; receipt_footer?: string }) =>
     apiClient.put('/branch/receipt', data),
 
-  // Endpoint Pajak
   getTax: () => 
     apiClient.get('/branch/tax'),
 
@@ -222,7 +225,6 @@ export const branchSettingsAPI = {
   deleteTax: () => 
     apiClient.delete('/branch/tax'), 
   
-  // Endpoint Pembayaran
   getPaymentMethods: () =>
     apiClient.get('/payment'),
 

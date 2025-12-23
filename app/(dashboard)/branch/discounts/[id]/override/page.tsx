@@ -29,8 +29,6 @@ import {
   Calendar,
   Percent,
   Tag,
-  Ticket,
-  Clock,
   Settings,
   Info
 } from 'lucide-react';
@@ -86,20 +84,33 @@ export default function OverrideDiscountPage() {
   const loadData = async () => {
     try {
       setIsLoading(true);
+      setError('');
       
       // Ambil data General Discount & Master Data Produk/Kategori untuk display
+      // PERBAIKAN 1: Sesuaikan nilai fallback catch agar sesuai struktur return
       const [generalResponse, productsData, categoriesData] = await Promise.all([
-        branchDiscountAPI.getGeneral().catch(() => ({ data: [] })),
-        branchProductAPI.getAll().catch(() => ({ data: [] })),
-        branchCategoryAPI.getAll().catch(() => ({ data: [] }))
+        // getGeneral pake axios biasa -> return response (pakai .data nanti)
+        branchDiscountAPI.getGeneral().catch(() => ({ data: [] })), 
+        
+        // getAll pake fetchData -> return { items: [], meta: ... }
+        branchProductAPI.getAll().catch(() => ({ items: [] })), 
+        
+        // getAll pake fetchData -> return { items: [], meta: ... }
+        branchCategoryAPI.getAll().catch(() => ({ items: [] }))
       ]);
 
-      setProducts(Array.isArray(productsData.data) ? productsData.data : []);
-      setCategories(Array.isArray(categoriesData.data) ? categoriesData.data : []);
+      // PERBAIKAN 2: Akses properti .items untuk produk dan kategori (karena dari fetchData)
+      // Gunakan 'as any' sementara jika TypeScript masih strict terhadap tipe Promise.all
+      const productsList = (productsData as any).items || [];
+      const categoriesList = (categoriesData as any).items || [];
 
-      // Cari diskon yang sedang diedit dari list general
-      const generalDiscounts = Array.isArray(generalResponse.data) ? generalResponse.data : [];
-      const foundDiscount = generalDiscounts.find((d: any) => d.discount_rule_id === discountId);
+      setProducts(Array.isArray(productsList) ? productsList : []);
+      setCategories(Array.isArray(categoriesList) ? categoriesList : []);
+
+      // PERBAIKAN 3: Akses properti .data untuk general discount (karena dari axios langsung)
+      const generalDiscounts = Array.isArray((generalResponse as any).data) ? (generalResponse as any).data : [];
+      
+      const foundDiscount = generalDiscounts.find((d: any) => String(d.discount_rule_id) === String(discountId));
 
       if (!foundDiscount) {
         setError('Data diskon general tidak ditemukan.');
@@ -111,20 +122,24 @@ export default function OverrideDiscountPage() {
       // Cek apakah sudah ada override sebelumnya
       const currentSetting = foundDiscount.branch_setting || {};
       
-      // Jika ada setting cabang, gunakan itu. Jika tidak, gunakan nilai master sebagai default form.
+      // Helper untuk mengambil nilai string atau fallback ke string kosong
+      const getVal = (val: any, fallback: any) => {
+          if (val !== null && val !== undefined) return String(val);
+          if (fallback !== null && fallback !== undefined) return String(fallback);
+          return '';
+      };
+
       setFormData({
         is_active_at_branch: currentSetting.is_active_at_branch !== undefined 
           ? String(currentSetting.is_active_at_branch) 
           : 'true',
-        value: currentSetting.value !== undefined 
-          ? String(currentSetting.value) 
-          : String(foundDiscount.master_value),
-        min_transaction_amount: currentSetting.min_transaction_amount?.toString() || foundDiscount.min_transaction_amount?.toString() || '',
-        max_transaction_amount: currentSetting.max_transaction_amount?.toString() || foundDiscount.max_transaction_amount?.toString() || '',
-        min_item_quantity: currentSetting.min_item_quantity?.toString() || foundDiscount.min_item_quantity?.toString() || '',
-        max_item_quantity: currentSetting.max_item_quantity?.toString() || foundDiscount.max_item_quantity?.toString() || '',
-        min_discount_amount: currentSetting.min_discount_amount?.toString() || foundDiscount.min_discount_amount?.toString() || '',
-        max_discount_amount: currentSetting.max_discount_amount?.toString() || foundDiscount.max_discount_amount?.toString() || '',
+        value: getVal(currentSetting.value, foundDiscount.master_value),
+        min_transaction_amount: getVal(currentSetting.min_transaction_amount, foundDiscount.min_transaction_amount),
+        max_transaction_amount: getVal(currentSetting.max_transaction_amount, foundDiscount.max_transaction_amount),
+        min_item_quantity: getVal(currentSetting.min_item_quantity, foundDiscount.min_item_quantity),
+        max_item_quantity: getVal(currentSetting.max_item_quantity, foundDiscount.max_item_quantity),
+        min_discount_amount: getVal(currentSetting.min_discount_amount, foundDiscount.min_discount_amount),
+        max_discount_amount: getVal(currentSetting.max_discount_amount, foundDiscount.max_discount_amount),
       });
 
     } catch (err: any) {
@@ -136,6 +151,7 @@ export default function OverrideDiscountPage() {
   };
 
   const handleNumberInput = (e: React.ChangeEvent<HTMLInputElement>, field: string) => {
+    // Hanya izinkan angka
     const val = e.target.value.replace(/\D/g, '');
     setFormData({ ...formData, [field]: val });
   };
@@ -151,18 +167,18 @@ export default function OverrideDiscountPage() {
     setError('');
 
     try {
-      // Helper konversi
-      const toNumber = (val: string) => val && val !== '' ? Number(val) : undefined;
+      // Helper konversi: String kosong ('') menjadi null agar backend mereset nilai
+      const toNullableNumber = (val: string) => (val && val.trim() !== '') ? Number(val) : null;
 
       const payload = {
         is_active_at_branch: formData.is_active_at_branch === 'true',
-        value: Number(formData.value),
-        min_transaction_amount: toNumber(formData.min_transaction_amount),
-        max_transaction_amount: toNumber(formData.max_transaction_amount),
-        min_item_quantity: toNumber(formData.min_item_quantity),
-        max_item_quantity: toNumber(formData.max_item_quantity),
-        min_discount_amount: toNumber(formData.min_discount_amount),
-        max_discount_amount: toNumber(formData.max_discount_amount),
+        value: toNullableNumber(formData.value),
+        min_transaction_amount: toNullableNumber(formData.min_transaction_amount),
+        max_transaction_amount: toNullableNumber(formData.max_transaction_amount),
+        min_item_quantity: toNullableNumber(formData.min_item_quantity),
+        max_item_quantity: toNullableNumber(formData.max_item_quantity),
+        min_discount_amount: toNullableNumber(formData.min_discount_amount),
+        max_discount_amount: toNullableNumber(formData.max_discount_amount),
       };
 
       await branchDiscountAPI.setOverride(discountId, payload);
