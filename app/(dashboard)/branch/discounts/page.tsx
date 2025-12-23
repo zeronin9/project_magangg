@@ -134,13 +134,13 @@ export default function BranchDiscountsPage() {
           search: searchQuery
         });
         
-        finalDiscounts = localResponse.items.map((item: any) => ({
-          id: item.discount_rule_id,
-          discount_name: item.discount_name,
+        finalDiscounts = (localResponse.items || []).map((item: any) => ({
+          id: item.discount_rule_id || item.id,
+          discount_name: item.discount_name || 'Unnamed Discount',
           discount_code: item.discount_code,
-          discount_type: item.discount_type,
-          start_date: item.start_date,
-          end_date: item.end_date,
+          discount_type: item.discount_type || 'PERCENTAGE',
+          start_date: item.start_date || new Date().toISOString(),
+          end_date: item.end_date || new Date().toISOString(),
           applies_to: item.applies_to || 'ALL',
           final_value: Number(item.value || 0),
           final_is_active: item.is_active ?? true,
@@ -154,30 +154,49 @@ export default function BranchDiscountsPage() {
       // ========================================
       else if (scopeFilter === 'general') {
         const generalResponse = await branchDiscountAPI.getGeneral();
+        console.log('🔍 General Response:', generalResponse); // Debug
+        
         const rawData = generalResponse.data || [];
         const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
+        console.log('📦 General Data Array:', generalDataArr); // Debug
+
         finalDiscounts = generalDataArr
           .filter((item: any) => {
+            if (!item) return false;
             // Hanya ambil yang BELUM di-override
             const hasOverride = item.branch_override?.exists ?? false;
             return !hasOverride;
           })
-          .map((item: any) => ({
-            id: item.id,
-            discount_name: item.meta.discount_name,
-            discount_code: item.meta.discount_code,
-            discount_type: item.meta.discount_type,
-            start_date: item.meta.start_date,
-            end_date: item.meta.end_date,
-            applies_to: item.meta.applies_to,
-            final_value: Number(item.final_effective?.value || 0),
-            final_is_active: item.final_effective?.is_active ?? true,
-            scope: 'GENERAL',
-            global_config: item.global_config,
-            branch_override: item.branch_override,
-            final_effective: item.final_effective
-          }));
+          .map((item: any) => {
+            // ✅ Validasi: Pastikan item dan item.meta ada
+            if (!item) {
+              console.warn('⚠️ Item is null/undefined');
+              return null;
+            }
+            
+            if (!item.meta) {
+              console.warn('⚠️ Item.meta is undefined for item:', item);
+              return null;
+            }
+
+            return {
+              id: item.id || 'unknown',
+              discount_name: item.meta.discount_name || 'Unnamed Discount',
+              discount_code: item.meta.discount_code,
+              discount_type: item.meta.discount_type || 'PERCENTAGE',
+              start_date: item.meta.start_date || new Date().toISOString(),
+              end_date: item.meta.end_date || new Date().toISOString(),
+              applies_to: item.meta.applies_to || 'ALL',
+              final_value: Number(item.final_effective?.value || 0),
+              final_is_active: item.final_effective?.is_active ?? true,
+              scope: 'GENERAL' as const,
+              global_config: item.global_config,
+              branch_override: item.branch_override,
+              final_effective: item.final_effective
+            };
+          })
+          .filter((item): item is Discount => item !== null); // ✅ Filter null items
 
         // Filter search untuk general
         if (searchQuery) {
@@ -194,30 +213,42 @@ export default function BranchDiscountsPage() {
       // ========================================
       else if (scopeFilter === 'override') {
         const generalResponse = await branchDiscountAPI.getGeneral();
+        console.log('🔍 Override Response:', generalResponse); // Debug
+        
         const rawData = generalResponse.data || [];
         const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
         finalDiscounts = generalDataArr
           .filter((item: any) => {
+            if (!item) return false;
             // Hanya ambil yang SUDAH di-override
             const hasOverride = item.branch_override?.exists ?? false;
             return hasOverride;
           })
-          .map((item: any) => ({
-            id: item.id,
-            discount_name: item.meta.discount_name,
-            discount_code: item.meta.discount_code,
-            discount_type: item.meta.discount_type,
-            start_date: item.meta.start_date,
-            end_date: item.meta.end_date,
-            applies_to: item.meta.applies_to,
-            final_value: Number(item.final_effective?.value || 0),
-            final_is_active: item.final_effective?.is_active ?? true,
-            scope: 'OVERRIDE',
-            global_config: item.global_config,
-            branch_override: item.branch_override,
-            final_effective: item.final_effective
-          }));
+          .map((item: any) => {
+            // ✅ Validasi: Pastikan item dan item.meta ada
+            if (!item || !item.meta) {
+              console.warn('⚠️ Invalid item in override filter:', item);
+              return null;
+            }
+
+            return {
+              id: item.id || 'unknown',
+              discount_name: item.meta.discount_name || 'Unnamed Discount',
+              discount_code: item.meta.discount_code,
+              discount_type: item.meta.discount_type || 'PERCENTAGE',
+              start_date: item.meta.start_date || new Date().toISOString(),
+              end_date: item.meta.end_date || new Date().toISOString(),
+              applies_to: item.meta.applies_to || 'ALL',
+              final_value: Number(item.final_effective?.value || 0),
+              final_is_active: item.final_effective?.is_active ?? true,
+              scope: 'OVERRIDE' as const,
+              global_config: item.global_config,
+              branch_override: item.branch_override,
+              final_effective: item.final_effective
+            };
+          })
+          .filter((item): item is Discount => item !== null); // ✅ Filter null items
 
         // Filter search untuk override
         if (searchQuery) {
@@ -240,13 +271,13 @@ export default function BranchDiscountsPage() {
           search: searchQuery
         });
         
-        const localItems: Discount[] = localResponse.items.map((item: any) => ({
-          id: item.discount_rule_id,
-          discount_name: item.discount_name,
+        const localItems: Discount[] = (localResponse.items || []).map((item: any) => ({
+          id: item.discount_rule_id || item.id,
+          discount_name: item.discount_name || 'Unnamed Discount',
           discount_code: item.discount_code,
-          discount_type: item.discount_type,
-          start_date: item.start_date,
-          end_date: item.end_date,
+          discount_type: item.discount_type || 'PERCENTAGE',
+          start_date: item.start_date || new Date().toISOString(),
+          end_date: item.end_date || new Date().toISOString(),
           applies_to: item.applies_to || 'ALL',
           final_value: Number(item.value || 0),
           final_is_active: item.is_active ?? true,
@@ -255,28 +286,38 @@ export default function BranchDiscountsPage() {
 
         // 2. Ambil semua diskon GENERAL (baik yang override maupun belum)
         const generalResponse = await branchDiscountAPI.getGeneral();
+        console.log('🔍 All Response:', generalResponse); // Debug
+        
         const rawData = generalResponse.data || [];
         const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
-        const generalItems: Discount[] = generalDataArr.map((item: any) => {
-          const hasOverride = item.branch_override?.exists ?? false;
-          
-          return {
-            id: item.id,
-            discount_name: item.meta.discount_name,
-            discount_code: item.meta.discount_code,
-            discount_type: item.meta.discount_type,
-            start_date: item.meta.start_date,
-            end_date: item.meta.end_date,
-            applies_to: item.meta.applies_to,
-            final_value: Number(item.final_effective?.value || 0),
-            final_is_active: item.final_effective?.is_active ?? true,
-            scope: hasOverride ? 'OVERRIDE' : 'GENERAL',
-            global_config: item.global_config,
-            branch_override: item.branch_override,
-            final_effective: item.final_effective
-          };
-        });
+        const generalItems: Discount[] = generalDataArr
+          .map((item: any) => {
+            // ✅ Validasi: Pastikan item dan item.meta ada
+            if (!item || !item.meta) {
+              console.warn('⚠️ Invalid item in all filter:', item);
+              return null;
+            }
+
+            const hasOverride = item.branch_override?.exists ?? false;
+            
+            return {
+              id: item.id || 'unknown',
+              discount_name: item.meta.discount_name || 'Unnamed Discount',
+              discount_code: item.meta.discount_code,
+              discount_type: item.meta.discount_type || 'PERCENTAGE',
+              start_date: item.meta.start_date || new Date().toISOString(),
+              end_date: item.meta.end_date || new Date().toISOString(),
+              applies_to: item.meta.applies_to || 'ALL',
+              final_value: Number(item.final_effective?.value || 0),
+              final_is_active: item.final_effective?.is_active ?? true,
+              scope: hasOverride ? 'OVERRIDE' : 'GENERAL',
+              global_config: item.global_config,
+              branch_override: item.branch_override,
+              final_effective: item.final_effective
+            };
+          })
+          .filter((item): item is Discount => item !== null); // ✅ Filter null items
 
         // 3. Gabungkan General + Lokal
         const combined = [...generalItems, ...localItems];
@@ -284,7 +325,7 @@ export default function BranchDiscountsPage() {
         // 4. Hilangkan duplikasi berdasarkan ID
         const uniqueMap = new Map();
         combined.forEach(item => {
-          if (!uniqueMap.has(item.id)) {
+          if (item && item.id && !uniqueMap.has(item.id)) {
             uniqueMap.set(item.id, item);
           }
         });
@@ -305,7 +346,7 @@ export default function BranchDiscountsPage() {
       setMeta(paginationMeta);
 
     } catch (err: any) {
-      console.error("Error loading data:", err);
+      console.error("❌ Error loading data:", err);
       setError(err.message || 'Gagal memuat data diskon');
     } finally {
       setIsLoading(false);
