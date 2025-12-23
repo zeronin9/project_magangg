@@ -66,9 +66,8 @@ import {
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
 
-// ✅ UPDATE: Interface disesuaikan dengan struktur backend baru
 interface Discount {
-  id: string; // discount_rule_id
+  id: string;
   discount_name: string;
   discount_code?: string;
   discount_type: 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT';
@@ -76,14 +75,11 @@ interface Discount {
   end_date: string;
   applies_to: string;
   
-  // Nilai efektif yang ditampilkan
   final_value: number;
   final_is_active: boolean;
   
-  // Flag untuk membedakan scope
-  scope: 'GENERAL' | 'LOCAL' | 'OVERRIDE'; 
+  scope: 'GENERAL' | 'LOCAL' | 'OVERRIDE';
   
-  // Data mentah untuk keperluan override/edit
   global_config?: any;
   branch_override?: any;
   final_effective?: any;
@@ -97,13 +93,11 @@ export default function BranchDiscountsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filter & Pagination
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'override'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal States
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
@@ -111,13 +105,11 @@ export default function BranchDiscountsPage() {
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Trigger Load Data
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, searchQuery, scopeFilter]);
 
-  // Reset page saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, scopeFilter]);
@@ -129,13 +121,122 @@ export default function BranchDiscountsPage() {
       setIsLoading(true);
       setError('');
 
-      let allDiscounts: Discount[] = [];
+      let finalDiscounts: Discount[] = [];
+      let paginationMeta: MetaPagination | null = null;
 
-      // 1️⃣ Fetch Diskon LOKAL (branch_id != null)
-      if (scopeFilter === 'all' || scopeFilter === 'local') {
+      // ========================================
+      // FILTER: LOKAL
+      // ========================================
+      if (scopeFilter === 'local') {
         const localResponse = await branchDiscountAPI.getAll({
-          page: scopeFilter === 'local' ? currentPage : 1,
-          limit: scopeFilter === 'local' ? 10 : 100, // Ambil semua jika mode 'all'
+          page: currentPage,
+          limit: 10,
+          search: searchQuery
+        });
+        
+        finalDiscounts = localResponse.items.map((item: any) => ({
+          id: item.discount_rule_id,
+          discount_name: item.discount_name,
+          discount_code: item.discount_code,
+          discount_type: item.discount_type,
+          start_date: item.start_date,
+          end_date: item.end_date,
+          applies_to: item.applies_to || 'ALL',
+          final_value: Number(item.value || 0),
+          final_is_active: item.is_active ?? true,
+          scope: 'LOCAL'
+        }));
+
+        paginationMeta = localResponse.meta;
+      }
+      // ========================================
+      // FILTER: GENERAL (belum di-override)
+      // ========================================
+      else if (scopeFilter === 'general') {
+        const generalResponse = await branchDiscountAPI.getGeneral();
+        const rawData = generalResponse.data || [];
+        const generalDataArr = Array.isArray(rawData) ? rawData : [];
+
+        finalDiscounts = generalDataArr
+          .filter((item: any) => {
+            // Hanya ambil yang BELUM di-override
+            const hasOverride = item.branch_override?.exists ?? false;
+            return !hasOverride;
+          })
+          .map((item: any) => ({
+            id: item.id,
+            discount_name: item.meta.discount_name,
+            discount_code: item.meta.discount_code,
+            discount_type: item.meta.discount_type,
+            start_date: item.meta.start_date,
+            end_date: item.meta.end_date,
+            applies_to: item.meta.applies_to,
+            final_value: Number(item.final_effective?.value || 0),
+            final_is_active: item.final_effective?.is_active ?? true,
+            scope: 'GENERAL',
+            global_config: item.global_config,
+            branch_override: item.branch_override,
+            final_effective: item.final_effective
+          }));
+
+        // Filter search untuk general
+        if (searchQuery) {
+          finalDiscounts = finalDiscounts.filter(d => 
+            d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+          );
+        }
+
+        paginationMeta = null;
+      }
+      // ========================================
+      // FILTER: OVERRIDE (sudah di-override)
+      // ========================================
+      else if (scopeFilter === 'override') {
+        const generalResponse = await branchDiscountAPI.getGeneral();
+        const rawData = generalResponse.data || [];
+        const generalDataArr = Array.isArray(rawData) ? rawData : [];
+
+        finalDiscounts = generalDataArr
+          .filter((item: any) => {
+            // Hanya ambil yang SUDAH di-override
+            const hasOverride = item.branch_override?.exists ?? false;
+            return hasOverride;
+          })
+          .map((item: any) => ({
+            id: item.id,
+            discount_name: item.meta.discount_name,
+            discount_code: item.meta.discount_code,
+            discount_type: item.meta.discount_type,
+            start_date: item.meta.start_date,
+            end_date: item.meta.end_date,
+            applies_to: item.meta.applies_to,
+            final_value: Number(item.final_effective?.value || 0),
+            final_is_active: item.final_effective?.is_active ?? true,
+            scope: 'OVERRIDE',
+            global_config: item.global_config,
+            branch_override: item.branch_override,
+            final_effective: item.final_effective
+          }));
+
+        // Filter search untuk override
+        if (searchQuery) {
+          finalDiscounts = finalDiscounts.filter(d => 
+            d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+          );
+        }
+
+        paginationMeta = null;
+      }
+      // ========================================
+      // FILTER: SEMUA (General ALL + Lokal)
+      // ========================================
+      else {
+        // 1. Ambil semua diskon LOKAL
+        const localResponse = await branchDiscountAPI.getAll({
+          page: 1,
+          limit: 100,
           search: searchQuery
         });
         
@@ -152,90 +253,56 @@ export default function BranchDiscountsPage() {
           scope: 'LOCAL'
         }));
 
-        allDiscounts = [...allDiscounts, ...localItems];
+        // 2. Ambil semua diskon GENERAL (baik yang override maupun belum)
+        const generalResponse = await branchDiscountAPI.getGeneral();
+        const rawData = generalResponse.data || [];
+        const generalDataArr = Array.isArray(rawData) ? rawData : [];
 
-        // Jika filter 'local', gunakan meta dari response
-        if (scopeFilter === 'local') {
-          setMeta(localResponse.meta);
-        }
-      }
+        const generalItems: Discount[] = generalDataArr.map((item: any) => {
+          const hasOverride = item.branch_override?.exists ?? false;
+          
+          return {
+            id: item.id,
+            discount_name: item.meta.discount_name,
+            discount_code: item.meta.discount_code,
+            discount_type: item.meta.discount_type,
+            start_date: item.meta.start_date,
+            end_date: item.meta.end_date,
+            applies_to: item.meta.applies_to,
+            final_value: Number(item.final_effective?.value || 0),
+            final_is_active: item.final_effective?.is_active ?? true,
+            scope: hasOverride ? 'OVERRIDE' : 'GENERAL',
+            global_config: item.global_config,
+            branch_override: item.branch_override,
+            final_effective: item.final_effective
+          };
+        });
 
-      // 2️⃣ Fetch Diskon GENERAL & OVERRIDE (branch_id == null)
-      if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
-        try {
-          const generalResponse = await branchDiscountAPI.getGeneral();
-          const rawData = generalResponse.data || [];
-          const generalDataArr = Array.isArray(rawData) ? rawData : [];
+        // 3. Gabungkan General + Lokal
+        const combined = [...generalItems, ...localItems];
 
-          const generalItems: Discount[] = generalDataArr.map((item: any) => {
-            const branchOverrideExists = item.branch_override?.exists ?? false;
-            
-            // Tentukan scope berdasarkan keberadaan override
-            let itemScope: 'GENERAL' | 'OVERRIDE' = 'GENERAL';
-            if (branchOverrideExists) {
-              itemScope = 'OVERRIDE';
-            }
-
-            return {
-              id: item.id,
-              discount_name: item.meta.discount_name,
-              discount_code: item.meta.discount_code,
-              discount_type: item.meta.discount_type,
-              start_date: item.meta.start_date,
-              end_date: item.meta.end_date,
-              applies_to: item.meta.applies_to,
-              
-              // Gunakan nilai dari final_effective
-              final_value: Number(item.final_effective?.value || 0),
-              final_is_active: item.final_effective?.is_active ?? true,
-              
-              scope: itemScope,
-              
-              // Simpan data mentah untuk keperluan override/detail
-              global_config: item.global_config,
-              branch_override: item.branch_override,
-              final_effective: item.final_effective
-            };
-          });
-
-          // Filter berdasarkan scope
-          if (scopeFilter === 'general') {
-            const filtered = generalItems.filter(d => d.scope === 'GENERAL');
-            allDiscounts = [...allDiscounts, ...filtered];
-          } else if (scopeFilter === 'override') {
-            const filtered = generalItems.filter(d => d.scope === 'OVERRIDE');
-            allDiscounts = [...allDiscounts, ...filtered];
-          } else {
-            // scopeFilter === 'all', ambil semua
-            allDiscounts = [...allDiscounts, ...generalItems];
-          }
-
-        } catch (err) {
-          console.error("Gagal load general/override discounts", err);
-        }
-      }
-
-      // 3️⃣ Filter berdasarkan pencarian (untuk data general/override yang tidak punya pagination)
-      if (searchQuery && (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override')) {
-        allDiscounts = allDiscounts.filter(d => 
-          d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-          (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
-        );
-      }
-
-      // 4️⃣ Hilangkan duplikasi berdasarkan ID (untuk mode 'all')
-      if (scopeFilter === 'all') {
+        // 4. Hilangkan duplikasi berdasarkan ID
         const uniqueMap = new Map();
-        allDiscounts.forEach(item => {
+        combined.forEach(item => {
           if (!uniqueMap.has(item.id)) {
             uniqueMap.set(item.id, item);
           }
         });
-        allDiscounts = Array.from(uniqueMap.values());
-        setMeta(null); // Tidak ada pagination untuk mode 'all'
+        finalDiscounts = Array.from(uniqueMap.values());
+
+        // 5. Filter search untuk mode 'all'
+        if (searchQuery) {
+          finalDiscounts = finalDiscounts.filter(d => 
+            d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
+          );
+        }
+
+        paginationMeta = null;
       }
 
-      setDiscounts(allDiscounts);
+      setDiscounts(finalDiscounts);
+      setMeta(paginationMeta);
 
     } catch (err: any) {
       console.error("Error loading data:", err);
