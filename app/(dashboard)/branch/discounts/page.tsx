@@ -66,6 +66,47 @@ import {
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
 
+interface DiscountMeta {
+  discount_name: string;
+  discount_code?: string;
+  discount_type: 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT';
+  applies_to: string;
+  start_date: string;
+  end_date: string;
+}
+
+interface BranchOverride {
+  exists: boolean;
+  is_active_at_branch: boolean;
+  value: number | null;
+  min_transaction_amount: number | null;
+  min_item_quantity: number | null;
+  max_transaction_amount: number | null;
+  max_item_quantity: number | null;
+  max_discount_amount: number | null;
+  min_discount_amount: number | null;
+}
+
+interface FinalEffective {
+  is_active: boolean;
+  source: 'BRANCH_ADJUSTED' | 'GLOBAL_DEFAULT';
+  value: number;
+  min_transaction_amount: number | null;
+  min_item_quantity: number | null;
+  max_transaction_amount: number | null;
+  max_item_quantity: number | null;
+  max_discount_amount: number | null;
+  min_discount_amount: number | null;
+}
+
+interface GeneralDiscountResponse {
+  id: string;
+  meta: DiscountMeta;
+  global_config: Record<string, unknown>;
+  branch_override: BranchOverride;
+  final_effective: FinalEffective;
+}
+
 interface Discount {
   id: string;
   discount_name: string;
@@ -80,9 +121,9 @@ interface Discount {
   
   scope: 'GENERAL' | 'LOCAL' | 'OVERRIDE';
   
-  global_config?: any;
-  branch_override?: any;
-  final_effective?: any;
+  global_config?: Record<string, unknown>;
+  branch_override?: BranchOverride;
+  final_effective?: FinalEffective;
 }
 
 export default function BranchDiscountsPage() {
@@ -136,17 +177,17 @@ export default function BranchDiscountsPage() {
           });
           
           const items = localResponse?.items || [];
-          finalDiscounts = items.map((item: any) => ({
-            id: item?.discount_rule_id || item?.id || 'unknown',
-            discount_name: item?.discount_name || 'Unnamed Discount',
-            discount_code: item?.discount_code,
-            discount_type: item?.discount_type || 'PERCENTAGE',
-            start_date: item?.start_date || new Date().toISOString(),
-            end_date: item?.end_date || new Date().toISOString(),
-            applies_to: item?.applies_to || 'ALL',
+          finalDiscounts = items.map((item: Record<string, unknown>) => ({
+            id: (item?.discount_rule_id || item?.id || 'unknown') as string,
+            discount_name: (item?.discount_name || 'Unnamed Discount') as string,
+            discount_code: item?.discount_code as string | undefined,
+            discount_type: (item?.discount_type || 'PERCENTAGE') as 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT',
+            start_date: (item?.start_date || new Date().toISOString()) as string,
+            end_date: (item?.end_date || new Date().toISOString()) as string,
+            applies_to: (item?.applies_to || 'ALL') as string,
             final_value: Number(item?.value || 0),
-            final_is_active: item?.is_active ?? true,
-            scope: 'LOCAL'
+            final_is_active: item?.is_active !== undefined ? Boolean(item.is_active) : true,
+            scope: 'LOCAL' as const
           })).filter(d => d.id !== 'unknown');
 
           paginationMeta = localResponse?.meta || null;
@@ -163,19 +204,19 @@ export default function BranchDiscountsPage() {
           const generalResponse = await branchDiscountAPI.getGeneral();
           console.log('🔍 General Response:', JSON.stringify(generalResponse, null, 2));
           
-          let rawData = generalResponse?.data || generalResponse || [];
-          const generalDataArr = Array.isArray(rawData) ? rawData : [];
+          const rawData = (generalResponse?.data || generalResponse || []) as unknown;
+          const generalDataArr = Array.isArray(rawData) ? rawData as GeneralDiscountResponse[] : [];
 
           console.log('📦 General Data Array Length:', generalDataArr.length);
 
           finalDiscounts = generalDataArr
-            .filter((item: any) => {
+            .filter((item) => {
               if (!item) return false;
               // General = belum di-override
               const hasOverride = item?.branch_override?.exists ?? false;
               return !hasOverride;
             })
-            .map((item: any) => {
+            .map((item) => {
               try {
                 if (!item || !item.meta) {
                   console.warn('⚠️ Item or meta is undefined');
@@ -225,17 +266,17 @@ export default function BranchDiscountsPage() {
         try {
           const generalResponse = await branchDiscountAPI.getGeneral();
           
-          let rawData = generalResponse?.data || generalResponse || [];
-          const generalDataArr = Array.isArray(rawData) ? rawData : [];
+          const rawData = (generalResponse?.data || generalResponse || []) as unknown;
+          const generalDataArr = Array.isArray(rawData) ? rawData as GeneralDiscountResponse[] : [];
 
           finalDiscounts = generalDataArr
-            .filter((item: any) => {
+            .filter((item) => {
               if (!item) return false;
               // Override = sudah di-override
               const hasOverride = item?.branch_override?.exists ?? false;
               return hasOverride;
             })
-            .map((item: any) => {
+            .map((item) => {
               try {
                 if (!item || !item.meta) return null;
 
@@ -291,17 +332,17 @@ export default function BranchDiscountsPage() {
             });
             
             const items = localResponse?.items || [];
-            localItems = items.map((item: any) => ({
-              id: item?.discount_rule_id || item?.id || 'unknown',
-              discount_name: item?.discount_name || 'Unnamed Discount',
-              discount_code: item?.discount_code,
-              discount_type: item?.discount_type || 'PERCENTAGE',
-              start_date: item?.start_date || new Date().toISOString(),
-              end_date: item?.end_date || new Date().toISOString(),
-              applies_to: item?.applies_to || 'ALL',
+            localItems = items.map((item: Record<string, unknown>) => ({
+              id: (item?.discount_rule_id || item?.id || 'unknown') as string,
+              discount_name: (item?.discount_name || 'Unnamed Discount') as string,
+              discount_code: item?.discount_code as string | undefined,
+              discount_type: (item?.discount_type || 'PERCENTAGE') as 'PERCENTAGE' | 'NOMINAL' | 'FIXED_AMOUNT',
+              start_date: (item?.start_date || new Date().toISOString()) as string,
+              end_date: (item?.end_date || new Date().toISOString()) as string,
+              applies_to: (item?.applies_to || 'ALL') as string,
               final_value: Number(item?.value || 0),
-              final_is_active: item?.is_active ?? true,
-              scope: 'LOCAL'
+              final_is_active: item?.is_active !== undefined ? Boolean(item.is_active) : true,
+              scope: 'LOCAL' as const
             })).filter(d => d.id !== 'unknown');
           } catch (err) {
             console.error('❌ Error loading local (all filter):', err);
@@ -312,17 +353,17 @@ export default function BranchDiscountsPage() {
           try {
             const generalResponse = await branchDiscountAPI.getGeneral();
             
-            let rawData = generalResponse?.data || generalResponse || [];
-            const generalDataArr = Array.isArray(rawData) ? rawData : [];
+            const rawData = (generalResponse?.data || generalResponse || []) as unknown;
+            const generalDataArr = Array.isArray(rawData) ? rawData as GeneralDiscountResponse[] : [];
 
             generalItems = generalDataArr
-              .filter((item: any) => {
+              .filter((item) => {
                 if (!item) return false;
                 // Hanya ambil yang BELUM di-override
                 const hasOverride = item?.branch_override?.exists ?? false;
                 return !hasOverride;
               })
-              .map((item: any) => {
+              .map((item) => {
                 try {
                   if (!item || !item.meta) return null;
                   
@@ -355,7 +396,7 @@ export default function BranchDiscountsPage() {
           const combined = [...generalItems, ...localItems];
 
           // 4. Deduplicate berdasarkan ID
-          const uniqueMap = new Map();
+          const uniqueMap = new Map<string, Discount>();
           combined.forEach(item => {
             if (item && item.id && !uniqueMap.has(item.id)) {
               uniqueMap.set(item.id, item);
@@ -381,9 +422,10 @@ export default function BranchDiscountsPage() {
       setDiscounts(finalDiscounts);
       setMeta(paginationMeta);
 
-    } catch (err: any) {
-      console.error("❌ Error loading data:", err);
-      setError(err.message || 'Gagal memuat data diskon');
+    } catch (err) {
+      const error = err as Error;
+      console.error("❌ Error loading data:", error);
+      setError(error.message || 'Gagal memuat data diskon');
       setDiscounts([]);
     } finally {
       setIsLoading(false);
@@ -404,8 +446,9 @@ export default function BranchDiscountsPage() {
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedDiscount(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menonaktifkan diskon');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      alert(error.response?.data?.message || 'Gagal menonaktifkan diskon');
     } finally {
       setIsSubmitting(false);
     }
@@ -422,8 +465,9 @@ export default function BranchDiscountsPage() {
       await loadData();
       setIsRestoreOpen(false);
       setSelectedDiscount(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal mengaktifkan diskon');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      alert(error.response?.data?.message || 'Gagal mengaktifkan diskon');
     } finally {
       setIsSubmitting(false);
     }
@@ -438,8 +482,9 @@ export default function BranchDiscountsPage() {
       await loadData();
       setIsHardDeleteOpen(false);
       setSelectedDiscount(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menghapus permanen');
+    } catch (err) {
+      const error = err as { response?: { data?: { message?: string } } };
+      alert(error.response?.data?.message || 'Gagal menghapus permanen');
     } finally {
       setIsSubmitting(false);
     }
