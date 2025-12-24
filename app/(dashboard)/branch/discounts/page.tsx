@@ -212,16 +212,16 @@ export default function BranchDiscountsPage() {
                 limit: 10, 
                 search: searchQuery, 
                 type: 'local',
-                // Tambahkan parameter archived
-                archived: showArchived ? undefined : false
+                // ✅ PERBAIKAN: Kirim parameter archived ke API
+                ...(showArchived ? {} : { archived: false })
               }
             : { 
                 page: 1, 
                 limit: 100, 
                 search: searchQuery, 
                 type: 'local',
-                // Tambahkan parameter archived
-                archived: showArchived ? undefined : false
+                // ✅ PERBAIKAN: Kirim parameter archived ke API
+                ...(showArchived ? {} : { archived: false })
               };
           
           const localResponse = await branchDiscountAPI.getAll(localParams);
@@ -271,7 +271,9 @@ export default function BranchDiscountsPage() {
           const generalResponse = await branchDiscountAPI.getGeneral({ 
             page: 1, 
             limit: 100, 
-            search: searchQuery 
+            search: searchQuery,
+            // ✅ PERBAIKAN: Tambahkan parameter archived untuk API general
+            ...(showArchived ? {} : { archived: false })
           });
           
           console.log('📦 GENERAL RESPONSE:', generalResponse);
@@ -447,20 +449,11 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // ✅ PERBAIKAN: Filter dilakukan di backend dengan parameter archived
-  // Client-side hanya perlu filter untuk general discounts jika showArchived = false
-  const filteredDiscounts = showArchived 
-    ? discounts // Tampilkan SEMUA (aktif + non-aktif)
-    : discounts.filter(d => {
-        // Untuk diskon general, tetap tampilkan yang aktif saja karena tidak ada parameter archived di API
-        if (d.scope === 'general') {
-          return d.is_active !== false;
-        }
-        // Untuk diskon lokal, backend sudah filter dengan parameter archived
-        return true;
-      });
+  // ✅ PERBAIKAN: Filtering sudah dilakukan di backend, tidak perlu filter client-side
+  // Data yang datang dari backend sudah sesuai dengan parameter archived yang dikirim
+  const filteredDiscounts = discounts;
 
-  console.log('🎯 After archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
+  console.log('🎯 Discounts to display:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
   console.log('   📊 Breakdown:', {
     total: discounts.length,
     active: discounts.filter(d => d.is_active !== false).length,
