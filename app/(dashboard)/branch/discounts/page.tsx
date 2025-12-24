@@ -145,11 +145,11 @@ export default function BranchDiscountsPage() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, scopeFilter]);
+  }, [currentPage, searchQuery, scopeFilter, showArchived]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, scopeFilter]);
+  }, [searchQuery, scopeFilter, showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -170,7 +170,7 @@ export default function BranchDiscountsPage() {
       setError('');
 
       console.log('='.repeat(80));
-      console.log('🔄 LOADING DATA - scopeFilter:', scopeFilter);
+      console.log('🔄 LOADING DATA - scopeFilter:', scopeFilter, '| showArchived:', showArchived);
       console.log('='.repeat(80));
 
       let localItems: Discount[] = [];
@@ -207,8 +207,22 @@ export default function BranchDiscountsPage() {
           console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local)...');
           
           const localParams = scopeFilter === 'local' 
-            ? { page: currentPage, limit: 10, search: searchQuery, type: 'local' }
-            : { page: 1, limit: 100, search: searchQuery, type: 'local' };
+            ? { 
+                page: currentPage, 
+                limit: 10, 
+                search: searchQuery, 
+                type: 'local',
+                // Tambahkan parameter archived
+                archived: showArchived ? undefined : false
+              }
+            : { 
+                page: 1, 
+                limit: 100, 
+                search: searchQuery, 
+                type: 'local',
+                // Tambahkan parameter archived
+                archived: showArchived ? undefined : false
+              };
           
           const localResponse = await branchDiscountAPI.getAll(localParams);
           
@@ -236,6 +250,8 @@ export default function BranchDiscountsPage() {
               }));
             
             console.log(`✅ Processed ${localItems.length} LOCAL items`);
+            console.log(`   - Active: ${localItems.filter(d => d.is_active).length}`);
+            console.log(`   - Inactive: ${localItems.filter(d => !d.is_active).length}`);
           }
           
           if (scopeFilter === 'local') {
@@ -356,6 +372,8 @@ export default function BranchDiscountsPage() {
 
       console.log('---');
       console.log('📊 FINAL RESULT:', finalDiscounts.length, 'items');
+      console.log('   - Active:', finalDiscounts.filter(d => d.is_active).length);
+      console.log('   - Inactive:', finalDiscounts.filter(d => !d.is_active).length);
       console.log('='.repeat(80));
 
       setDiscounts(finalDiscounts);
@@ -429,11 +447,18 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // ✅ PERBAIKAN: Filter berdasarkan status archived
-  // Logika: showArchived=false → tampilkan AKTIF | showArchived=true → tampilkan SEMUA
+  // ✅ PERBAIKAN: Filter dilakukan di backend dengan parameter archived
+  // Client-side hanya perlu filter untuk general discounts jika showArchived = false
   const filteredDiscounts = showArchived 
     ? discounts // Tampilkan SEMUA (aktif + non-aktif)
-    : discounts.filter(d => d.is_active !== false); // Hanya yang aktif
+    : discounts.filter(d => {
+        // Untuk diskon general, tetap tampilkan yang aktif saja karena tidak ada parameter archived di API
+        if (d.scope === 'general') {
+          return d.is_active !== false;
+        }
+        // Untuk diskon lokal, backend sudah filter dengan parameter archived
+        return true;
+      });
 
   console.log('🎯 After archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
   console.log('   📊 Breakdown:', {
@@ -585,7 +610,11 @@ export default function BranchDiscountsPage() {
                   <TableCell colSpan={9} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
-                      {searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada diskon'}
+                      {searchQuery 
+                        ? 'Tidak ada hasil pencarian' 
+                        : showArchived 
+                          ? 'Belum ada diskon yang diarsipkan' 
+                          : 'Belum ada diskon'}
                     </p>
                   </TableCell>
                 </TableRow>
@@ -599,6 +628,11 @@ export default function BranchDiscountsPage() {
                         <div className="flex items-center gap-2">
                           <Tag className="h-4 w-4 text-muted-foreground" />
                           {discount.discount_name}
+                          {!discount.is_active && (
+                            <Badge variant="outline" className="ml-2 text-xs bg-gray-100">
+                              Diarsipkan
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -648,7 +682,7 @@ export default function BranchDiscountsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {isTimeActive ? (
+                        {discount.is_active && isTimeActive ? (
                           <Badge variant="default" className="bg-green-600 hover:bg-green-700">
                             <CheckCircle2 className="mr-1 h-3 w-3" /> Aktif
                           </Badge>
@@ -670,7 +704,15 @@ export default function BranchDiscountsPage() {
                             </DropdownMenuItem>
                             
                             <DropdownMenuSeparator />
-                            {!showArchived ? (
+                            {!discount.is_active ? (
+                              // Diskon yang diarsipkan
+                              discount.scope === 'local' && (
+                                <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black">
+                                  <RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali
+                                </DropdownMenuItem>
+                              )
+                            ) : (
+                              // Diskon yang aktif
                               <>
                                 {discount.scope === 'local' ? (
                                   <>
@@ -684,10 +726,6 @@ export default function BranchDiscountsPage() {
                                   <DropdownMenuItem onClick={() => handleOverrideClick(discount)}><Settings className="mr-2 h-4 w-4" /> Override Setting</DropdownMenuItem>
                                 )}
                               </>
-                            ) : (
-                              discount.scope === 'local' && (
-                                <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black"><RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali</DropdownMenuItem>
-                              )
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
