@@ -183,34 +183,51 @@ export default function BranchDiscountsPage() {
         try {
           console.log('🔍 Step 1: Fetching OVERRIDE INFO from /branch-discount-setting...');
           const overrideResponse = await branchDiscountAPI.getGeneralWithOverride();
+          console.log('📦 Override Response type:', typeof overrideResponse, Array.isArray(overrideResponse));
           console.log('📦 Override Response:', overrideResponse);
           
-          if (Array.isArray(overrideResponse)) {
-            overrideResponse.forEach((item: any) => {
+          // ✅ PERBAIKAN: Handle berbagai struktur response
+          let overrideData = overrideResponse;
+          
+          // Jika response adalah object dengan property 'data' atau 'items'
+          if (overrideResponse && typeof overrideResponse === 'object') {
+            if ('data' in overrideResponse && Array.isArray(overrideResponse.data)) {
+              overrideData = overrideResponse.data;
+            } else if ('items' in overrideResponse && Array.isArray(overrideResponse.items)) {
+              overrideData = overrideResponse.items;
+            }
+          }
+          
+          if (Array.isArray(overrideData)) {
+            console.log('✅ Processing', overrideData.length, 'override items...');
+            overrideData.forEach((item: any) => {
               if (item.applied_in_branches && item.applied_in_branches.length > 0) {
                 const branchSetting = item.applied_in_branches[0];
                 overrideInfo.set(item.discount_rule_id, branchSetting);
+                console.log('  - Override found for:', item.discount_name || item.discount_rule_id);
               }
             });
+            console.log(`✅ Found ${overrideInfo.size} override settings`);
+          } else {
+            console.warn('⚠️ Override response is not an array:', overrideData);
           }
-          console.log(`✅ Found ${overrideInfo.size} override settings`);
         } catch (err) {
           console.error("❌ ERROR fetching override info:", err);
         }
       }
 
-      // ===== Step 2: Fetch LOCAL discounts (type=local) =====
+      // ===== Step 2: Fetch LOCAL discounts (type=local&status=all) =====
       const shouldLoadLocal = scopeFilter === 'all' || scopeFilter === 'local';
       
       if (shouldLoadLocal) {
         try {
           console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local&status=all)...');
           
-          // ✅ PERBAIKAN: Tambahkan status='all' untuk mengambil semua diskon (aktif + arsip)
           const localParams = scopeFilter === 'local' 
             ? { page: currentPage, limit: 10, search: searchQuery, type: 'local', status: 'all' }
             : { page: 1, limit: 100, search: searchQuery, type: 'local', status: 'all' };
           
+          console.log('📤 LOCAL API params:', localParams);
           const localResponse = await branchDiscountAPI.getAll(localParams);
           
           console.log('📦 LOCAL RESPONSE:', localResponse);
@@ -221,20 +238,23 @@ export default function BranchDiscountsPage() {
           if (Array.isArray(items)) {
             localItems = items
               .filter((item: LocalDiscount) => item?.discount_rule_id && item?.discount_name)
-              .map((item: LocalDiscount) => ({
-                discount_rule_id: item.discount_rule_id,
-                discount_name: item.discount_name,
-                discount_code: item.discount_code,
-                discount_type: item.discount_type,
-                value: Number(item.value || 0),
-                start_date: item.start_date || new Date().toISOString(),
-                end_date: item.end_date || new Date().toISOString(),
-                branch_id: item.branch_id,
-                is_active: item.is_active ?? true,
-                original_value: undefined,
-                is_overridden: false,
-                scope: 'local' as const,
-              }));
+              .map((item: LocalDiscount) => {
+                console.log('  - LOCAL:', item.discount_name, '| is_active:', item.is_active);
+                return {
+                  discount_rule_id: item.discount_rule_id,
+                  discount_name: item.discount_name,
+                  discount_code: item.discount_code,
+                  discount_type: item.discount_type,
+                  value: Number(item.value || 0),
+                  start_date: item.start_date || new Date().toISOString(),
+                  end_date: item.end_date || new Date().toISOString(),
+                  branch_id: item.branch_id,
+                  is_active: item.is_active ?? true,
+                  original_value: undefined,
+                  is_overridden: false,
+                  scope: 'local' as const,
+                };
+              });
             
             console.log(`✅ Processed ${localItems.length} LOCAL items`);
           }
@@ -247,22 +267,25 @@ export default function BranchDiscountsPage() {
         }
       }
 
-      // ===== Step 3: Fetch GENERAL discounts (type=general) =====
+      // ===== Step 3: Fetch GENERAL discounts (type=general&status=all) =====
       const shouldLoadGeneral = scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override';
       
       if (shouldLoadGeneral) {
         try {
-          console.log('🔍 Step 3: Fetching GENERAL discounts (/discount-rule?type=general)...');
+          console.log('🔍 Step 3: Fetching GENERAL discounts (/discount-rule?type=general&status=all)...');
+          
+          // ✅ PERBAIKAN: Tambahkan status='all' untuk ambil semua diskon general (termasuk arsip)
           const generalResponse = await branchDiscountAPI.getGeneral({ 
             page: 1, 
             limit: 100, 
-            search: searchQuery 
+            search: searchQuery,
+            status: 'all' // ✅ PENTING: Ambil semua data (aktif + arsip)
           });
           
           console.log('📦 GENERAL RESPONSE:', generalResponse);
           
           const items = generalResponse?.items || [];
-          console.log(`📊 Total GENERAL items: ${items.length}`);
+          console.log(`📊 Total GENERAL items from API: ${items.length}`);
 
           if (Array.isArray(items)) {
             generalItems = items
@@ -282,6 +305,8 @@ export default function BranchDiscountsPage() {
                   }
                   isActive = item.is_active && branchSetting.is_active_at_branch;
                 }
+
+                console.log('  - GENERAL:', item.discount_name, '| is_active:', isActive, '| override:', hasOverride);
 
                 return {
                   discount_rule_id: item.discount_rule_id,
@@ -356,7 +381,9 @@ export default function BranchDiscountsPage() {
       finalDiscounts = Array.from(discountMap.values());
 
       console.log('---');
-      console.log('📊 FINAL RESULT:', finalDiscounts.length, 'items');
+      console.log('📊 BEFORE FILTER - Total items:', finalDiscounts.length);
+      console.log('📊 Active items:', finalDiscounts.filter(d => d.is_active).length);
+      console.log('📊 Archived items:', finalDiscounts.filter(d => !d.is_active).length);
       console.log('='.repeat(80));
 
       setDiscounts(finalDiscounts);
@@ -431,8 +458,6 @@ export default function BranchDiscountsPage() {
   };
 
   // ✅ PERBAIKAN: Filter berdasarkan status archived
-  // Jika showArchived = true → Tampilkan yang is_active = false
-  // Jika showArchived = false → Tampilkan yang is_active = true
   const filteredDiscounts = discounts.filter((discount) => {
     if (showArchived) {
       return !discount.is_active; // Tampilkan hanya yang diarsipkan
