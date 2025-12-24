@@ -252,11 +252,14 @@ export const categoryAPI = {
 
 // ==================== DISCOUNT (UPDATED) ====================
 export const discountAPI = {
-  // ✅ Updated: Support pagination
+  // ✅ FIXED: Support pagination, status filter, type filter, dan show_all
   getAll: async (params?: { 
     page?: number; 
     limit?: number; 
-    search?: string 
+    search?: string;
+    status?: 'active' | 'archived' | 'all'; // Filter berdasarkan status
+    type?: 'general' | 'local'; // Filter berdasarkan scope
+    show_all?: boolean; // Tampilkan semua (aktif + arsip)
   }) => {
     const response = await apiClient.get('/discount-rule', { params });
     // Mengembalikan PaginatedResponse<DiscountRule>
