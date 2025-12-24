@@ -153,187 +153,248 @@ export default function BranchDiscountsPage() {
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadData = async () => {
-    try {
-      setIsLoading(true);
-      setError('');
+  try {
+    setIsLoading(true);
+    setError('');
 
-      let localItems: Discount[] = [];
-      let generalItems: Discount[] = [];
-      let newMeta: MetaPagination | null = null;
+    console.log('='.repeat(80));
+    console.log('🔄 LOADING DATA - scopeFilter:', scopeFilter);
+    console.log('='.repeat(80));
 
-      // 1. Fetch Local Discounts (Diskon yang dibuat langsung di cabang)
-      // Hanya load jika scope filter membutuhkan data lokal
-      if (scopeFilter === 'all' || scopeFilter === 'local') {
-        try {
-          const localResponse = await branchDiscountAPI.getAll({
-            page: currentPage,
-            limit: 10,
-            search: searchQuery
-          });
-          
-          const items = localResponse?.items || [];
-          if (Array.isArray(items)) {
-            localItems = items
-              .filter((item: LocalDiscount) => item?.discount_rule_id && item?.discount_name)
-              .map((item: LocalDiscount) => ({
-                discount_rule_id: item.discount_rule_id,
-                discount_name: item.discount_name,
-                discount_code: item.discount_code,
-                discount_type: item.discount_type,
-                value: Number(item.value || 0),
-                start_date: item.start_date || new Date().toISOString(),
-                end_date: item.end_date || new Date().toISOString(),
-                branch_id: item.branch_id,
-                is_active: item.is_active ?? true,
-                original_value: undefined,
-                is_overridden: false,
-                scope: 'local' as const,
-              }));
-          }
-          
-          console.log('✅ Local items loaded:', localItems.length);
-          
-          // Gunakan meta hanya jika filter scope adalah 'local'
-          if (scopeFilter === 'local') {
-            newMeta = localResponse?.meta || null;
-          }
-        } catch (err) {
-          console.error("❌ Gagal load local discounts:", err);
-        }
-      }
+    let localItems: Discount[] = [];
+    let generalItems: Discount[] = [];
+    let newMeta: MetaPagination | null = null;
 
-      // 2. Fetch General Discounts (Diskon dari Partner/Pusat)
-      // Hanya load jika scope filter membutuhkan data general
-      if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
-        try {
-          const generalResponse = await branchDiscountAPI.getGeneral();
+    // ===== DEBUG: Fetch LOCAL =====
+    const shouldLoadLocal = scopeFilter === 'all' || scopeFilter === 'local';
+    
+    if (shouldLoadLocal) {
+      try {
+        console.log('📥 Fetching LOCAL discounts...');
+        
+        const localParams = scopeFilter === 'local' 
+          ? { page: currentPage, limit: 10, search: searchQuery }
+          : { page: 1, limit: 100, search: searchQuery };
+        
+        const localResponse = await branchDiscountAPI.getAll(localParams);
+        
+        console.log('📦 RAW LOCAL RESPONSE:');
+        console.log(JSON.stringify(localResponse, null, 2));
+        
+        const items = localResponse?.items || [];
+        console.log(`📊 Total items from LOCAL API: ${items.length}`);
+        
+        // ===== CRITICAL DEBUG: Inspect setiap item =====
+        items.forEach((item: any, index: number) => {
+          console.log(`---`);
+          console.log(`🔍 LOCAL Item #${index + 1}:`);
+          console.log(`   - discount_rule_id: ${item.discount_rule_id}`);
+          console.log(`   - discount_name: ${item.discount_name}`);
+          console.log(`   - branch_id: ${item.branch_id}`);
+          console.log(`   - branch_id type: ${typeof item.branch_id}`);
+          console.log(`   - branch_id === null? ${item.branch_id === null}`);
+          console.log(`   - branch_id === undefined? ${item.branch_id === undefined}`);
+          console.log(`   - branch_id === ''? ${item.branch_id === ''}`);
+          console.log(`   - partner_id: ${item.partner_id || 'N/A'}`);
+          console.log(`   - Full item:`, item);
+        });
+        
+        if (Array.isArray(items)) {
+          let skippedCount = 0;
+          let includedCount = 0;
           
-          console.log('📦 Raw general response:', generalResponse);
-          
-          // Backend mengirim array langsung
-          const generalDataArr: GeneralDiscountFromBackend[] = Array.isArray(generalResponse) 
-            ? generalResponse 
-            : [];
-
-          console.log('📊 General data array length:', generalDataArr.length);
-
-          // Transform data general dengan logic override
-          generalItems = generalDataArr
-            .filter((item) => {
-              if (!item || !item.discount_rule_id || !item.discount_name) {
-                console.warn('⚠️ General discount item tidak valid, di-skip:', item);
+          localItems = items
+            .filter((item: LocalDiscount) => {
+              const isValid = item?.discount_rule_id && item?.discount_name;
+              const isTrulyLocal = item?.branch_id !== null && 
+                                   item?.branch_id !== undefined && 
+                                   item?.branch_id !== '';
+              
+              if (!isValid) {
+                console.warn('❌ REJECTED (invalid):', item.discount_name);
+                skippedCount++;
                 return false;
               }
+              
+              if (!isTrulyLocal) {
+                console.warn(`❌ REJECTED (branch_id = ${item.branch_id}):`, item.discount_name);
+                skippedCount++;
+                return false;
+              }
+              
+              console.log(`✅ ACCEPTED (branch_id = ${item.branch_id}):`, item.discount_name);
+              includedCount++;
               return true;
             })
-            .map((item) => {
-              // Ambil setting override cabang (jika ada)
-              const branchSetting = item.applied_in_branches?.[0] || null;
-              const hasOverride = !!branchSetting;
-
-              console.log(`🔍 Processing discount "${item.discount_name}":`, {
-                hasOverride,
-                applied_in_branches_length: item.applied_in_branches?.length || 0,
-                branchSetting
-              });
-
-              // Tentukan nilai efektif (priority: branch override > global)
-              let effectiveValue = Number(item.value || 0);
-              let originalValue = Number(item.value || 0);
-              let isActive = item.is_active ?? true;
-
-              if (hasOverride) {
-                // Jika ada override dan valuenya tidak null, gunakan value override
-                if (branchSetting.value !== null && branchSetting.value !== undefined) {
-                  effectiveValue = Number(branchSetting.value);
-                }
-                // is_active bergantung pada global DAN branch
-                isActive = item.is_active && branchSetting.is_active_at_branch;
-              }
-
-              return {
-                discount_rule_id: item.discount_rule_id,
-                discount_name: item.discount_name,
-                discount_code: item.discount_code,
-                discount_type: item.discount_type,
-                value: effectiveValue,
-                start_date: item.start_date,
-                end_date: item.end_date,
-                branch_id: null,
-                is_active: isActive,
-                original_value: hasOverride ? originalValue : undefined,
-                is_overridden: hasOverride,
-                scope: 'general' as const,
-              } as Discount;
-            });
-
-          console.log('✅ General items transformed:', generalItems.length);
-
-          // Filter pencarian client-side untuk general items
-          if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            generalItems = generalItems.filter((d) =>
-              d.discount_name.toLowerCase().includes(q) ||
-              (d.discount_code && d.discount_code.toLowerCase().includes(q))
-            );
-            console.log('🔎 General items after search filter:', generalItems.length);
-          }
-        } catch (err) {
-          console.error("❌ Gagal load general discounts:", err);
+            .map((item: LocalDiscount) => ({
+              discount_rule_id: item.discount_rule_id,
+              discount_name: item.discount_name,
+              discount_code: item.discount_code,
+              discount_type: item.discount_type,
+              value: Number(item.value || 0),
+              start_date: item.start_date || new Date().toISOString(),
+              end_date: item.end_date || new Date().toISOString(),
+              branch_id: item.branch_id,
+              is_active: item.is_active ?? true,
+              original_value: undefined,
+              is_overridden: false,
+              scope: 'local' as const,
+            }));
+          
+          console.log('---');
+          console.log(`📊 LOCAL API SUMMARY:`);
+          console.log(`   - Total from API: ${items.length}`);
+          console.log(`   - Accepted: ${includedCount}`);
+          console.log(`   - Rejected: ${skippedCount}`);
         }
+        
+        if (scopeFilter === 'local') {
+          newMeta = localResponse?.meta || null;
+        }
+      } catch (err) {
+        console.error("❌ ERROR fetching local discounts:", err);
       }
-
-      // 3. LOGIKA FILTER SCOPE
-      let finalDiscounts: Discount[] = [];
-
-      switch (scopeFilter) {
-        case 'all':
-          // Filter "Semua" = Gabungan General (semua: override + non-override) + Lokal
-          finalDiscounts = [...generalItems, ...localItems];
-          console.log('📋 Filter ALL - Total:', finalDiscounts.length, '(General:', generalItems.length, '+ Local:', localItems.length, ')');
-          newMeta = null; // Tidak pakai pagination server
-          break;
-          
-        case 'general':
-          // Filter "General" = Hanya diskon General yang BELUM di-override
-          finalDiscounts = generalItems.filter(d => !d.is_overridden);
-          console.log('🌍 Filter GENERAL - Non-override:', finalDiscounts.length, 'dari', generalItems.length);
-          console.log('🌍 General items detail:', generalItems.map(d => ({ name: d.discount_name, isOverridden: d.is_overridden })));
-          newMeta = null;
-          break;
-          
-        case 'local':
-          // Filter "Lokal" = Hanya diskon yang dibuat langsung di cabang
-          finalDiscounts = localItems;
-          console.log('🏢 Filter LOCAL - Total:', finalDiscounts.length);
-          // newMeta sudah di-set dari localResponse
-          break;
-          
-        case 'override':
-          // Filter "Override" = Hanya diskon General yang SUDAH di-override
-          finalDiscounts = generalItems.filter(d => d.is_overridden);
-          console.log('⚙️ Filter OVERRIDE - Overridden:', finalDiscounts.length, 'dari', generalItems.length);
-          newMeta = null;
-          break;
-          
-        default:
-          finalDiscounts = [];
-          break;
-      }
-
-      console.log('📊 Final discounts before archived filter:', finalDiscounts.length);
-
-      setDiscounts(finalDiscounts);
-      setMeta(newMeta);
-
-    } catch (err) {
-      const error = err as Error;
-      console.error("❌ Error loading data:", error);
-      setError(error.message || 'Gagal memuat data diskon');
-    } finally {
-      setIsLoading(false);
     }
-  };
+
+    // ===== DEBUG: Fetch GENERAL =====
+    const shouldLoadGeneral = scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override';
+    
+    if (shouldLoadGeneral) {
+      try {
+        console.log('📥 Fetching GENERAL discounts...');
+        const generalResponse = await branchDiscountAPI.getGeneral();
+        
+        console.log('📦 RAW GENERAL RESPONSE:');
+        console.log(JSON.stringify(generalResponse, null, 2));
+        
+        const generalDataArr: GeneralDiscountFromBackend[] = Array.isArray(generalResponse) 
+          ? generalResponse 
+          : [];
+
+        console.log(`📊 Total items from GENERAL API: ${generalDataArr.length}`);
+
+        // ===== CRITICAL DEBUG: Inspect setiap item =====
+        generalDataArr.forEach((item: any, index: number) => {
+          console.log(`---`);
+          console.log(`🔍 GENERAL Item #${index + 1}:`);
+          console.log(`   - discount_rule_id: ${item.discount_rule_id}`);
+          console.log(`   - discount_name: ${item.discount_name}`);
+          console.log(`   - branch_id: ${item.branch_id}`);
+          console.log(`   - branch_id type: ${typeof item.branch_id}`);
+          console.log(`   - partner_id: ${item.partner_id || 'N/A'}`);
+          console.log(`   - applied_in_branches:`, item.applied_in_branches);
+        });
+
+        generalItems = generalDataArr
+          .filter((item) => item && item.discount_rule_id && item.discount_name)
+          .map((item) => {
+            const branchSetting = item.applied_in_branches?.[0] || null;
+            const hasOverride = !!branchSetting;
+
+            let effectiveValue = Number(item.value || 0);
+            let originalValue = Number(item.value || 0);
+            let isActive = item.is_active ?? true;
+
+            if (hasOverride) {
+              if (branchSetting.value !== null && branchSetting.value !== undefined) {
+                effectiveValue = Number(branchSetting.value);
+              }
+              isActive = item.is_active && branchSetting.is_active_at_branch;
+            }
+
+            return {
+              discount_rule_id: item.discount_rule_id,
+              discount_name: item.discount_name,
+              discount_code: item.discount_code,
+              discount_type: item.discount_type,
+              value: effectiveValue,
+              start_date: item.start_date,
+              end_date: item.end_date,
+              branch_id: null,
+              is_active: isActive,
+              original_value: hasOverride ? originalValue : undefined,
+              is_overridden: hasOverride,
+              scope: 'general' as const,
+            } as Discount;
+          });
+
+        if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          generalItems = generalItems.filter((d) =>
+            d.discount_name.toLowerCase().includes(q) ||
+            (d.discount_code && d.discount_code.toLowerCase().includes(q))
+          );
+        }
+      } catch (err) {
+        console.error("❌ ERROR fetching general discounts:", err);
+      }
+    }
+
+    // ===== COMBINE DATA =====
+    let finalDiscounts: Discount[] = [];
+
+    console.log('---');
+    console.log('🎯 COMBINING DATA:');
+    console.log(`   - GENERAL items: ${generalItems.length}`);
+    console.log(`   - LOCAL items: ${localItems.length}`);
+
+    switch (scopeFilter) {
+      case 'all':
+        const generalNonOverride = generalItems.filter(d => !d.is_overridden);
+        finalDiscounts = [...generalNonOverride, ...localItems];
+        console.log(`📋 Filter ALL: ${generalNonOverride.length} general + ${localItems.length} local = ${finalDiscounts.length} total`);
+        break;
+        
+      case 'general':
+        finalDiscounts = [...generalItems];
+        console.log(`🌍 Filter GENERAL: ${finalDiscounts.length} items`);
+        break;
+        
+      case 'local':
+        finalDiscounts = [...localItems];
+        console.log(`🏢 Filter LOCAL: ${finalDiscounts.length} items`);
+        break;
+        
+      case 'override':
+        finalDiscounts = generalItems.filter(d => d.is_overridden);
+        console.log(`⚙️ Filter OVERRIDE: ${finalDiscounts.length} items`);
+        break;
+    }
+
+    // ===== DEDUPLICATE =====
+    const discountMap = new Map<string, Discount>();
+    finalDiscounts.forEach(discount => {
+      if (!discountMap.has(discount.discount_rule_id)) {
+        discountMap.set(discount.discount_rule_id, discount);
+      } else {
+        console.warn('⚠️ DUPLICATE REMOVED:', discount.discount_name, `(scope: ${discount.scope})`);
+      }
+    });
+
+    finalDiscounts = Array.from(discountMap.values());
+
+    console.log('---');
+    console.log('📊 FINAL RESULT:');
+    console.table(finalDiscounts.map(d => ({ 
+      id: d.discount_rule_id.substring(0, 8) + '...', 
+      name: d.discount_name, 
+      scope: d.scope,
+      branch_id: d.branch_id ? d.branch_id.substring(0, 8) + '...' : 'null',
+      is_overridden: d.is_overridden
+    })));
+    console.log('='.repeat(80));
+
+    setDiscounts(finalDiscounts);
+    setMeta(newMeta);
+
+  } catch (err) {
+    const error = err as Error;
+    console.error("❌ CRITICAL ERROR:", error);
+    setError(error.message || 'Gagal memuat data diskon');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleCreateClick = () => router.push('/branch/discounts/new');
   const handleEditClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/edit`);
@@ -400,13 +461,34 @@ export default function BranchDiscountsPage() {
     return isActiveMatch;
   });
 
-  console.log('🎯 Discounts after archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
+  console.log('🎯 After archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
 
-  // Pagination logic
-  const itemsToShow = meta 
-    ? filteredDiscounts 
-    : filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
-  const totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
+  // ✅ PERBAIKAN: Pagination logic
+  let itemsToShow: Discount[];
+  let totalPagesClient: number;
+  let currentTotalPages: number;
+  let hasPrevPage: boolean;
+  let hasNextPage: boolean;
+
+  if (meta) {
+    // Server-side pagination (untuk filter "local")
+    itemsToShow = filteredDiscounts;
+    currentTotalPages = meta.total_pages;
+    hasPrevPage = meta.has_prev_page;
+    hasNextPage = meta.has_next_page;
+    console.log('📄 Using SERVER pagination - Page', currentPage, 'of', currentTotalPages);
+  } else {
+    // Client-side pagination (untuk filter "all", "general", "override")
+    totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
+    itemsToShow = filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
+    currentTotalPages = totalPagesClient;
+    hasPrevPage = currentPage > 1;
+    hasNextPage = currentPage < totalPagesClient;
+    console.log('📄 Using CLIENT pagination - Page', currentPage, 'of', currentTotalPages);
+    console.log('   - Total items:', filteredDiscounts.length);
+    console.log('   - Items on this page:', itemsToShow.length);
+    console.log('   - Slice range:', (currentPage - 1) * 10, 'to', currentPage * 10);
+  }
 
   console.log('📄 Items to show on page', currentPage, ':', itemsToShow.length);
 
@@ -472,8 +554,8 @@ export default function BranchDiscountsPage() {
         <Filter className="h-4 w-4" />
         <AlertDescription>
           <strong>Filter Scope:</strong> 
-          <br/>• <strong>Semua</strong> = Diskon General + Lokal (semua diskon termasuk yang di-override)
-          <br/>• <strong>General</strong> = Hanya diskon pusat yang belum di-override 
+          <br/>• <strong>Semua</strong> = Diskon General (non-override) + Lokal
+          <br/>• <strong>General</strong> = Semua diskon dari pusat/partner
           <br/>• <strong>Lokal</strong> = Hanya diskon khusus cabang ini
           <br/>• <strong>Override</strong> = Diskon general yang sudah diubah di cabang ini
         </AlertDescription>
@@ -631,12 +713,12 @@ export default function BranchDiscountsPage() {
                   href="#" 
                   onClick={(e) => { 
                     e.preventDefault(); 
-                    if ((meta && meta.current_page > 1) || (!meta && currentPage > 1)) {
+                    if (hasPrevPage) {
                       handlePageChange(currentPage - 1); 
                     }
                   }}
                   className={
-                    (meta && !meta.has_prev_page) || (!meta && currentPage <= 1)
+                    !hasPrevPage
                       ? 'pointer-events-none opacity-50' 
                       : 'cursor-pointer'
                   }
@@ -644,7 +726,7 @@ export default function BranchDiscountsPage() {
               </PaginationItem>
               <PaginationItem>
                 <span className="flex items-center px-4 text-sm font-medium">
-                  Halaman {currentPage} dari {meta ? meta.total_pages : totalPagesClient}
+                  Halaman {currentPage} dari {currentTotalPages}
                 </span>
               </PaginationItem>
               <PaginationItem>
@@ -652,12 +734,12 @@ export default function BranchDiscountsPage() {
                   href="#" 
                   onClick={(e) => { 
                     e.preventDefault(); 
-                    if ((meta && meta.current_page < meta.total_pages) || (!meta && currentPage < totalPagesClient)) {
+                    if (hasNextPage) {
                       handlePageChange(currentPage + 1); 
                     }
                   }}
                   className={
-                    (meta && !meta.has_next_page) || (!meta && currentPage >= totalPagesClient)
+                    !hasNextPage
                       ? 'pointer-events-none opacity-50' 
                       : 'cursor-pointer'
                   }

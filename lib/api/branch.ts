@@ -133,6 +133,7 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
+  // Diskon lokal (yang dibuat di cabang)
   getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string } = {}) => {
     return fetchData('/discount-rule', params.page, params.limit, {
       search: params.search,
@@ -141,12 +142,27 @@ export const branchDiscountAPI = {
     });
   },
 
+  // Get single discount by ID
   getById: (id: string) => 
     apiClient.get(`/discount-rule/${id}`),
 
-  getGeneral: () =>
-    apiClient.get('/branch-discount-setting'),
+  // ✅ Diskon general dari partner/pusat (dengan info override jika ada)
+  getGeneral: async () => {
+    try {
+      const response = await apiClient.get('/branch-discount-setting');
+      console.log('🔍 getGeneral API response:', response);
+      return response.data || response; // Handle both {data: [...]} and [...] response
+    } catch (error) {
+      console.error('❌ getGeneral API error:', error);
+      throw error;
+    }
+  },
+
+  // Get single discount override setting
+  getOverrideSetting: (discountRuleId: string) =>
+    apiClient.get(`/branch-discount-setting/${discountRuleId}`),
   
+  // Create/update discount lokal
   create: (data: any) =>
     apiClient.post('/discount-rule', data),
   
@@ -159,7 +175,7 @@ export const branchDiscountAPI = {
   hardDelete: (id: string) =>
     apiClient.delete(`/discount-rule/permanent/${id}`),
   
-  // ✅ UPDATE: Menggunakan interface 'DiscountOverridePayload' agar support semua field backend
+  // Set/update override untuk diskon general
   setOverride: (discountRuleId: string, data: DiscountOverridePayload) =>
     apiClient.post(`/branch-discount-setting/${discountRuleId}`, data),
 };
