@@ -133,12 +133,21 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
-  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - kirim type=local
-  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string } = {}) => {
+  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - kirim type=local dan status
+  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string; archived?: boolean } = {}) => {
     console.log('📞 [API] branchDiscountAPI.getAll called with params:', params);
+    
+    // Konversi archived ke status
+    let statusParam = params.status;
+    if (params.archived !== undefined) {
+      // Jika archived=true, ambil semua (aktif + non-aktif)
+      // Jika archived=false, ambil hanya yang aktif
+      statusParam = params.archived === false ? 'active' : 'all';
+    }
+    
     return fetchData('/discount-rule', params.page, params.limit, {
       search: params.search,
-      status: params.status,
+      status: statusParam,
       type: params.type || 'local' // Default ke 'local' jika tidak ada type
     });
   },
