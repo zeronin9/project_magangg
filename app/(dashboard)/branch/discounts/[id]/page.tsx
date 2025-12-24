@@ -1,70 +1,33 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { branchDiscountAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination';
-import {
-  Plus,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  Tag,
+  ArrowLeft,
   AlertCircle,
-  Loader2,
-  Archive,
-  RotateCcw,
-  Globe,
-  Building2,
-  Filter,
-  Settings,
+  Tag,
   Calendar,
   Clock,
   Percent,
   Ticket,
-  Eye,
+  Globe,
+  Building2,
+  Settings,
+  CheckCircle2,
+  XCircle,
+  Info,
 } from 'lucide-react';
 import { formatRupiah, formatDate } from '@/lib/utils';
-import { MetaPagination } from '@/lib/services/fetchData';
 
-// ✅ Interface diperbarui untuk support response backend baru
-interface Discount {
+// Interface untuk detail diskon
+interface DiscountDetail {
   discount_rule_id: string;
   discount_name: string;
   discount_code?: string;
@@ -77,650 +40,492 @@ interface Discount {
   original_value?: number;
   is_overridden?: boolean;
   scope: 'general' | 'local';
+  
+  // Info tambahan untuk detail
+  description?: string;
+  min_transaction_amount?: number;
+  max_transaction_amount?: number;
+  min_item_quantity?: number;
+  max_item_quantity?: number;
+  max_discount_amount?: number;
+  min_discount_amount?: number;
+  usage_limit?: number;
+  usage_count?: number;
 }
 
-export default function BranchDiscountsPage() {
+export default function DiscountDetailPage() {
   const router = useRouter();
-  const [discounts, setDiscounts] = useState<Discount[]>([]);
-  const [meta, setMeta] = useState<MetaPagination | null>(null);
-  
+  const params = useParams();
+  const discountId = params?.id as string;
+
+  const [discount, setDiscount] = useState<DiscountDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filter & Pagination
-  const [showArchived, setShowArchived] = useState(false);
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'override'>('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Modal States
-  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
-  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
-  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
-  
-  const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Trigger Load Data
   useEffect(() => {
-    loadData();
+    if (discountId) {
+      loadDiscountDetail();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, scopeFilter]);
+  }, [discountId]);
 
-  // Reset page saat filter berubah
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, scopeFilter]);
+  // Helper function untuk cek status waktu diskon
+  const isDiscountActive = (endDate: string): boolean => {
+    try {
+      const now = new Date();
+      const end = new Date(endDate);
+      return end > now;
+    } catch (e) {
+      return false;
+    }
+  };
 
-  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  // ✅ LOGIKA LOAD DATA DIPERBAIKI
-  const loadData = async () => {
+  const loadDiscountDetail = async () => {
     try {
       setIsLoading(true);
       setError('');
 
-      let localItems: Discount[] = [];
-      let generalItems: Discount[] = [];
-      let newMeta: MetaPagination | null = null;
+      console.log('🔍 Loading discount detail for ID:', discountId);
 
-      // 1. Fetch Local Discounts
-      if (scopeFilter === 'all' || scopeFilter === 'local') {
-        try {
-          const localResponse = await branchDiscountAPI.getAll({
-            page: currentPage,
-            limit: 10,
-            search: searchQuery
-          });
-          localItems = (localResponse.items || []).map((item: any) => ({
-            discount_rule_id: item.discount_rule_id,
-            discount_name: item.discount_name,
-            discount_code: item.discount_code,
-            discount_type: item.discount_type as any,
-            value: Number(item.value || 0),
-            start_date: item.start_date || new Date().toISOString(),
-            end_date: item.end_date || new Date().toISOString(),
-            branch_id: item.branch_id,
-            is_active: item.is_active ?? true,
+      // Try to get from local discounts first
+      try {
+        const localResponse = await branchDiscountAPI.getAll({ 
+          page: 1, 
+          limit: 100 
+        });
+        
+        const localItem = (localResponse?.items || []).find(
+          (item: any) => item.discount_rule_id === discountId
+        );
+
+        if (localItem) {
+          console.log('✅ Found in LOCAL discounts');
+          setDiscount({
+            discount_rule_id: localItem.discount_rule_id,
+            discount_name: localItem.discount_name,
+            discount_code: localItem.discount_code,
+            discount_type: localItem.discount_type,
+            value: Number(localItem.value || 0),
+            start_date: localItem.start_date,
+            end_date: localItem.end_date,
+            branch_id: localItem.branch_id,
+            is_active: localItem.is_active ?? true,
             original_value: undefined,
             is_overridden: false,
-            scope: 'local' as const
-          }));
-          
-          if (scopeFilter === 'local') {
-            newMeta = localResponse.meta;
-          }
-        } catch (err) {
-          console.error("Gagal load local discounts", err);
-        }
-      }
-
-      // 2. Fetch General/Override Discounts
-      if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
-        try {
-          const generalResponse = await branchDiscountAPI.getGeneral();
-          
-          // ✅ PERBAIKAN DI SINI: Cast ke 'any' dulu untuk menghindari error TypeScript merah
-          // Mengambil .data jika ada (axios wrapper), atau response itu sendiri jika langsung array
-          const rawData = (generalResponse as any).data || (generalResponse as any);
-          
-          const generalDataArr = Array.isArray(rawData) ? rawData : [];
-
-          generalItems = generalDataArr.map((item: any) => {
-            // ✅ Parsing struktur response backend BARU
-            const meta = item.meta || {};
-            const globalConfig = item.global_config || {};
-            const branchOverride = item.branch_override || {};
-            const finalEffective = item.final_effective || {};
-            
-            // ✅ Deteksi override
-            const hasOverride = branchOverride.exists === true;
-            
-            // ✅ Nilai efektif
-            const effectiveValue = Number(finalEffective.value || globalConfig.value || 0);
-            const originalValue = Number(globalConfig.value || 0);
-            
-            // ✅ Status aktif efektif
-            const isActive = Boolean(finalEffective.is_active);
-
-            return {
-              discount_rule_id: String(item.id),
-              discount_name: meta.discount_name,
-              discount_code: meta.discount_code,
-              discount_type: meta.discount_type as any,
-              value: effectiveValue,
-              start_date: meta.start_date || new Date().toISOString(),
-              end_date: meta.end_date || new Date().toISOString(),
-              branch_id: null, // General tidak punya branch_id
-              is_active: isActive,
-              original_value: originalValue,
-              is_overridden: hasOverride,
-              scope: 'general' as const
-            };
+            scope: 'local',
+            description: localItem.description,
+            min_transaction_amount: localItem.min_transaction_amount,
+            max_transaction_amount: localItem.max_transaction_amount,
+            min_item_quantity: localItem.min_item_quantity,
+            max_item_quantity: localItem.max_item_quantity,
+            max_discount_amount: localItem.max_discount_amount,
+            min_discount_amount: localItem.min_discount_amount,
+            usage_limit: localItem.usage_limit,
+            usage_count: localItem.usage_count,
           });
-
-          // Filter pencarian client-side untuk general items
-          if (searchQuery) {
-            generalItems = generalItems.filter(d => 
-              d.discount_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-              (d.discount_code && d.discount_code.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
-          }
-
-        } catch (err) {
-          console.error("Gagal load general discounts", err);
+          setIsLoading(false);
+          return;
         }
+      } catch (err) {
+        console.warn('⚠️ Error checking local discounts:', err);
       }
 
-      // ✅ LOGIKA FILTER SCOPE
-      let finalDiscounts: Discount[] = [];
+      // Try to get from general discounts with override info
+      try {
+        const overrideResponse = await branchDiscountAPI.getGeneralWithOverride();
+        const generalItem = Array.isArray(overrideResponse)
+          ? overrideResponse.find((item: any) => item.discount_rule_id === discountId)
+          : null;
 
-      switch (scopeFilter) {
-        case 'all':
-          // Gabungkan: Prioritas item dengan ID sama (jika ada irisan)
-          const combined = [...localItems, ...generalItems];
-          const uniqueMap = new Map();
-          combined.forEach(item => {
-            if (!uniqueMap.has(item.discount_rule_id)) {
-              uniqueMap.set(item.discount_rule_id, item);
+        if (generalItem) {
+          console.log('✅ Found in GENERAL discounts');
+          
+          const branchSetting = generalItem.applied_in_branches?.[0];
+          const hasOverride = !!branchSetting;
+          
+          let effectiveValue = Number(generalItem.value || 0);
+          let originalValue = Number(generalItem.value || 0);
+          let isActive = generalItem.is_active ?? true;
+
+          if (hasOverride) {
+            if (branchSetting.value !== null && branchSetting.value !== undefined) {
+              effectiveValue = Number(branchSetting.value);
             }
+            isActive = generalItem.is_active && branchSetting.is_active_at_branch;
+          }
+
+          setDiscount({
+            discount_rule_id: generalItem.discount_rule_id,
+            discount_name: generalItem.discount_name,
+            discount_code: generalItem.discount_code,
+            discount_type: generalItem.discount_type,
+            value: effectiveValue,
+            start_date: generalItem.start_date,
+            end_date: generalItem.end_date,
+            branch_id: null,
+            is_active: isActive,
+            original_value: hasOverride ? originalValue : undefined,
+            is_overridden: hasOverride,
+            scope: 'general',
+            description: generalItem.description,
+            min_transaction_amount: hasOverride && branchSetting.min_transaction_amount !== null
+              ? branchSetting.min_transaction_amount
+              : generalItem.min_transaction_amount,
+            max_transaction_amount: hasOverride && branchSetting.max_transaction_amount !== null
+              ? branchSetting.max_transaction_amount
+              : generalItem.max_transaction_amount,
+            min_item_quantity: hasOverride && branchSetting.min_item_quantity !== null
+              ? branchSetting.min_item_quantity
+              : generalItem.min_item_quantity,
+            max_item_quantity: hasOverride && branchSetting.max_item_quantity !== null
+              ? branchSetting.max_item_quantity
+              : generalItem.max_item_quantity,
+            max_discount_amount: hasOverride && branchSetting.max_discount_amount !== null
+              ? branchSetting.max_discount_amount
+              : generalItem.max_discount_amount,
+            min_discount_amount: hasOverride && branchSetting.min_discount_amount !== null
+              ? branchSetting.min_discount_amount
+              : generalItem.min_discount_amount,
+            usage_limit: generalItem.usage_limit,
+            usage_count: generalItem.usage_count,
           });
-          finalDiscounts = Array.from(uniqueMap.values());
-          newMeta = null;
-          break;
-          
-        case 'general':
-          // Hanya General yang BELUM di-override
-          finalDiscounts = generalItems.filter(d => !d.is_overridden);
-          newMeta = null;
-          break;
-          
-        case 'local':
-          // Hanya diskon lokal cabang
-          finalDiscounts = localItems;
-          break;
-          
-        case 'override':
-          // Hanya General yang SUDAH di-override
-          finalDiscounts = generalItems.filter(d => d.is_overridden);
-          newMeta = null;
-          break;
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn('⚠️ Error checking general discounts:', err);
       }
 
-      setDiscounts(finalDiscounts);
-      setMeta(newMeta);
-
-    } catch (err: any) {
-      console.error("Error loading data:", err);
-      setError(err.message || 'Gagal memuat data diskon');
+      // If not found in both
+      setError('Diskon tidak ditemukan');
+    } catch (err) {
+      const error = err as Error;
+      console.error('❌ Error loading discount detail:', error);
+      setError(error.message || 'Gagal memuat detail diskon');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCreateClick = () => router.push('/branch/discounts/new');
-  const handleEditClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/edit`);
-  const handleOverrideClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}/override`);
-  const handleDetailClick = (discount: Discount) => router.push(`/branch/discounts/${discount.discount_rule_id}`);
-
-  const handleSoftDelete = async () => {
-    if (!selectedDiscount) return;
-    setIsSubmitting(true);
-    try {
-      await delay(1000);
-      await branchDiscountAPI.softDelete(selectedDiscount.discount_rule_id);
-      await loadData();
-      setIsSoftDeleteOpen(false);
-      setSelectedDiscount(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menonaktifkan diskon');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleRestore = async () => {
-    if (!selectedDiscount) return;
-    setIsSubmitting(true);
-    try {
-      await delay(1000);
-      await branchDiscountAPI.update(selectedDiscount.discount_rule_id, {
-        ...selectedDiscount,
-        is_active: true
-      });
-      await loadData();
-      setIsRestoreOpen(false);
-      setSelectedDiscount(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal mengaktifkan diskon');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleHardDelete = async () => {
-    if (!selectedDiscount) return;
-    setIsSubmitting(true);
-    try {
-      await delay(1000);
-      await branchDiscountAPI.hardDelete(selectedDiscount.discount_rule_id);
-      await loadData();
-      setIsHardDeleteOpen(false);
-      setSelectedDiscount(null);
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menghapus permanen');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Filter arsip (hanya filter tambahan setelah scope sudah difilter)
-  const filteredDiscounts = discounts.filter((discount) => {
-    const isActiveMatch = showArchived ? !discount.is_active : discount.is_active;
-    return isActiveMatch;
-  });
-
-  const itemsToShow = meta 
-    ? filteredDiscounts 
-    : filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
-  const totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
-
   const formatTime = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    } catch (e) { return '-'; }
+      return new Date(dateString).toLocaleTimeString('id-ID', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } catch (e) { 
+      return '-'; 
+    }
   };
 
-  const handlePageChange = (page: number) => {
-    if (meta) {
-      if (page > 0 && page <= meta.total_pages) setCurrentPage(page);
+  const handleBack = () => {
+    router.push('/branch/discounts');
+  };
+
+  const handleEdit = () => {
+    if (discount?.scope === 'local') {
+      router.push(`/branch/discounts/${discountId}/edit`);
     } else {
-      if (page > 0 && page <= totalPagesClient) setCurrentPage(page);
+      router.push(`/branch/discounts/${discountId}/override`);
     }
   };
 
   if (isLoading) {
     return (
-      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-        <Skeleton className="h-8 w-48 mb-2" />
-        <Skeleton className="h-12 w-full" />
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
+        <Skeleton className="h-10 w-64" />
         <Card>
-          <div className="p-6 space-y-4">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
-          </div>
+          <CardHeader>
+            <Skeleton className="h-8 w-full mb-2" />
+            <Skeleton className="h-4 w-3/4" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </CardContent>
         </Card>
       </div>
     );
   }
 
-  return (
-    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-      {/* Header */}
-      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Promo & Diskon</h1>
-          <p className="text-muted-foreground">Kelola diskon lokal & atur override diskon general</p>
-        </div>
-        <div className="flex flex-col gap-2 @md:flex-row">
-          <Button
-            variant={showArchived ? 'default' : 'outline'}
-            onClick={() => setShowArchived(!showArchived)}
-            className="w-full @md:w-auto"
-          >
-            <Archive className="mr-2 h-4 w-4" />
-            {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
-          </Button>
-          <Button onClick={handleCreateClick} className="w-full @md:w-auto">
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Diskon Lokal
-          </Button>
-        </div>
-      </div>
-
-      {error && (
+  if (error || !discount) {
+    return (
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
+        <Button variant="ghost" onClick={handleBack}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Kembali
+        </Button>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{error || 'Diskon tidak ditemukan'}</AlertDescription>
         </Alert>
-      )}
+      </div>
+    );
+  }
 
-      {/* Info Filter Scope */}
-      <Alert>
-        <Filter className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Filter Scope:</strong> 
-          <br/>• <strong>Semua</strong> = Diskon General + Lokal 
-          <br/>• <strong>General</strong> = Hanya diskon pusat (belum di-override) 
-          <br/>• <strong>Lokal</strong> = Hanya diskon khusus cabang 
-          <br/>• <strong>Override</strong> = Diskon general yang sudah diubah di cabang ini
-        </AlertDescription>
-      </Alert>
+  const isTimeActive = isDiscountActive(discount.end_date);
 
-      {/* Filter & Search */}
-      <Card className="p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button 
-              variant={scopeFilter === 'all' ? 'default' : 'outline'} 
-              size="sm" 
-              onClick={() => setScopeFilter('all')}
-            >
-              Semua
-            </Button>
-            <Button 
-              variant={scopeFilter === 'general' ? 'default' : 'outline'} 
-              size="sm" 
-              onClick={() => setScopeFilter('general')}
-            >
-              <Globe className="mr-2 h-3 w-3" /> General
-            </Button>
-            <Button 
-              variant={scopeFilter === 'local' ? 'default' : 'outline'} 
-              size="sm" 
-              onClick={() => setScopeFilter('local')}
-            >
-              <Building2 className="mr-2 h-3 w-3" /> Lokal
-            </Button>
-            <Button 
-              variant={scopeFilter === 'override' ? 'default' : 'outline'} 
-              size="sm" 
-              onClick={() => setScopeFilter('override')}
-            >
-              <Settings className="mr-2 h-3 w-3" /> Override
-            </Button>
-          </div>
-          
-          <div className="flex-1 max-w-sm ml-auto">
-            <Input 
-              placeholder="Cari diskon..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-      </Card>
+  return (
+    <div className="flex-1 space-y-6 p-4 pt-6 md:p-6 lg:p-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={handleBack}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Kembali
+        </Button>
+        {discount.scope === 'local' ? (
+          <Button onClick={handleEdit}>
+            <Settings className="mr-2 h-4 w-4" />
+            Edit Diskon
+          </Button>
+        ) : (
+          <Button onClick={handleEdit}>
+            <Settings className="mr-2 h-4 w-4" />
+            Override Setting
+          </Button>
+        )}
+      </div>
 
-      {/* Table */}
+      {/* Main Info Card */}
       <Card>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nama Promo</TableHead>
-                <TableHead>Kode</TableHead>
-                <TableHead>Tipe</TableHead>
-                <TableHead>Nilai (Efektif)</TableHead>
-                <TableHead>Waktu Mulai</TableHead>
-                <TableHead>Waktu Selesai</TableHead>
-                <TableHead>Scope</TableHead>
-                <TableHead className="text-right">Aksi</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {itemsToShow.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12">
-                    <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
-                    <p className="text-muted-foreground">
-                      {searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada diskon'}
-                    </p>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                itemsToShow.map((discount) => (
-                  <TableRow key={discount.discount_rule_id} className={!discount.is_active ? 'opacity-75 bg-muted/30' : ''}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4 text-muted-foreground" />
-                        {discount.discount_name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {discount.discount_code ? (
-                        <Badge variant="secondary" className="font-mono">
-                          <Ticket className="mr-1 h-3 w-3" /> {discount.discount_code}
-                        </Badge>
-                      ) : <span className="text-muted-foreground text-xs">Otomatis</span>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-semibold text-primary">
-                      {discount.discount_type === 'PERCENTAGE' ? `${discount.value}%` : formatRupiah(discount.value)}
-                      {discount.is_overridden && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Badge 
-                            variant="outline" 
-                            className="text-[10px] h-4 px-1 border-orange-200 text-orange-600 bg-orange-50"
-                          >
-                            Override
-                          </Badge>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-sm">
-                          <Calendar className="h-3 w-3 text-muted-foreground" /> 
-                          <span>{formatDate(discount.start_date)}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" /> 
-                          <span>{formatTime(discount.start_date)}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-sm">
-                          <Calendar className="h-3 w-3 text-muted-foreground" /> 
-                          <span>{formatDate(discount.end_date)}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" /> 
-                          <span>{formatTime(discount.end_date)}</span>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {/* ✅ Badge Scope menggunakan property scope baru */}
-                      <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'}>
-                        {discount.scope === 'local' ? (
-                          <>
-                            <Building2 className="mr-1 h-3 w-3" /> Lokal
-                          </>
-                        ) : (
-                          <>
-                            <Globe className="mr-1 h-3 w-3" /> General
-                          </>
-                        )}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => handleDetailClick(discount)}>
-                            <Eye className="mr-2 h-4 w-4" /> Detail
-                          </DropdownMenuItem>
-                          
-                          <DropdownMenuSeparator />
-                          {!showArchived ? (
-                            <>
-                              {discount.scope === 'local' ? (
-                                <>
-                                  <DropdownMenuItem onClick={() => handleEditClick(discount)}>
-                                    <Pencil className="mr-2 h-4 w-4" /> Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem 
-                                    onClick={() => { setSelectedDiscount(discount); setIsSoftDeleteOpen(true); }} 
-                                    className="text-black"
-                                  >
-                                    <Archive className="mr-2 h-4 w-4" /> Arsipkan
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem 
-                                    onClick={() => { setSelectedDiscount(discount); setIsHardDeleteOpen(true); }} 
-                                    className="text-destructive"
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus Permanen
-                                  </DropdownMenuItem>
-                                </>
-                              ) : (
-                                <DropdownMenuItem onClick={() => handleOverrideClick(discount)}>
-                                  <Settings className="mr-2 h-4 w-4" /> Override Setting
-                                </DropdownMenuItem>
-                              )}
-                            </>
-                          ) : (
-                            discount.scope === 'local' && (
-                              <DropdownMenuItem 
-                                onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} 
-                                className="text-black"
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali
-                              </DropdownMenuItem>
-                            )
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <CardTitle className="text-3xl flex items-center gap-3">
+                <Tag className="h-8 w-8 text-muted-foreground" />
+                {discount.discount_name}
+              </CardTitle>
+              <CardDescription>
+                {discount.discount_code ? (
+                  <Badge variant="secondary" className="font-mono text-sm">
+                    <Ticket className="mr-1 h-4 w-4" /> {discount.discount_code}
+                  </Badge>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Diskon Otomatis (Tanpa Kode)</span>
+                )}
+              </CardDescription>
+            </div>
+            <div className="flex flex-col gap-2 items-end">
+              {/* Scope Badge */}
+              <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'} className="text-sm">
+                {discount.scope === 'local' ? (
+                  <><Building2 className="mr-1 h-4 w-4" /> Diskon Lokal</>
+                ) : (
+                  <><Globe className="mr-1 h-4 w-4" /> Diskon General</>
+                )}
+              </Badge>
+              
+              {/* Override Badge */}
+              {discount.is_overridden && (
+                <Badge variant="outline" className="border-orange-200 text-orange-600 bg-orange-50">
+                  <Settings className="mr-1 h-3 w-3" /> Override Aktif
+                </Badge>
               )}
-            </TableBody>
-          </Table>
-        </div>
 
-        {/* Pagination */}
-        <div className="py-4 flex justify-center">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious 
-                  href="#" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    if ((meta && meta.current_page > 1) || (!meta && currentPage > 1)) {
-                      handlePageChange(currentPage - 1); 
+              {/* Status Badge */}
+              {isTimeActive ? (
+                <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                  <CheckCircle2 className="mr-1 h-4 w-4" /> Aktif
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-gray-200 text-gray-700">
+                  <XCircle className="mr-1 h-4 w-4" /> Tidak Aktif
+                </Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Nilai Diskon */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">Nilai Diskon</h3>
+            <div className="flex items-baseline gap-2">
+              <p className="text-4xl font-bold text-primary">
+                {discount.discount_type === 'PERCENTAGE' 
+                  ? `${discount.value}%` 
+                  : formatRupiah(discount.value)
+                }
+              </p>
+              <Badge variant="outline">
+                {discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}
+              </Badge>
+            </div>
+            
+            {/* Show original value if overridden */}
+            {discount.is_overridden && discount.original_value !== undefined && (
+              <div className="mt-2 flex items-center gap-2">
+                <Info className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  Nilai original: <span className="line-through">
+                    {discount.discount_type === 'PERCENTAGE' 
+                      ? `${discount.original_value}%` 
+                      : formatRupiah(discount.original_value)
                     }
-                  }}
-                  className={
-                    (meta && !meta.has_prev_page) || (!meta && currentPage <= 1)
-                      ? 'pointer-events-none opacity-50' 
-                      : 'cursor-pointer'
-                  }
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <span className="flex items-center px-4 text-sm font-medium">
-                  Halaman {currentPage} dari {meta ? meta.total_pages : totalPagesClient}
+                  </span>
                 </span>
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext 
-                  href="#" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    if ((meta && meta.current_page < meta.total_pages) || (!meta && currentPage < totalPagesClient)) {
-                      handlePageChange(currentPage + 1); 
-                    }
-                  }}
-                  className={
-                    (meta && !meta.has_next_page) || (!meta && currentPage >= totalPagesClient)
-                      ? 'pointer-events-none opacity-50' 
-                      : 'cursor-pointer'
-                  }
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Deskripsi */}
+          {discount.description && (
+            <>
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2">Deskripsi</h3>
+                <p className="text-sm">{discount.description}</p>
+              </div>
+              <Separator />
+            </>
+          )}
+
+          {/* Periode Waktu */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-3">Waktu Mulai</h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-base">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>{formatDate(discount.start_date)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span>{formatTime(discount.start_date)} WIB</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-3">Waktu Selesai</h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-base">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span>{formatDate(discount.end_date)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="h-4 w-4" />
+                  <span>{formatTime(discount.end_date)} WIB</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Syarat & Ketentuan */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-4">Syarat & Ketentuan</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Min Transaction Amount */}
+              {discount.min_transaction_amount !== null && discount.min_transaction_amount !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Min. Transaksi</span>
+                  <span className="font-medium">{formatRupiah(discount.min_transaction_amount)}</span>
+                </div>
+              )}
+
+              {/* Max Transaction Amount */}
+              {discount.max_transaction_amount !== null && discount.max_transaction_amount !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Max. Transaksi</span>
+                  <span className="font-medium">{formatRupiah(discount.max_transaction_amount)}</span>
+                </div>
+              )}
+
+              {/* Min Item Quantity */}
+              {discount.min_item_quantity !== null && discount.min_item_quantity !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Min. Jumlah Item</span>
+                  <span className="font-medium">{discount.min_item_quantity} item</span>
+                </div>
+              )}
+
+              {/* Max Item Quantity */}
+              {discount.max_item_quantity !== null && discount.max_item_quantity !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Max. Jumlah Item</span>
+                  <span className="font-medium">{discount.max_item_quantity} item</span>
+                </div>
+              )}
+
+              {/* Min Discount Amount */}
+              {discount.min_discount_amount !== null && discount.min_discount_amount !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Min. Potongan</span>
+                  <span className="font-medium">{formatRupiah(discount.min_discount_amount)}</span>
+                </div>
+              )}
+
+              {/* Max Discount Amount */}
+              {discount.max_discount_amount !== null && discount.max_discount_amount !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Max. Potongan</span>
+                  <span className="font-medium">{formatRupiah(discount.max_discount_amount)}</span>
+                </div>
+              )}
+
+              {/* Usage Limit */}
+              {discount.usage_limit !== null && discount.usage_limit !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Batas Penggunaan</span>
+                  <span className="font-medium">{discount.usage_limit} kali</span>
+                </div>
+              )}
+
+              {/* Usage Count */}
+              {discount.usage_count !== null && discount.usage_count !== undefined && (
+                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
+                  <span className="text-sm text-muted-foreground">Sudah Digunakan</span>
+                  <span className="font-medium">{discount.usage_count} kali</span>
+                </div>
+              )}
+            </div>
+            
+            {!discount.min_transaction_amount && 
+             !discount.max_transaction_amount && 
+             !discount.min_item_quantity && 
+             !discount.max_item_quantity && 
+             !discount.max_discount_amount && 
+             !discount.min_discount_amount && 
+             !discount.usage_limit && (
+              <p className="text-sm text-muted-foreground italic">Tidak ada syarat khusus</p>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Status Info */}
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Status</h3>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                {discount.is_active ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-gray-500" />
+                )}
+                <span className="text-sm">
+                  {discount.is_active ? 'Diskon Aktif di Sistem' : 'Diskon Nonaktif di Sistem'}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {isTimeActive ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-gray-500" />
+                )}
+                <span className="text-sm">
+                  {isTimeActive ? 'Periode Waktu Masih Berlaku' : 'Periode Waktu Sudah Lewat'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
       </Card>
-
-      {/* Dialogs */}
-      <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Arsipkan Diskon?</DialogTitle>
-            <DialogDescription>
-              Diskon <strong>{selectedDiscount?.discount_name}</strong> akan dinonaktifkan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)}>
-              Batal
-            </Button>
-            <Button 
-              className="bg-black text-white hover:bg-gray-800" 
-              onClick={handleSoftDelete} 
-              disabled={isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Arsipkan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aktifkan Kembali?</DialogTitle>
-            <DialogDescription>
-              Diskon <strong>{selectedDiscount?.discount_name}</strong> akan diaktifkan kembali.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRestoreOpen(false)}>
-              Batal
-            </Button>
-            <Button 
-              className="bg-black text-white hover:bg-gray-800" 
-              onClick={handleRestore} 
-              disabled={isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Aktifkan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus Permanen?</DialogTitle>
-            <DialogDescription>Tindakan ini tidak dapat dibatalkan.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHardDeleteOpen(false)}>
-              Batal
-            </Button>
-            <Button 
-              className="bg-black hover:bg-gray-800" 
-              variant="destructive" 
-              onClick={handleHardDelete} 
-              disabled={isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Hapus Permanen
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
