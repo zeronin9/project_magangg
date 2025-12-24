@@ -205,6 +205,7 @@ export default function BranchDiscountsPage() {
       if (shouldLoadLocal) {
         try {
           console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local)...');
+          console.log('🔍 showArchived:', showArchived, '-> will send archived:', !showArchived ? false : true);
           
           const localParams = scopeFilter === 'local' 
             ? { 
@@ -212,18 +213,21 @@ export default function BranchDiscountsPage() {
                 limit: 10, 
                 search: searchQuery, 
                 type: 'local',
-                // ✅ PERBAIKAN: Kirim parameter archived ke API
-                ...(showArchived ? {} : { archived: false })
+                // ✅ PERBAIKAN: Kirim archived dengan nilai yang sesuai
+                // Jika showArchived=true -> archived=true (ambil semua termasuk arsip)
+                // Jika showArchived=false -> archived=false (ambil hanya aktif)
+                archived: showArchived ? true : false
               }
             : { 
                 page: 1, 
                 limit: 100, 
                 search: searchQuery, 
                 type: 'local',
-                // ✅ PERBAIKAN: Kirim parameter archived ke API
-                ...(showArchived ? {} : { archived: false })
+                // ✅ PERBAIKAN: Kirim archived dengan nilai yang sesuai
+                archived: showArchived ? true : false
               };
           
+          console.log('📦 LOCAL API Params:', localParams);
           const localResponse = await branchDiscountAPI.getAll(localParams);
           
           console.log('📦 LOCAL RESPONSE:', localResponse);
@@ -268,13 +272,20 @@ export default function BranchDiscountsPage() {
       if (shouldLoadGeneral) {
         try {
           console.log('🔍 Step 3: Fetching GENERAL discounts (/discount-rule?type=general)...');
-          const generalResponse = await branchDiscountAPI.getGeneral({ 
+          console.log('🔍 showArchived:', showArchived, '-> will send archived:', !showArchived ? false : true);
+          
+          const generalParams = { 
             page: 1, 
             limit: 100, 
             search: searchQuery,
-            // ✅ PERBAIKAN: Tambahkan parameter archived untuk API general
-            ...(showArchived ? {} : { archived: false })
-          });
+            // ✅ PERBAIKAN: Kirim archived dengan nilai yang sesuai
+            // Jika showArchived=true -> archived=true (ambil semua termasuk arsip)
+            // Jika showArchived=false -> archived=false (ambil hanya aktif)
+            archived: showArchived ? true : false
+          };
+          
+          console.log('📦 GENERAL API Params:', generalParams);
+          const generalResponse = await branchDiscountAPI.getGeneral(generalParams);
           
           console.log('📦 GENERAL RESPONSE:', generalResponse);
           
@@ -317,6 +328,8 @@ export default function BranchDiscountsPage() {
               });
             
             console.log(`✅ Processed ${generalItems.length} GENERAL items`);
+            console.log(`   - Active: ${generalItems.filter(d => d.is_active).length}`);
+            console.log(`   - Inactive: ${generalItems.filter(d => !d.is_active).length}`);
           }
         } catch (err) {
           console.error("❌ ERROR fetching general discounts:", err);
