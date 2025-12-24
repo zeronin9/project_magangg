@@ -116,19 +116,22 @@ export default function DiscountDetailPage() {
 
       console.log('🔍 Loading discount detail for ID:', discountId);
 
-      // Try to get from local discounts first
+      // ✅ PERBAIKAN: Try to get from local discounts first (INCLUDE ARCHIVED with status=all)
       try {
         const localResponse = await branchDiscountAPI.getAll({ 
           page: 1, 
-          limit: 100 
+          limit: 500,
+          status: 'all' // ✅ Ambil semua diskon termasuk yang diarsipkan
         });
+        
+        console.log('📦 Local discounts response:', localResponse);
         
         const localItem = (localResponse?.items || []).find(
           (item: any) => item.discount_rule_id === discountId
         );
 
         if (localItem) {
-          console.log('✅ Found in LOCAL discounts');
+          console.log('✅ Found in LOCAL discounts:', localItem);
           setDiscount({
             discount_rule_id: localItem.discount_rule_id,
             discount_name: localItem.discount_name,
@@ -162,12 +165,14 @@ export default function DiscountDetailPage() {
       // Try to get from general discounts with override info
       try {
         const overrideResponse = await branchDiscountAPI.getGeneralWithOverride();
+        console.log('📦 General with override response:', overrideResponse);
+        
         const generalItem = Array.isArray(overrideResponse)
           ? overrideResponse.find((item: any) => item.discount_rule_id === discountId)
           : null;
 
         if (generalItem) {
-          console.log('✅ Found in GENERAL discounts');
+          console.log('✅ Found in GENERAL discounts:', generalItem);
           
           const branchSetting = generalItem.applied_in_branches?.[0];
           const hasOverride = !!branchSetting;
@@ -226,6 +231,7 @@ export default function DiscountDetailPage() {
       }
 
       // If not found in both
+      console.log('❌ Discount not found in local or general');
       setError('Diskon tidak ditemukan');
     } catch (err) {
       const error = err as Error;
@@ -242,10 +248,13 @@ export default function DiscountDetailPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      console.log('📦 Archiving discount:', discount.discount_rule_id);
       await branchDiscountAPI.softDelete(discount.discount_rule_id);
       setIsSoftDeleteOpen(false);
+      console.log('✅ Discount archived, reloading...');
       await loadDiscountDetail(); // Reload untuk update status
     } catch (err: any) {
+      console.error('❌ Archive error:', err);
       alert(err.response?.data?.message || 'Gagal mengarsipkan diskon');
     } finally {
       setIsSubmitting(false);
@@ -258,13 +267,16 @@ export default function DiscountDetailPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      console.log('♻️ Restoring discount:', discount.discount_rule_id);
       await branchDiscountAPI.update(discount.discount_rule_id, {
         ...discount,
         is_active: true
       });
       setIsRestoreOpen(false);
+      console.log('✅ Discount restored, reloading...');
       await loadDiscountDetail(); // Reload untuk update status
     } catch (err: any) {
+      console.error('❌ Restore error:', err);
       alert(err.response?.data?.message || 'Gagal mengaktifkan kembali diskon');
     } finally {
       setIsSubmitting(false);
@@ -277,9 +289,12 @@ export default function DiscountDetailPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
+      console.log('🗑️ Hard deleting discount:', discount.discount_rule_id);
       await branchDiscountAPI.hardDelete(discount.discount_rule_id);
+      console.log('✅ Discount permanently deleted');
       router.push('/branch/discounts');
     } catch (err: any) {
+      console.error('❌ Hard delete error:', err);
       alert(err.response?.data?.message || 'Gagal menghapus permanen');
     } finally {
       setIsSubmitting(false);
@@ -378,34 +393,38 @@ export default function DiscountDetailPage() {
                 </DropdownMenuItem>
               )}
 
-              {discount.is_active ? (
+              {discount.scope === 'local' && (
                 <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={() => setIsSoftDeleteOpen(true)}
-                    className="text-orange-600"
-                  >
-                    <Archive className="mr-2 h-4 w-4" />
-                    Arsipkan
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem 
-                    onClick={() => setIsRestoreOpen(true)}
-                    className="text-green-600"
-                  >
-                    <ArchiveRestore className="mr-2 h-4 w-4" />
-                    Aktifkan Kembali
-                  </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={() => setIsHardDeleteModalOpen(true)}
-                    className="text-red-600"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Hapus Permanen
-                  </DropdownMenuItem>
+                  {discount.is_active ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        onClick={() => setIsSoftDeleteOpen(true)}
+                        className="text-orange-600"
+                      >
+                        <Archive className="mr-2 h-4 w-4" />
+                        Arsipkan
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        onClick={() => setIsRestoreOpen(true)}
+                        className="text-green-600"
+                      >
+                        <ArchiveRestore className="mr-2 h-4 w-4" />
+                        Aktifkan Kembali
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => setIsHardDeleteModalOpen(true)}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Hapus Permanen
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </>
               )}
             </DropdownMenuContent>
