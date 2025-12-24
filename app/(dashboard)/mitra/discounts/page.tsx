@@ -86,7 +86,7 @@ const parseArrayField = (field: any, relatedField?: any[]): string[] => {
 };
 
 // Konfigurasi Pagination
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 export default function DiscountsPage() {
   const router = useRouter();

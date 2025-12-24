@@ -429,13 +429,19 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // Filter berdasarkan status archived
-  const filteredDiscounts = discounts.filter((discount) => {
-    const isActiveMatch = showArchived ? !discount.is_active : discount.is_active;
-    return isActiveMatch;
-  });
+  // ✅ PERBAIKAN: Filter berdasarkan status archived
+  // Logika: showArchived=false → tampilkan AKTIF | showArchived=true → tampilkan SEMUA
+  const filteredDiscounts = showArchived 
+    ? discounts // Tampilkan SEMUA (aktif + non-aktif)
+    : discounts.filter(d => d.is_active !== false); // Hanya yang aktif
 
   console.log('🎯 After archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
+  console.log('   📊 Breakdown:', {
+    total: discounts.length,
+    active: discounts.filter(d => d.is_active !== false).length,
+    inactive: discounts.filter(d => d.is_active === false).length,
+    showing: filteredDiscounts.length
+  });
 
   // ✅ Pagination logic
   let itemsToShow: Discount[];
@@ -568,8 +574,8 @@ export default function BranchDiscountsPage() {
                 <TableHead>Nilai (Efektif)</TableHead>
                 <TableHead>Waktu Mulai</TableHead>
                 <TableHead>Waktu Selesai</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead>Scope</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
@@ -633,6 +639,15 @@ export default function BranchDiscountsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'}>
+                          {discount.scope === 'local' ? (
+                            <><Building2 className="mr-1 h-3 w-3" /> Lokal</>
+                          ) : (
+                            <><Globe className="mr-1 h-3 w-3" /> General</>
+                          )}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         {isTimeActive ? (
                           <Badge variant="default" className="bg-green-600 hover:bg-green-700">
                             <CheckCircle2 className="mr-1 h-3 w-3" /> Aktif
@@ -642,15 +657,6 @@ export default function BranchDiscountsPage() {
                             <XCircle className="mr-1 h-3 w-3" /> Tidak Aktif
                           </Badge>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'}>
-                          {discount.scope === 'local' ? (
-                            <><Building2 className="mr-1 h-3 w-3" /> Lokal</>
-                          ) : (
-                            <><Globe className="mr-1 h-3 w-3" /> General</>
-                          )}
-                        </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
