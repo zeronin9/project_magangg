@@ -145,11 +145,11 @@ export default function BranchDiscountsPage() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, scopeFilter]);
+  }, [currentPage, searchQuery, scopeFilter, showArchived]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, scopeFilter]);
+  }, [searchQuery, scopeFilter, showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -170,7 +170,7 @@ export default function BranchDiscountsPage() {
       setError('');
 
       console.log('='.repeat(80));
-      console.log('🔄 LOADING DATA - scopeFilter:', scopeFilter);
+      console.log('🔄 LOADING DATA - scopeFilter:', scopeFilter, '| showArchived:', showArchived);
       console.log('='.repeat(80));
 
       let localItems: Discount[] = [];
@@ -204,11 +204,12 @@ export default function BranchDiscountsPage() {
       
       if (shouldLoadLocal) {
         try {
-          console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local)...');
+          console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local&status=all)...');
           
+          // ✅ PERBAIKAN: Tambahkan status='all' untuk mengambil semua diskon (aktif + arsip)
           const localParams = scopeFilter === 'local' 
-            ? { page: currentPage, limit: 10, search: searchQuery, type: 'local' }
-            : { page: 1, limit: 100, search: searchQuery, type: 'local' };
+            ? { page: currentPage, limit: 10, search: searchQuery, type: 'local', status: 'all' }
+            : { page: 1, limit: 100, search: searchQuery, type: 'local', status: 'all' };
           
           const localResponse = await branchDiscountAPI.getAll(localParams);
           
@@ -429,10 +430,15 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // Filter berdasarkan status archived
+  // ✅ PERBAIKAN: Filter berdasarkan status archived
+  // Jika showArchived = true → Tampilkan yang is_active = false
+  // Jika showArchived = false → Tampilkan yang is_active = true
   const filteredDiscounts = discounts.filter((discount) => {
-    const isActiveMatch = showArchived ? !discount.is_active : discount.is_active;
-    return isActiveMatch;
+    if (showArchived) {
+      return !discount.is_active; // Tampilkan hanya yang diarsipkan
+    } else {
+      return discount.is_active; // Tampilkan hanya yang aktif
+    }
   });
 
   console.log('🎯 After archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
@@ -507,7 +513,7 @@ export default function BranchDiscountsPage() {
             className="w-full @md:w-auto"
           >
             <Archive className="mr-2 h-4 w-4" />
-            {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
+            {showArchived ? 'Tampilkan Aktif' : 'Tampilkan Arsip'}
           </Button>
           <Button onClick={handleCreateClick} className="w-full @md:w-auto">
             <Plus className="mr-2 h-4 w-4" />
@@ -520,6 +526,15 @@ export default function BranchDiscountsPage() {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {showArchived && (
+        <Alert>
+          <Archive className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Mode Arsip:</strong> Menampilkan diskon yang dinonaktifkan (is_active=false)
+          </AlertDescription>
         </Alert>
       )}
 
@@ -579,7 +594,12 @@ export default function BranchDiscountsPage() {
                   <TableCell colSpan={9} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
-                      {searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada diskon'}
+                      {searchQuery 
+                        ? 'Tidak ada hasil pencarian' 
+                        : showArchived 
+                          ? 'Belum ada diskon yang diarsipkan'
+                          : 'Belum ada diskon aktif'
+                      }
                     </p>
                   </TableCell>
                 </TableRow>
@@ -633,15 +653,22 @@ export default function BranchDiscountsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {isTimeActive ? (
-                          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                            <CheckCircle2 className="mr-1 h-3 w-3" /> Aktif
+                        <div className="flex flex-col gap-1">
+                          {/* Badge Sistem (is_active) */}
+                          <Badge variant={discount.is_active ? 'default' : 'secondary'}>
+                            {discount.is_active ? (
+                              <><CheckCircle2 className="mr-1 h-3 w-3" /> Aktif</>
+                            ) : (
+                              <><Archive className="mr-1 h-3 w-3" /> Diarsipkan</>
+                            )}
                           </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="bg-gray-200 text-gray-700">
-                            <XCircle className="mr-1 h-3 w-3" /> Tidak Aktif
-                          </Badge>
-                        )}
+                          {/* Badge Waktu */}
+                          {discount.is_active && (
+                            <Badge variant={isTimeActive ? 'default' : 'secondary'} className={isTimeActive ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-200 text-gray-700'}>
+                              {isTimeActive ? 'Berlaku' : 'Kadaluarsa'}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'}>
@@ -664,24 +691,24 @@ export default function BranchDiscountsPage() {
                             </DropdownMenuItem>
                             
                             <DropdownMenuSeparator />
-                            {!showArchived ? (
-                              <>
-                                {discount.scope === 'local' ? (
-                                  <>
-                                    <DropdownMenuItem onClick={() => handleEditClick(discount)}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsSoftDeleteOpen(true); }} className="text-black"><Archive className="mr-2 h-4 w-4" /> Arsipkan</DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsHardDeleteOpen(true); }} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Hapus Permanen</DropdownMenuItem>
-                                  </>
-                                ) : (
-                                  <DropdownMenuItem onClick={() => handleOverrideClick(discount)}><Settings className="mr-2 h-4 w-4" /> Override Setting</DropdownMenuItem>
-                                )}
-                              </>
-                            ) : (
-                              discount.scope === 'local' && (
-                                <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black"><RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali</DropdownMenuItem>
+                            {discount.scope === 'local' ? (
+                              !showArchived ? (
+                                <>
+                                  <DropdownMenuItem onClick={() => handleEditClick(discount)}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsSoftDeleteOpen(true); }} className="text-black"><Archive className="mr-2 h-4 w-4" /> Arsipkan</DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsHardDeleteOpen(true); }} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Hapus Permanen</DropdownMenuItem>
+                                </>
+                              ) : (
+                                <>
+                                  <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-green-600"><RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali</DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsHardDeleteOpen(true); }} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Hapus Permanen</DropdownMenuItem>
+                                </>
                               )
+                            ) : (
+                              <DropdownMenuItem onClick={() => handleOverrideClick(discount)}><Settings className="mr-2 h-4 w-4" /> Override Setting</DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
