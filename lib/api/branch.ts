@@ -135,6 +135,7 @@ export const branchCategoryAPI = {
 export const branchDiscountAPI = {
   // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - kirim type=local
   getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string } = {}) => {
+    console.log('📞 [API] branchDiscountAPI.getAll called with params:', params);
     return fetchData('/discount-rule', params.page, params.limit, {
       search: params.search,
       status: params.status,
@@ -146,18 +147,33 @@ export const branchDiscountAPI = {
   getById: (id: string) => 
     apiClient.get(`/discount-rule/${id}`),
 
-  // ✅ PERBAIKAN: Diskon general dari partner/pusat - gunakan /discount-rule?type=general
-  getGeneral: async (params: { page?: number; limit?: number; search?: string } = {}) => {
+  // ✅ PERBAIKAN: Diskon general dari partner/pusat - gunakan /discount-rule?type=general&status=all
+  getGeneral: async (params: { page?: number; limit?: number; search?: string; status?: string } = {}) => {
     try {
-      console.log('🔍 Fetching GENERAL discounts with type=general...');
-      const response = await fetchData('/discount-rule', params.page || 1, params.limit || 100, {
-        search: params.search,
-        type: 'general' // ✅ PERBAIKAN: Gunakan type=general
+      console.log('📞 [API] branchDiscountAPI.getGeneral called with params:', params);
+      console.log('🔍 Fetching GENERAL discounts with type=general&status=all...');
+      
+      // ✅ PERBAIKAN: Tambahkan status='all' untuk ambil semua diskon (termasuk arsip)
+      const response = await fetchData(
+        '/discount-rule', 
+        params.page || 1, 
+        params.limit || 100, 
+        {
+          search: params.search,
+          type: 'general',
+          status: params.status || 'all' // ✅ DEFAULT ke 'all' untuk ambil semua data
+        }
+      );
+      
+      console.log('✅ [API] getGeneral response:', {
+        total_items: response?.meta?.total_items || response?.items?.length || 0,
+        items_count: response?.items?.length || 0,
+        meta: response?.meta
       });
-      console.log('🔍 getGeneral API response:', response);
+      
       return response;
     } catch (error) {
-      console.error('❌ getGeneral API error:', error);
+      console.error('❌ [API] getGeneral error:', error);
       throw error;
     }
   },
@@ -165,12 +181,16 @@ export const branchDiscountAPI = {
   // ✅ Get diskon general dengan info override dari branch-discount-setting
   getGeneralWithOverride: async () => {
     try {
+      console.log('📞 [API] branchDiscountAPI.getGeneralWithOverride called');
       console.log('🔍 Fetching GENERAL discounts WITH OVERRIDE info...');
       const response = await apiClient.get('/branch-discount-setting');
-      console.log('🔍 getGeneralWithOverride API response:', response);
+      console.log('✅ [API] getGeneralWithOverride response:', {
+        items_count: Array.isArray(response.data) ? response.data.length : 'not array',
+        sample: Array.isArray(response.data) && response.data.length > 0 ? response.data[0] : null
+      });
       return response.data || response;
     } catch (error) {
-      console.error('❌ getGeneralWithOverride API error:', error);
+      console.error('❌ [API] getGeneralWithOverride error:', error);
       throw error;
     }
   },
