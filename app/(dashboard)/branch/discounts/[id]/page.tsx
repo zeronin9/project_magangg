@@ -16,6 +16,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   ArrowLeft,
   AlertCircle,
   Loader2,
@@ -32,6 +40,10 @@ import {
   CheckCircle2,
   XCircle,
   Info,
+  MoreHorizontal,
+  Edit,
+  ArchiveRestore,
+  Trash2,
 } from 'lucide-react';
 import { formatRupiah } from '@/lib/utils';
 
@@ -231,7 +243,8 @@ export default function DiscountDetailPage() {
     try {
       await delay(1000);
       await branchDiscountAPI.softDelete(discount.discount_rule_id);
-      router.push('/branch/discounts');
+      setIsSoftDeleteOpen(false);
+      await loadDiscountDetail(); // Reload untuk update status
     } catch (err: any) {
       alert(err.response?.data?.message || 'Gagal mengarsipkan diskon');
     } finally {
@@ -249,8 +262,8 @@ export default function DiscountDetailPage() {
         ...discount,
         is_active: true
       });
-      await loadDiscountDetail();
       setIsRestoreOpen(false);
+      await loadDiscountDetail(); // Reload untuk update status
     } catch (err: any) {
       alert(err.response?.data?.message || 'Gagal mengaktifkan kembali diskon');
     } finally {
@@ -328,8 +341,8 @@ export default function DiscountDetailPage() {
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
           <Button
             variant="ghost"
             className="w-fit -ml-4"
@@ -339,12 +352,71 @@ export default function DiscountDetailPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Kembali ke Daftar Diskon
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Detail Diskon</h1>
-            <p className="text-muted-foreground">
-              Informasi lengkap aturan Diskon
-            </p>
-          </div>
+
+          {/* Action Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" disabled={isSubmitting}>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              
+              {discount.scope === 'local' && discount.is_active && (
+                <DropdownMenuItem onClick={() => router.push(`/branch/discounts/edit/${discount.discount_rule_id}`)}>
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit Diskon
+                </DropdownMenuItem>
+              )}
+              
+              {discount.scope === 'general' && (
+                <DropdownMenuItem onClick={() => router.push(`/branch/discounts/override/${discount.discount_rule_id}`)}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Override Setting
+                </DropdownMenuItem>
+              )}
+
+              {discount.is_active ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => setIsSoftDeleteOpen(true)}
+                    className="text-orange-600"
+                  >
+                    <Archive className="mr-2 h-4 w-4" />
+                    Arsipkan
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => setIsRestoreOpen(true)}
+                    className="text-green-600"
+                  >
+                    <ArchiveRestore className="mr-2 h-4 w-4" />
+                    Aktifkan Kembali
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setIsHardDeleteModalOpen(true)}
+                    className="text-red-600"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Hapus Permanen
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Detail Diskon</h1>
+          <p className="text-muted-foreground">
+            Informasi lengkap aturan Diskon
+          </p>
         </div>
       </div>
 
@@ -632,11 +704,11 @@ export default function DiscountDetailPage() {
             <DialogDescription>
               Apakah Anda yakin ingin mengarsipkan diskon <strong>{discount.discount_name}</strong>?
               <br/>
-              Diskon akan dinonaktifkan (Soft Delete).
+              Diskon akan dinonaktifkan dan tidak dapat digunakan dalam transaksi.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)}>
+            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
             <Button variant="default" className="bg-black" onClick={handleArchive} disabled={isSubmitting}>
@@ -654,10 +726,12 @@ export default function DiscountDetailPage() {
             <DialogTitle>Aktifkan Kembali?</DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin mengaktifkan kembali diskon <strong>{discount.discount_name}</strong>?
+              <br/>
+              Diskon akan dapat digunakan kembali dalam transaksi.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRestoreOpen(false)}>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
             <Button variant="default" className="bg-black" onClick={handleRestore} disabled={isSubmitting}>
@@ -678,13 +752,15 @@ export default function DiscountDetailPage() {
             </DialogTitle>
             <DialogDescription>
               Diskon <strong>{discount.discount_name}</strong> akan dihapus selamanya dari database.
+              <br/>
+              <strong className="text-red-600">Tindakan ini tidak dapat dibatalkan!</strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHardDeleteModalOpen(false)}>
+            <Button variant="outline" onClick={() => setIsHardDeleteModalOpen(false)} disabled={isSubmitting}>
               Batal
             </Button>
-            <Button className="bg-black hover:bg-gray-800" variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+            <Button className="bg-red-600 hover:bg-red-700" onClick={handleHardDelete} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Hapus Permanen
             </Button>
