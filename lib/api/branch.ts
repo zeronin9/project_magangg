@@ -133,12 +133,12 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
-  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - selalu kirim type=local
-  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string } = {}) => {
+  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - kirim type=local
+  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string } = {}) => {
     return fetchData('/discount-rule', params.page, params.limit, {
       search: params.search,
       status: params.status,
-      type: 'local' // ✅ TAMBAHKAN INI: Backend akan filter berdasarkan branch_id
+      type: params.type || 'local' // Default ke 'local' jika tidak ada type
     });
   },
 
@@ -146,14 +146,31 @@ export const branchDiscountAPI = {
   getById: (id: string) => 
     apiClient.get(`/discount-rule/${id}`),
 
-  // ✅ Diskon general dari partner/pusat (dengan info override jika ada)
-  getGeneral: async () => {
+  // ✅ PERBAIKAN: Diskon general dari partner/pusat - gunakan /discount-rule?type=general
+  getGeneral: async (params: { page?: number; limit?: number; search?: string } = {}) => {
     try {
-      const response = await apiClient.get('/branch-discount-setting');
+      console.log('🔍 Fetching GENERAL discounts with type=general...');
+      const response = await fetchData('/discount-rule', params.page || 1, params.limit || 100, {
+        search: params.search,
+        type: 'general' // ✅ PERBAIKAN: Gunakan type=general
+      });
       console.log('🔍 getGeneral API response:', response);
-      return response.data || response; // Handle both {data: [...]} and [...] response
+      return response;
     } catch (error) {
       console.error('❌ getGeneral API error:', error);
+      throw error;
+    }
+  },
+
+  // ✅ Get diskon general dengan info override dari branch-discount-setting
+  getGeneralWithOverride: async () => {
+    try {
+      console.log('🔍 Fetching GENERAL discounts WITH OVERRIDE info...');
+      const response = await apiClient.get('/branch-discount-setting');
+      console.log('🔍 getGeneralWithOverride API response:', response);
+      return response.data || response;
+    } catch (error) {
+      console.error('❌ getGeneralWithOverride API error:', error);
       throw error;
     }
   },
