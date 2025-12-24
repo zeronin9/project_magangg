@@ -59,6 +59,8 @@ import {
   Percent,
   Ticket,
   Eye,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
@@ -150,6 +152,17 @@ export default function BranchDiscountsPage() {
   }, [searchQuery, scopeFilter]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // ✅ Helper function untuk cek status waktu diskon
+  const isDiscountActive = (endDate: string): boolean => {
+    try {
+      const now = new Date();
+      const end = new Date(endDate);
+      return end > now;
+    } catch (e) {
+      return false;
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -555,6 +568,7 @@ export default function BranchDiscountsPage() {
                 <TableHead>Nilai (Efektif)</TableHead>
                 <TableHead>Waktu Mulai</TableHead>
                 <TableHead>Waktu Selesai</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Scope</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
@@ -562,7 +576,7 @@ export default function BranchDiscountsPage() {
             <TableBody>
               {itemsToShow.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12">
+                  <TableCell colSpan={9} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
                       {searchQuery ? 'Tidak ada hasil pencarian' : 'Belum ada diskon'}
@@ -570,96 +584,111 @@ export default function BranchDiscountsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                itemsToShow.map((discount) => (
-                  <TableRow key={discount.discount_rule_id} className={!discount.is_active ? 'opacity-75 bg-muted/30' : ''}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4 text-muted-foreground" />
-                        {discount.discount_name}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {discount.discount_code ? (
-                        <Badge variant="secondary" className="font-mono"><Ticket className="mr-1 h-3 w-3" /> {discount.discount_code}</Badge>
-                      ) : <span className="text-muted-foreground text-xs">Otomatis</span>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}</Badge>
-                    </TableCell>
-                    <TableCell className="font-semibold text-primary">
-                      <div className="flex flex-col gap-1">
-                        <div>
-                          {discount.discount_type === 'PERCENTAGE' ? `${discount.value}%` : formatRupiah(discount.value)}
+                itemsToShow.map((discount) => {
+                  const isTimeActive = isDiscountActive(discount.end_date);
+                  
+                  return (
+                    <TableRow key={discount.discount_rule_id} className={!discount.is_active ? 'opacity-75 bg-muted/30' : ''}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <Tag className="h-4 w-4 text-muted-foreground" />
+                          {discount.discount_name}
                         </div>
-                        {discount.is_overridden && discount.original_value !== undefined && (
-                          <div className="flex items-center gap-1">
-                            <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-200 text-orange-600 bg-orange-50">
-                              Override
-                            </Badge>
-                            <span className="text-[10px] text-muted-foreground line-through">
-                              {discount.discount_type === 'PERCENTAGE' ? `${discount.original_value}%` : formatRupiah(discount.original_value)}
-                            </span>
+                      </TableCell>
+                      <TableCell>
+                        {discount.discount_code ? (
+                          <Badge variant="secondary" className="font-mono"><Ticket className="mr-1 h-3 w-3" /> {discount.discount_code}</Badge>
+                        ) : <span className="text-muted-foreground text-xs">Otomatis</span>}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}</Badge>
+                      </TableCell>
+                      <TableCell className="font-semibold text-primary">
+                        <div className="flex flex-col gap-1">
+                          <div>
+                            {discount.discount_type === 'PERCENTAGE' ? `${discount.value}%` : formatRupiah(discount.value)}
                           </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-sm"><Calendar className="h-3 w-3 text-muted-foreground" /> <span>{formatDate(discount.start_date)}</span></div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> <span>{formatTime(discount.start_date)}</span></div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-sm"><Calendar className="h-3 w-3 text-muted-foreground" /> <span>{formatDate(discount.end_date)}</span></div>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> <span>{formatTime(discount.end_date)}</span></div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'}>
-                        {discount.scope === 'local' ? (
-                          <><Building2 className="mr-1 h-3 w-3" /> Lokal</>
-                        ) : (
-                          <><Globe className="mr-1 h-3 w-3" /> General</>
-                        )}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => handleDetailClick(discount)}>
-                            <Eye className="mr-2 h-4 w-4" /> Detail
-                          </DropdownMenuItem>
-                          
-                          <DropdownMenuSeparator />
-                          {!showArchived ? (
-                            <>
-                              {discount.scope === 'local' ? (
-                                <>
-                                  <DropdownMenuItem onClick={() => handleEditClick(discount)}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsSoftDeleteOpen(true); }} className="text-black"><Archive className="mr-2 h-4 w-4" /> Arsipkan</DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsHardDeleteOpen(true); }} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Hapus Permanen</DropdownMenuItem>
-                                </>
-                              ) : (
-                                <DropdownMenuItem onClick={() => handleOverrideClick(discount)}><Settings className="mr-2 h-4 w-4" /> Override Setting</DropdownMenuItem>
-                              )}
-                            </>
-                          ) : (
-                            discount.scope === 'local' && (
-                              <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black"><RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali</DropdownMenuItem>
-                            )
+                          {discount.is_overridden && discount.original_value !== undefined && (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] h-4 px-1 border-orange-200 text-orange-600 bg-orange-50">
+                                Override
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground line-through">
+                                {discount.discount_type === 'PERCENTAGE' ? `${discount.original_value}%` : formatRupiah(discount.original_value)}
+                              </span>
+                            </div>
                           )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-sm"><Calendar className="h-3 w-3 text-muted-foreground" /> <span>{formatDate(discount.start_date)}</span></div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> <span>{formatTime(discount.start_date)}</span></div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-sm"><Calendar className="h-3 w-3 text-muted-foreground" /> <span>{formatDate(discount.end_date)}</span></div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" /> <span>{formatTime(discount.end_date)}</span></div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {isTimeActive ? (
+                          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                            <CheckCircle2 className="mr-1 h-3 w-3" /> Aktif
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-gray-200 text-gray-700">
+                            <XCircle className="mr-1 h-3 w-3" /> Tidak Aktif
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'}>
+                          {discount.scope === 'local' ? (
+                            <><Building2 className="mr-1 h-3 w-3" /> Lokal</>
+                          ) : (
+                            <><Globe className="mr-1 h-3 w-3" /> General</>
+                          )}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => handleDetailClick(discount)}>
+                              <Eye className="mr-2 h-4 w-4" /> Detail
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuSeparator />
+                            {!showArchived ? (
+                              <>
+                                {discount.scope === 'local' ? (
+                                  <>
+                                    <DropdownMenuItem onClick={() => handleEditClick(discount)}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsSoftDeleteOpen(true); }} className="text-black"><Archive className="mr-2 h-4 w-4" /> Arsipkan</DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsHardDeleteOpen(true); }} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Hapus Permanen</DropdownMenuItem>
+                                  </>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => handleOverrideClick(discount)}><Settings className="mr-2 h-4 w-4" /> Override Setting</DropdownMenuItem>
+                                )}
+                              </>
+                            ) : (
+                              discount.scope === 'local' && (
+                                <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black"><RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali</DropdownMenuItem>
+                              )
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
