@@ -133,12 +133,12 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
-  // Diskon lokal (yang dibuat di cabang)
-  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string } = {}) => {
+  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - selalu kirim type=local
+  getAll: async (params: { page?: number; limit?: number; search?: string; status?: string } = {}) => {
     return fetchData('/discount-rule', params.page, params.limit, {
       search: params.search,
       status: params.status,
-      type: params.type
+      type: 'local' // ✅ TAMBAHKAN INI: Backend akan filter berdasarkan branch_id
     });
   },
 
