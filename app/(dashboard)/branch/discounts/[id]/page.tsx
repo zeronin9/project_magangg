@@ -5,26 +5,35 @@ import { useRouter, useParams } from 'next/navigation';
 import { branchDiscountAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   ArrowLeft,
   AlertCircle,
+  Loader2,
   Tag,
-  Calendar,
-  Clock,
-  Percent,
   Ticket,
+  Calendar,
+  Percent,
   Globe,
   Building2,
+  Archive,
+  Clock,
+  AlertTriangle,
   Settings,
   CheckCircle2,
   XCircle,
   Info,
 } from 'lucide-react';
-import { formatRupiah, formatDate } from '@/lib/utils';
+import { formatRupiah } from '@/lib/utils';
 
 // Interface untuk detail diskon
 interface DiscountDetail {
@@ -62,12 +71,20 @@ export default function DiscountDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Modal states
+  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
+  const [isHardDeleteModalOpen, setIsHardDeleteModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     if (discountId) {
       loadDiscountDetail();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [discountId]);
+
+  const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   // Helper function untuk cek status waktu diskon
   const isDiscountActive = (endDate: string): boolean => {
@@ -207,325 +224,473 @@ export default function DiscountDetailPage() {
     }
   };
 
-  const formatTime = (dateString: string) => {
+  const handleArchive = async () => {
+    if (!discount) return;
+    
+    setIsSubmitting(true);
     try {
-      return new Date(dateString).toLocaleTimeString('id-ID', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      await delay(1000);
+      await branchDiscountAPI.softDelete(discount.discount_rule_id);
+      router.push('/branch/discounts');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal mengarsipkan diskon');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!discount) return;
+    
+    setIsSubmitting(true);
+    try {
+      await delay(1000);
+      await branchDiscountAPI.update(discount.discount_rule_id, {
+        ...discount,
+        is_active: true
       });
-    } catch (e) { 
-      return '-'; 
+      await loadDiscountDetail();
+      setIsRestoreOpen(false);
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal mengaktifkan kembali diskon');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleBack = () => {
-    router.push('/branch/discounts');
+  const handleHardDelete = async () => {
+    if (!discount) return;
+    
+    setIsSubmitting(true);
+    try {
+      await delay(1000);
+      await branchDiscountAPI.hardDelete(discount.discount_rule_id);
+      router.push('/branch/discounts');
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Gagal menghapus permanen');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleEdit = () => {
-    if (discount?.scope === 'local') {
-      router.push(`/branch/discounts/${discountId}/edit`);
-    } else {
-      router.push(`/branch/discounts/${discountId}/override`);
-    }
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   if (isLoading) {
     return (
-      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
-        <Skeleton className="h-10 w-64" />
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-8 w-full mb-2" />
-            <Skeleton className="h-4 w-3/4" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
       </div>
     );
   }
 
-  if (error || !discount) {
+  if (error && !discount) {
     return (
-      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8">
-        <Button variant="ghost" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Kembali
-        </Button>
+      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="icon"
+            onClick={() => router.push('/branch/discounts')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Detail Diskon</h1>
+          </div>
+        </div>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error || 'Diskon tidak ditemukan'}</AlertDescription>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       </div>
     );
   }
 
+  if (!discount) return null;
+
   const isTimeActive = isDiscountActive(discount.end_date);
 
   return (
-    <div className="flex-1 space-y-6 p-4 pt-6 md:p-6 lg:p-8">
+    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={handleBack}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Kembali
-        </Button>
-        {discount.scope === 'local' ? (
-          <Button onClick={handleEdit}>
-            <Settings className="mr-2 h-4 w-4" />
-            Edit Diskon
+        <div className="flex flex-col gap-4">
+          <Button
+            variant="ghost"
+            className="w-fit -ml-4"
+            onClick={() => router.back()}
+            disabled={isSubmitting}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Kembali ke Daftar Diskon
           </Button>
-        ) : (
-          <Button onClick={handleEdit}>
-            <Settings className="mr-2 h-4 w-4" />
-            Override Setting
-          </Button>
-        )}
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Detail Diskon</h1>
+            <p className="text-muted-foreground">
+              Informasi lengkap aturan Diskon
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Main Info Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div className="space-y-2">
-              <CardTitle className="text-3xl flex items-center gap-3">
-                <Tag className="h-8 w-8 text-muted-foreground" />
-                {discount.discount_name}
-              </CardTitle>
-              <CardDescription>
-                {discount.discount_code ? (
-                  <Badge variant="secondary" className="font-mono text-sm">
-                    <Ticket className="mr-1 h-4 w-4" /> {discount.discount_code}
-                  </Badge>
-                ) : (
-                  <span className="text-sm text-muted-foreground">Diskon Otomatis (Tanpa Kode)</span>
-                )}
-              </CardDescription>
-            </div>
-            <div className="flex flex-col gap-2 items-end">
-              {/* Scope Badge */}
-              <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'} className="text-sm">
-                {discount.scope === 'local' ? (
-                  <><Building2 className="mr-1 h-4 w-4" /> Diskon Lokal</>
-                ) : (
-                  <><Globe className="mr-1 h-4 w-4" /> Diskon General</>
-                )}
-              </Badge>
-              
-              {/* Override Badge */}
-              {discount.is_overridden && (
-                <Badge variant="outline" className="border-orange-200 text-orange-600 bg-orange-50">
-                  <Settings className="mr-1 h-3 w-3" /> Override Aktif
-                </Badge>
-              )}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-              {/* Status Badge */}
-              {isTimeActive ? (
-                <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                  <CheckCircle2 className="mr-1 h-4 w-4" /> Aktif
+      {/* Status Badge */}
+      {!discount.is_active && (
+        <Alert>
+          <Archive className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Diskon Diarsipkan:</strong> Diskon ini tidak aktif dan tidak dapat digunakan dalam transaksi.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Informasi Dasar */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5" />
+              Informasi Dasar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Nama Diskon</p>
+              <p className="font-semibold text-lg">{discount.discount_name}</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Kode Diskon</p>
+              {discount.discount_code ? (
+                <Badge variant="secondary" className="font-mono text-sm">
+                  <Ticket className="mr-1 h-3 w-3" />
+                  {discount.discount_code}
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="bg-gray-200 text-gray-700">
-                  <XCircle className="mr-1 h-4 w-4" /> Tidak Aktif
+                <span className="text-muted-foreground text-sm">Otomatis (tanpa kode)</span>
+              )}
+            </div>
+
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Status Sistem</p>
+              <Badge variant={discount.is_active ? 'default' : 'secondary'} className="text-sm">
+                {discount.is_active ? 'Aktif' : 'Diarsipkan'}
+              </Badge>
+            </div>
+
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Status Waktu</p>
+              {isTimeActive ? (
+                <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-sm">
+                  <CheckCircle2 className="mr-1 h-3 w-3" /> Aktif
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="bg-gray-200 text-gray-700 text-sm">
+                  <XCircle className="mr-1 h-3 w-3" /> Tidak Aktif
                 </Badge>
               )}
             </div>
-          </div>
-        </CardHeader>
 
-        <CardContent className="space-y-6">
-          {/* Nilai Diskon */}
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">Nilai Diskon</h3>
-            <div className="flex items-baseline gap-2">
-              <p className="text-4xl font-bold text-primary">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Cakupan</p>
+              <Badge variant={discount.scope === 'local' ? 'secondary' : 'default'} className="text-sm">
+                {discount.scope === 'local' ? (
+                  <>
+                    <Building2 className="mr-1 h-3 w-3" />
+                    Lokal
+                  </>
+                ) : (
+                  <>
+                    <Globe className="mr-1 h-3 w-3" />
+                    General
+                  </>
+                )}
+              </Badge>
+            </div>
+
+            {discount.is_overridden && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Override</p>
+                <Badge variant="outline" className="border-orange-200 text-orange-600 bg-orange-50 text-sm">
+                  <Settings className="mr-1 h-3 w-3" /> Override Aktif
+                </Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Nilai Diskon */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Percent className="h-5 w-5" />
+              Nilai Diskon
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Tipe Diskon</p>
+              <p className="font-medium">
+                {discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal Tetap'}
+              </p>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm text-muted-foreground mb-1">Nilai Potongan</p>
+              <p className="font-bold text-3xl text-primary">
                 {discount.discount_type === 'PERCENTAGE' 
                   ? `${discount.value}%` 
                   : formatRupiah(discount.value)
                 }
               </p>
-              <Badge variant="outline">
-                {discount.discount_type === 'PERCENTAGE' ? 'Persentase' : 'Nominal'}
-              </Badge>
             </div>
-            
-            {/* Show original value if overridden */}
+
             {discount.is_overridden && discount.original_value !== undefined && (
-              <div className="mt-2 flex items-center gap-2">
-                <Info className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">
-                  Nilai original: <span className="line-through">
-                    {discount.discount_type === 'PERCENTAGE' 
-                      ? `${discount.original_value}%` 
-                      : formatRupiah(discount.original_value)
-                    }
-                  </span>
-                </span>
+              <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <Info className="h-4 w-4 text-orange-600" />
+                  <p className="text-xs text-orange-600 font-medium">Nilai Original</p>
+                </div>
+                <p className="text-sm text-muted-foreground line-through">
+                  {discount.discount_type === 'PERCENTAGE' 
+                    ? `${discount.original_value}%` 
+                    : formatRupiah(discount.original_value)
+                  }
+                </p>
               </div>
             )}
-          </div>
+          </CardContent>
+        </Card>
 
-          <Separator />
-
-          {/* Deskripsi */}
-          {discount.description && (
-            <>
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2">Deskripsi</h3>
-                <p className="text-sm">{discount.description}</p>
-              </div>
-              <Separator />
-            </>
-          )}
-
-          {/* Periode Waktu */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">Waktu Mulai</h3>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-base">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>{formatDate(discount.start_date)}</span>
+        {/* Periode Aktif */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Periode Aktif
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Mulai */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>Waktu Mulai</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  <span>{formatTime(discount.start_date)} WIB</span>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Tanggal</p>
+                      <p className="font-bold text-lg text-black dark:text-black">
+                        {formatDate(discount.start_date)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground mb-1">Jam</p>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4 text-black" />
+                        <p className="font-bold text-lg text-black">
+                          {formatTime(discount.start_date)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selesai */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  <span>Waktu Selesai</span>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Tanggal</p>
+                      <p className="font-bold text-lg text-black">
+                        {formatDate(discount.end_date)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground mb-1">Jam</p>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4 text-black" />
+                        <p className="font-bold text-lg text-black">
+                          {formatTime(discount.end_date)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-3">Waktu Selesai</h3>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-base">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span>{formatDate(discount.end_date)}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  <span>{formatTime(discount.end_date)} WIB</span>
-                </div>
-              </div>
+            <div className="bg-gray-50 p-3 rounded-lg mt-4">
+              <p className="text-sm font-medium text-black">
+                <strong>Durasi:</strong> {Math.ceil((new Date(discount.end_date).getTime() - new Date(discount.start_date).getTime()) / (1000 * 60 * 60 * 24))} hari
+              </p>
             </div>
-          </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          <Separator />
-
-          {/* Syarat & Ketentuan */}
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-4">Syarat & Ketentuan</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Min Transaction Amount */}
-              {discount.min_transaction_amount !== null && discount.min_transaction_amount !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Min. Transaksi</span>
-                  <span className="font-medium">{formatRupiah(discount.min_transaction_amount)}</span>
-                </div>
-              )}
-
-              {/* Max Transaction Amount */}
-              {discount.max_transaction_amount !== null && discount.max_transaction_amount !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Max. Transaksi</span>
-                  <span className="font-medium">{formatRupiah(discount.max_transaction_amount)}</span>
-                </div>
-              )}
-
-              {/* Min Item Quantity */}
-              {discount.min_item_quantity !== null && discount.min_item_quantity !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Min. Jumlah Item</span>
-                  <span className="font-medium">{discount.min_item_quantity} item</span>
-                </div>
-              )}
-
-              {/* Max Item Quantity */}
-              {discount.max_item_quantity !== null && discount.max_item_quantity !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Max. Jumlah Item</span>
-                  <span className="font-medium">{discount.max_item_quantity} item</span>
-                </div>
-              )}
-
-              {/* Min Discount Amount */}
-              {discount.min_discount_amount !== null && discount.min_discount_amount !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Min. Potongan</span>
-                  <span className="font-medium">{formatRupiah(discount.min_discount_amount)}</span>
-                </div>
-              )}
-
-              {/* Max Discount Amount */}
-              {discount.max_discount_amount !== null && discount.max_discount_amount !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Max. Potongan</span>
-                  <span className="font-medium">{formatRupiah(discount.max_discount_amount)}</span>
-                </div>
-              )}
-
-              {/* Usage Limit */}
-              {discount.usage_limit !== null && discount.usage_limit !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Batas Penggunaan</span>
-                  <span className="font-medium">{discount.usage_limit} kali</span>
-                </div>
-              )}
-
-              {/* Usage Count */}
-              {discount.usage_count !== null && discount.usage_count !== undefined && (
-                <div className="flex justify-between items-center py-2 px-3 bg-muted/50 rounded-lg">
-                  <span className="text-sm text-muted-foreground">Sudah Digunakan</span>
-                  <span className="font-medium">{discount.usage_count} kali</span>
-                </div>
-              )}
+      {/* Syarat & Ketentuan */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Syarat & Ketentuan</CardTitle>
+          <CardDescription>
+            Aturan tambahan yang berlaku untuk diskon ini
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-1">Min. Transaksi</p>
+              <p className="font-semibold text-sm">
+                {discount.min_transaction_amount 
+                  ? formatRupiah(discount.min_transaction_amount) 
+                  : '-'}
+              </p>
             </div>
             
-            {!discount.min_transaction_amount && 
-             !discount.max_transaction_amount && 
-             !discount.min_item_quantity && 
-             !discount.max_item_quantity && 
-             !discount.max_discount_amount && 
-             !discount.min_discount_amount && 
-             !discount.usage_limit && (
-              <p className="text-sm text-muted-foreground italic">Tidak ada syarat khusus</p>
-            )}
-          </div>
-
-          <Separator />
-
-          {/* Status Info */}
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Status</h3>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                {discount.is_active ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                ) : (
-                  <XCircle className="h-5 w-5 text-gray-500" />
-                )}
-                <span className="text-sm">
-                  {discount.is_active ? 'Diskon Aktif di Sistem' : 'Diskon Nonaktif di Sistem'}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                {isTimeActive ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                ) : (
-                  <XCircle className="h-5 w-5 text-gray-500" />
-                )}
-                <span className="text-sm">
-                  {isTimeActive ? 'Periode Waktu Masih Berlaku' : 'Periode Waktu Sudah Lewat'}
-                </span>
-              </div>
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-1">Max. Transaksi</p>
+              <p className="font-semibold text-sm">
+                {discount.max_transaction_amount 
+                  ? formatRupiah(discount.max_transaction_amount) 
+                  : '-'}
+              </p>
+            </div>
+            
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-1">Min. Diskon</p>
+              <p className="font-semibold text-sm">
+                {discount.min_discount_amount 
+                  ? formatRupiah(discount.min_discount_amount) 
+                  : '-'}
+              </p>
+            </div>
+            
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-1">Max. Diskon</p>
+              <p className="font-semibold text-sm">
+                {discount.max_discount_amount 
+                  ? formatRupiah(discount.max_discount_amount) 
+                  : '-'}
+              </p>
+            </div>
+            
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-1">Min. Item (Qty)</p>
+              <p className="font-semibold text-sm">
+                {discount.min_item_quantity 
+                  ? `${discount.min_item_quantity} item` 
+                  : '-'}
+              </p>
+            </div>
+            
+            <div className="bg-muted/50 p-4 rounded-lg">
+              <p className="text-xs text-muted-foreground mb-1">Max. Item (Qty)</p>
+              <p className="font-semibold text-sm">
+                {discount.max_item_quantity 
+                  ? `${discount.max_item_quantity} item` 
+                  : '-'}
+              </p>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Archive Confirmation */}
+      <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Arsipkan Diskon?</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin mengarsipkan diskon <strong>{discount.discount_name}</strong>?
+              <br/>
+              Diskon akan dinonaktifkan (Soft Delete).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSoftDeleteOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="default" className="bg-black" onClick={handleArchive} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Arsipkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore Confirmation */}
+      <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aktifkan Kembali?</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin mengaktifkan kembali diskon <strong>{discount.discount_name}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRestoreOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="default" className="bg-black" onClick={handleRestore} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Aktifkan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hard Delete Confirmation */}
+      <Dialog open={isHardDeleteModalOpen} onOpenChange={setIsHardDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-black gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Hapus Permanen?
+            </DialogTitle>
+            <DialogDescription>
+              Diskon <strong>{discount.discount_name}</strong> akan dihapus selamanya dari database.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHardDeleteModalOpen(false)}>
+              Batal
+            </Button>
+            <Button className="bg-black hover:bg-gray-800" variant="destructive" onClick={handleHardDelete} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Hapus Permanen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
