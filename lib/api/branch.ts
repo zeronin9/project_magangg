@@ -137,13 +137,15 @@ export const branchDiscountAPI = {
   getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string; archived?: boolean } = {}) => {
     console.log('📞 [API] branchDiscountAPI.getAll called with params:', params);
     
-    // Konversi archived ke status
+    // ✅ PERBAIKAN: Konversi archived ke status dengan logika yang benar
     let statusParam = params.status;
     if (params.archived !== undefined) {
-      // Jika archived=true, ambil semua (aktif + non-aktif)
-      // Jika archived=false, ambil hanya yang aktif
+      // ✅ Jika archived=false, ambil hanya yang aktif (status='active')
+      // ✅ Jika archived=true, ambil semua (status='all')
       statusParam = params.archived === false ? 'active' : 'all';
     }
+    
+    console.log('🔍 [API] Status param after conversion:', statusParam);
     
     return fetchData('/discount-rule', params.page, params.limit, {
       search: params.search,
@@ -156,13 +158,25 @@ export const branchDiscountAPI = {
   getById: (id: string) => 
     apiClient.get(`/discount-rule/${id}`),
 
-  // ✅ PERBAIKAN: Diskon general dari partner/pusat - gunakan /discount-rule?type=general&status=all
-  getGeneral: async (params: { page?: number; limit?: number; search?: string; status?: string } = {}) => {
+  // ✅ PERBAIKAN: Diskon general dari partner/pusat - terima parameter archived
+  getGeneral: async (params: { page?: number; limit?: number; search?: string; status?: string; archived?: boolean } = {}) => {
     try {
       console.log('📞 [API] branchDiscountAPI.getGeneral called with params:', params);
-      console.log('🔍 Fetching GENERAL discounts with type=general&status=all...');
       
-      // ✅ PERBAIKAN: Tambahkan status='all' untuk ambil semua diskon (termasuk arsip)
+      // ✅ PERBAIKAN: Konversi archived ke status dengan logika yang benar
+      let statusParam = params.status;
+      if (params.archived !== undefined) {
+        // ✅ Jika archived=false, ambil hanya yang aktif (status='active')
+        // ✅ Jika archived=true, ambil semua (status='all')
+        statusParam = params.archived === false ? 'active' : 'all';
+      } else {
+        // ✅ Default ke 'all' jika tidak ada parameter archived
+        statusParam = params.status || 'all';
+      }
+      
+      console.log('🔍 [API] Fetching GENERAL discounts with type=general&status=' + statusParam);
+      console.log('🔍 [API] Status param after conversion:', statusParam);
+      
       const response = await fetchData(
         '/discount-rule', 
         params.page || 1, 
@@ -170,7 +184,7 @@ export const branchDiscountAPI = {
         {
           search: params.search,
           type: 'general',
-          status: params.status || 'all' // ✅ DEFAULT ke 'all' untuk ambil semua data
+          status: statusParam
         }
       );
       

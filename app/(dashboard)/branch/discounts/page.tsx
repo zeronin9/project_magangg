@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { branchDiscountAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
@@ -124,7 +124,7 @@ interface Discount {
 
 export default function BranchDiscountsPage() {
   const router = useRouter();
-  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [allDiscounts, setAllDiscounts] = useState<Discount[]>([]);
   const [meta, setMeta] = useState<MetaPagination | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
@@ -212,24 +212,25 @@ export default function BranchDiscountsPage() {
                 limit: 10, 
                 search: searchQuery, 
                 type: 'local',
-                // Tambahkan parameter archived
-                archived: showArchived ? undefined : false
+                // ✅ PERBAIKAN: Kirim parameter archived dengan benar
+                archived: showArchived ? true : false
               }
             : { 
                 page: 1, 
                 limit: 100, 
                 search: searchQuery, 
                 type: 'local',
-                // Tambahkan parameter archived
-                archived: showArchived ? undefined : false
+                // ✅ PERBAIKAN: Kirim parameter archived dengan benar
+                archived: showArchived ? true : false
               };
           
+          console.log('📤 LOCAL PARAMS:', localParams);
           const localResponse = await branchDiscountAPI.getAll(localParams);
           
           console.log('📦 LOCAL RESPONSE:', localResponse);
           
           const items = localResponse?.items || [];
-          console.log(`📊 Total LOCAL items: ${items.length}`);
+          console.log(`📊 Total LOCAL items from API: ${items.length}`);
           
           if (Array.isArray(items)) {
             localItems = items
@@ -332,27 +333,23 @@ export default function BranchDiscountsPage() {
 
       switch (scopeFilter) {
         case 'all':
-          // ✅ Semua: General (non-override) + Local
           const generalNonOverrideForAll = generalItems.filter(d => !d.is_overridden);
           finalDiscounts = [...generalNonOverrideForAll, ...localItems];
           console.log(`📋 Filter ALL: ${generalNonOverrideForAll.length} general + ${localItems.length} local = ${finalDiscounts.length} total`);
           break;
           
         case 'general':
-          // ✅ General: Hanya General (non-override)
           const generalNonOverride = generalItems.filter(d => !d.is_overridden);
           finalDiscounts = [...generalNonOverride];
           console.log(`🌍 Filter GENERAL: ${finalDiscounts.length} items`);
           break;
           
         case 'local':
-          // ✅ Local: Hanya Local
           finalDiscounts = [...localItems];
           console.log(`🏬 Filter LOCAL: ${finalDiscounts.length} items`);
           break;
           
         case 'override':
-          // ✅ Override: Hanya yang sudah di-override
           finalDiscounts = generalItems.filter(d => d.is_overridden);
           console.log(`⚙️ Filter OVERRIDE: ${finalDiscounts.length} items`);
           break;
@@ -376,7 +373,7 @@ export default function BranchDiscountsPage() {
       console.log('   - Inactive:', finalDiscounts.filter(d => !d.is_active).length);
       console.log('='.repeat(80));
 
-      setDiscounts(finalDiscounts);
+      setAllDiscounts(finalDiscounts);
       setMeta(newMeta);
 
     } catch (err) {
@@ -447,54 +444,89 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // ✅ PERBAIKAN: Filter dilakukan di backend dengan parameter archived
-  // Client-side hanya perlu filter untuk general discounts jika showArchived = false
-  const filteredDiscounts = showArchived 
-    ? discounts // Tampilkan SEMUA (aktif + non-aktif)
-    : discounts.filter(d => {
-        // Untuk diskon general, tetap tampilkan yang aktif saja karena tidak ada parameter archived di API
-        if (d.scope === 'general') {
-          return d.is_active !== false;
+  // ✅ PERBAIKAN: Filter archived dilakukan dengan useMemo
+  const filteredDiscounts = useMemo(() => {
+    console.log('🔍 Filtering by archived status:', {
+      showArchived,
+      totalItems: allDiscounts.length,
+      sampleItem: allDiscounts[0]
+    });
+
+    if (!showArchived) {
+      // Ketika showArchived = false, untuk general discount tampilkan yang aktif saja
+      // Karena backend local sudah difilter dengan parameter archived
+      const activeData = allDiscounts.filter(item => {
+        if (item.scope === 'general') {
+          // Untuk general, filter yang aktif
+          return item.is_active !== false;
         }
-        // Untuk diskon lokal, backend sudah filter dengan parameter archived
+        // Untuk local, backend sudah filter, jadi tampilkan semua
         return true;
       });
 
-  console.log('🎯 After archived filter:', filteredDiscounts.length, '(showArchived:', showArchived, ')');
-  console.log('   📊 Breakdown:', {
-    total: discounts.length,
-    active: discounts.filter(d => d.is_active !== false).length,
-    inactive: discounts.filter(d => d.is_active === false).length,
-    showing: filteredDiscounts.length
-  });
+      console.log('🎯 After archived filter:', activeData.length, '(showArchived:', showArchived, ')');
+      console.log('   📊 Breakdown:', {
+        total: allDiscounts.length,
+        active: activeData.length,
+        inactive: allDiscounts.length - activeData.length,
+        showing: activeData.length
+      });
+
+      return activeData;
+    }
+
+    // Ketika showArchived = true, tampilkan SEMUA data
+    console.log('🎯 After archived filter:', allDiscounts.length, '(showArchived:', showArchived, ')');
+    console.log('   📊 Breakdown:', {
+      total: allDiscounts.length,
+      active: allDiscounts.filter(d => d.is_active !== false).length,
+      inactive: allDiscounts.filter(d => d.is_active === false).length,
+      showing: allDiscounts.length
+    });
+
+    return allDiscounts;
+  }, [allDiscounts, showArchived]);
 
   // ✅ Pagination logic
-  let itemsToShow: Discount[];
-  let totalPagesClient: number;
-  let currentTotalPages: number;
-  let hasPrevPage: boolean;
-  let hasNextPage: boolean;
+  const paginationData = useMemo(() => {
+    let itemsToShow: Discount[];
+    let totalPagesClient: number;
+    let currentTotalPages: number;
+    let hasPrevPage: boolean;
+    let hasNextPage: boolean;
 
-  if (meta) {
-    // Server-side pagination (untuk filter "local")
-    itemsToShow = filteredDiscounts;
-    currentTotalPages = meta.total_pages;
-    hasPrevPage = meta.has_prev_page;
-    hasNextPage = meta.has_next_page;
-    console.log('📄 Using SERVER pagination - Page', currentPage, 'of', currentTotalPages);
-  } else {
-    // Client-side pagination (untuk filter "all", "general", "override")
-    totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
-    itemsToShow = filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
-    currentTotalPages = totalPagesClient;
-    hasPrevPage = currentPage > 1;
-    hasNextPage = currentPage < totalPagesClient;
-    console.log('📄 Using CLIENT pagination - Page', currentPage, 'of', currentTotalPages);
-    console.log('   - Total items:', filteredDiscounts.length);
-    console.log('   - Items on this page:', itemsToShow.length);
-  }
+    if (meta) {
+      // Server-side pagination (untuk filter "local")
+      itemsToShow = filteredDiscounts;
+      currentTotalPages = meta.total_pages;
+      hasPrevPage = meta.has_prev_page;
+      hasNextPage = meta.has_next_page;
+      console.log('📄 Using SERVER pagination - Page', currentPage, 'of', currentTotalPages);
+      console.log('   - Total items:', filteredDiscounts.length);
+      console.log('   - Items on this page:', itemsToShow.length);
+    } else {
+      // Client-side pagination (untuk filter "all", "general", "override")
+      totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
+      itemsToShow = filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
+      currentTotalPages = totalPagesClient;
+      hasPrevPage = currentPage > 1;
+      hasNextPage = currentPage < totalPagesClient;
+      console.log('📄 Using CLIENT pagination - Page', currentPage, 'of', currentTotalPages);
+      console.log('   - Total items:', filteredDiscounts.length);
+      console.log('   - Items on this page:', itemsToShow.length);
+    }
 
-  console.log('📄 Items to show on page', currentPage, ':', itemsToShow.length);
+    console.log('📄 Items to show on page', currentPage, ':', itemsToShow.length);
+
+    return {
+      itemsToShow,
+      currentTotalPages,
+      hasPrevPage,
+      hasNextPage
+    };
+  }, [filteredDiscounts, currentPage, meta]);
+
+  const { itemsToShow, currentTotalPages, hasPrevPage, hasNextPage } = paginationData;
 
   const formatTime = (dateString: string) => {
     try {
@@ -503,10 +535,8 @@ export default function BranchDiscountsPage() {
   };
 
   const handlePageChange = (page: number) => {
-    if (meta) {
-      if (page > 0 && page <= meta.total_pages) setCurrentPage(page);
-    } else {
-      if (page > 0 && page <= totalPagesClient) setCurrentPage(page);
+    if (page > 0 && page <= currentTotalPages) {
+      setCurrentPage(page);
     }
   };
 
@@ -705,14 +735,12 @@ export default function BranchDiscountsPage() {
                             
                             <DropdownMenuSeparator />
                             {!discount.is_active ? (
-                              // Diskon yang diarsipkan
                               discount.scope === 'local' && (
                                 <DropdownMenuItem onClick={() => { setSelectedDiscount(discount); setIsRestoreOpen(true); }} className="text-black">
                                   <RotateCcw className="mr-2 h-4 w-4" /> Aktifkan Kembali
                                 </DropdownMenuItem>
                               )
                             ) : (
-                              // Diskon yang aktif
                               <>
                                 {discount.scope === 'local' ? (
                                   <>
