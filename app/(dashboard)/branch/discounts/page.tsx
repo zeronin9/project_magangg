@@ -65,7 +65,6 @@ import {
 import { formatRupiah, formatDate } from '@/lib/utils';
 import { MetaPagination } from '@/lib/services/fetchData';
 
-// Interface untuk response backend General Discount
 interface BranchDiscountSetting {
   discount_rule_id: string;
   branch_id: string;
@@ -93,7 +92,6 @@ interface GeneralDiscountFromBackend {
   applied_in_branches?: BranchDiscountSetting[];
 }
 
-// Interface untuk Diskon Lokal dari getAll
 interface LocalDiscount {
   discount_rule_id: string;
   discount_name: string;
@@ -106,7 +104,6 @@ interface LocalDiscount {
   is_active: boolean;
 }
 
-// Interface untuk Display di Table (unified)
 interface Discount {
   discount_rule_id: string;
   discount_name: string;
@@ -153,7 +150,6 @@ export default function BranchDiscountsPage() {
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // ✅ Helper function untuk cek status waktu diskon
   const isDiscountActive = (endDate: string): boolean => {
     try {
       const now = new Date();
@@ -178,7 +174,7 @@ export default function BranchDiscountsPage() {
       let overrideInfo: Map<string, BranchDiscountSetting> = new Map();
       let newMeta: MetaPagination | null = null;
 
-      // ===== Step 1: Fetch OVERRIDE INFO dari /branch-discount-setting =====
+      // ===== PERBAIKAN 1: Fetch OVERRIDE INFO =====
       if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
         try {
           console.log('🔍 Step 1: Fetching OVERRIDE INFO from /branch-discount-setting...');
@@ -199,29 +195,28 @@ export default function BranchDiscountsPage() {
         }
       }
 
-      // ===== Step 2: Fetch LOCAL discounts (type=local) =====
+      // ===== PERBAIKAN 2: Fetch LOCAL discounts dengan parameter archived yang benar =====
       const shouldLoadLocal = scopeFilter === 'all' || scopeFilter === 'local';
       
       if (shouldLoadLocal) {
         try {
           console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local)...');
           
-          const localParams = scopeFilter === 'local' 
+          // ✅ PERBAIKAN: Gunakan parameter archived dengan benar
+          const localParams: any = scopeFilter === 'local' 
             ? { 
                 page: currentPage, 
                 limit: 10, 
                 search: searchQuery, 
                 type: 'local',
-                // ✅ PERBAIKAN: Kirim parameter archived dengan benar
-                archived: showArchived ? true : false
+                archived: showArchived // ✅ Kirim boolean langsung
               }
             : { 
                 page: 1, 
                 limit: 100, 
                 search: searchQuery, 
                 type: 'local',
-                // ✅ PERBAIKAN: Kirim parameter archived dengan benar
-                archived: showArchived ? true : false
+                archived: showArchived // ✅ Kirim boolean langsung
               };
           
           console.log('📤 LOCAL PARAMS:', localParams);
@@ -263,16 +258,19 @@ export default function BranchDiscountsPage() {
         }
       }
 
-      // ===== Step 3: Fetch GENERAL discounts (type=general) =====
+      // ===== PERBAIKAN 3: Fetch GENERAL discounts dengan parameter archived =====
       const shouldLoadGeneral = scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override';
       
       if (shouldLoadGeneral) {
         try {
           console.log('🔍 Step 3: Fetching GENERAL discounts (/discount-rule?type=general)...');
+          
+          // ✅ PERBAIKAN: Kirim parameter archived untuk general discount
           const generalResponse = await branchDiscountAPI.getGeneral({ 
             page: 1, 
             limit: 100, 
-            search: searchQuery 
+            search: searchQuery,
+            archived: showArchived // ✅ Kirim boolean langsung
           });
           
           console.log('📦 GENERAL RESPONSE:', generalResponse);
@@ -284,7 +282,6 @@ export default function BranchDiscountsPage() {
             generalItems = items
               .filter((item: GeneralDiscountFromBackend) => item && item.discount_rule_id && item.discount_name)
               .map((item: GeneralDiscountFromBackend) => {
-                // Check apakah ada override untuk discount ini
                 const branchSetting = overrideInfo.get(item.discount_rule_id);
                 const hasOverride = !!branchSetting;
 
@@ -322,7 +319,7 @@ export default function BranchDiscountsPage() {
         }
       }
 
-      // ===== Step 4: COMBINE DATA berdasarkan filter =====
+      // ===== PERBAIKAN 4: COMBINE DATA berdasarkan filter =====
       let finalDiscounts: Discount[] = [];
 
       console.log('---');
@@ -333,15 +330,16 @@ export default function BranchDiscountsPage() {
 
       switch (scopeFilter) {
         case 'all':
+          // ✅ PERBAIKAN: Filter general HANYA yang TIDAK punya override
           const generalNonOverrideForAll = generalItems.filter(d => !d.is_overridden);
           finalDiscounts = [...generalNonOverrideForAll, ...localItems];
-          console.log(`📋 Filter ALL: ${generalNonOverrideForAll.length} general + ${localItems.length} local = ${finalDiscounts.length} total`);
+          console.log(`📋 Filter ALL: ${generalNonOverrideForAll.length} general (non-override) + ${localItems.length} local = ${finalDiscounts.length} total`);
           break;
           
         case 'general':
-          const generalNonOverride = generalItems.filter(d => !d.is_overridden);
-          finalDiscounts = [...generalNonOverride];
-          console.log(`🌍 Filter GENERAL: ${finalDiscounts.length} items`);
+          // ✅ PERBAIKAN: Tampilkan SEMUA general discount (termasuk yang punya override)
+          finalDiscounts = [...generalItems];
+          console.log(`🌍 Filter GENERAL: ${finalDiscounts.length} items (including ${generalItems.filter(d => d.is_overridden).length} with override)`);
           break;
           
         case 'local':
@@ -350,12 +348,13 @@ export default function BranchDiscountsPage() {
           break;
           
         case 'override':
+          // ✅ Hanya tampilkan general discount yang punya override
           finalDiscounts = generalItems.filter(d => d.is_overridden);
           console.log(`⚙️ Filter OVERRIDE: ${finalDiscounts.length} items`);
           break;
       }
 
-      // ===== Step 5: DEDUPLICATE =====
+      // ===== DEDUPLICATE =====
       const discountMap = new Map<string, Discount>();
       finalDiscounts.forEach(discount => {
         if (!discountMap.has(discount.discount_rule_id)) {
@@ -444,50 +443,12 @@ export default function BranchDiscountsPage() {
     }
   };
 
-  // ✅ PERBAIKAN: Filter archived dilakukan dengan useMemo
+  // ✅ PERBAIKAN 5: Hapus filter archived di sini karena sudah dihandle di loadData
   const filteredDiscounts = useMemo(() => {
-    console.log('🔍 Filtering by archived status:', {
-      showArchived,
-      totalItems: allDiscounts.length,
-      sampleItem: allDiscounts[0]
-    });
-
-    if (!showArchived) {
-      // Ketika showArchived = false, untuk general discount tampilkan yang aktif saja
-      // Karena backend local sudah difilter dengan parameter archived
-      const activeData = allDiscounts.filter(item => {
-        if (item.scope === 'general') {
-          // Untuk general, filter yang aktif
-          return item.is_active !== false;
-        }
-        // Untuk local, backend sudah filter, jadi tampilkan semua
-        return true;
-      });
-
-      console.log('🎯 After archived filter:', activeData.length, '(showArchived:', showArchived, ')');
-      console.log('   📊 Breakdown:', {
-        total: allDiscounts.length,
-        active: activeData.length,
-        inactive: allDiscounts.length - activeData.length,
-        showing: activeData.length
-      });
-
-      return activeData;
-    }
-
-    // Ketika showArchived = true, tampilkan SEMUA data
-    console.log('🎯 After archived filter:', allDiscounts.length, '(showArchived:', showArchived, ')');
-    console.log('   📊 Breakdown:', {
-      total: allDiscounts.length,
-      active: allDiscounts.filter(d => d.is_active !== false).length,
-      inactive: allDiscounts.filter(d => d.is_active === false).length,
-      showing: allDiscounts.length
-    });
-
+    console.log('🔍 Total items after load:', allDiscounts.length);
     return allDiscounts;
-  }, [allDiscounts, showArchived]);
+  }, [allDiscounts]);
 
-  // ✅ Pagination logic
   const paginationData = useMemo(() => {
     let itemsToShow: Discount[];
     let totalPagesClient: number;
@@ -496,7 +457,6 @@ export default function BranchDiscountsPage() {
     let hasNextPage: boolean;
 
     if (meta) {
-      // Server-side pagination (untuk filter "local")
       itemsToShow = filteredDiscounts;
       currentTotalPages = meta.total_pages;
       hasPrevPage = meta.has_prev_page;
@@ -505,7 +465,6 @@ export default function BranchDiscountsPage() {
       console.log('   - Total items:', filteredDiscounts.length);
       console.log('   - Items on this page:', itemsToShow.length);
     } else {
-      // Client-side pagination (untuk filter "all", "general", "override")
       totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
       itemsToShow = filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
       currentTotalPages = totalPagesClient;
@@ -589,7 +548,7 @@ export default function BranchDiscountsPage() {
         <AlertDescription>
           <strong>Filter Scope:</strong> 
           <br/>• <strong>Semua</strong> = Diskon General (non-override) + Lokal
-          <br/>• <strong>General</strong> = Hanya diskon General (non-override)
+          <br/>• <strong>General</strong> = Semua diskon General (termasuk yang ada override)
           <br/>• <strong>Lokal</strong> = Hanya diskon khusus cabang ini
           <br/>• <strong>Override</strong> = Diskon general yang sudah diubah di cabang ini
         </AlertDescription>

@@ -133,16 +133,23 @@ export const branchCategoryAPI = {
 
 // ==================== DISCOUNTS ====================
 export const branchDiscountAPI = {
-  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - kirim type=local dan status
+  // ✅ PERBAIKAN: Diskon lokal (yang dibuat di cabang) - kirim type=local dan status yang benar
   getAll: async (params: { page?: number; limit?: number; search?: string; status?: string; type?: string; archived?: boolean } = {}) => {
     console.log('📞 [API] branchDiscountAPI.getAll called with params:', params);
     
     // ✅ PERBAIKAN: Konversi archived ke status dengan logika yang benar
-    let statusParam = params.status;
+    let statusParam: string;
+    
     if (params.archived !== undefined) {
+      // ✅ Jika archived=true, ambil hanya yang tidak aktif (status='inactive')
       // ✅ Jika archived=false, ambil hanya yang aktif (status='active')
-      // ✅ Jika archived=true, ambil semua (status='all')
-      statusParam = params.archived === false ? 'active' : 'all';
+      statusParam = params.archived === true ? 'inactive' : 'active';
+    } else if (params.status) {
+      // Gunakan status yang diberikan
+      statusParam = params.status;
+    } else {
+      // Default ke 'active' jika tidak ada parameter
+      statusParam = 'active';
     }
     
     console.log('🔍 [API] Status param after conversion:', statusParam);
@@ -158,20 +165,24 @@ export const branchDiscountAPI = {
   getById: (id: string) => 
     apiClient.get(`/discount-rule/${id}`),
 
-  // ✅ PERBAIKAN: Diskon general dari partner/pusat - terima parameter archived
+  // ✅ PERBAIKAN: Diskon general dari partner/pusat - terima parameter archived dan konversi dengan benar
   getGeneral: async (params: { page?: number; limit?: number; search?: string; status?: string; archived?: boolean } = {}) => {
     try {
       console.log('📞 [API] branchDiscountAPI.getGeneral called with params:', params);
       
       // ✅ PERBAIKAN: Konversi archived ke status dengan logika yang benar
-      let statusParam = params.status;
+      let statusParam: string;
+      
       if (params.archived !== undefined) {
+        // ✅ Jika archived=true, ambil hanya yang tidak aktif (status='inactive')
         // ✅ Jika archived=false, ambil hanya yang aktif (status='active')
-        // ✅ Jika archived=true, ambil semua (status='all')
-        statusParam = params.archived === false ? 'active' : 'all';
+        statusParam = params.archived === true ? 'inactive' : 'active';
+      } else if (params.status) {
+        // Gunakan status yang diberikan
+        statusParam = params.status;
       } else {
-        // ✅ Default ke 'all' jika tidak ada parameter archived
-        statusParam = params.status || 'all';
+        // Default ke 'active' jika tidak ada parameter
+        statusParam = 'active';
       }
       
       console.log('🔍 [API] Fetching GENERAL discounts with type=general&status=' + statusParam);
