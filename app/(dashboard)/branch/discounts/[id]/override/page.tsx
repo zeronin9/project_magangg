@@ -86,54 +86,71 @@ export default function OverrideDiscountPage() {
       setIsLoading(true);
       setError('');
       
-      // Ambil data General Discount & Master Data Produk/Kategori untuk display
-      // PERBAIKAN 1: Sesuaikan nilai fallback catch agar sesuai struktur return
-      const [generalResponse, productsData, categoriesData] = await Promise.all([
-        // getGeneral pake axios biasa -> return response (pakai .data nanti)
-        branchDiscountAPI.getGeneral().catch(() => ({ data: [] })), 
-        
-        // getAll pake fetchData -> return { items: [], meta: ... }
-        branchProductAPI.getAll().catch(() => ({ items: [] })), 
-        
-        // getAll pake fetchData -> return { items: [], meta: ... }
-        branchCategoryAPI.getAll().catch(() => ({ items: [] }))
+      console.log('🔍 Loading override data for discount ID:', discountId);
+
+      // ✅ PERBAIKAN 1: Load products dan categories menggunakan fetchData yang return { items, meta }
+      const [productsResponse, categoriesResponse] = await Promise.all([
+        branchProductAPI.getAll({ page: 1, limit: 1000 }).catch(() => ({ items: [] })),
+        branchCategoryAPI.getAll({ page: 1, limit: 1000 }).catch(() => ({ items: [] }))
       ]);
 
-      // PERBAIKAN 2: Akses properti .items untuk produk dan kategori (karena dari fetchData)
-      // Gunakan 'as any' sementara jika TypeScript masih strict terhadap tipe Promise.all
-      const productsList = (productsData as any).items || [];
-      const categoriesList = (categoriesData as any).items || [];
+      const productsList = productsResponse?.items || [];
+      const categoriesList = categoriesResponse?.items || [];
 
       setProducts(Array.isArray(productsList) ? productsList : []);
       setCategories(Array.isArray(categoriesList) ? categoriesList : []);
 
-      // PERBAIKAN 3: Akses properti .data untuk general discount (karena dari axios langsung)
-      const generalDiscounts = Array.isArray((generalResponse as any).data) ? (generalResponse as any).data : [];
+      console.log('✅ Loaded', productsList.length, 'products and', categoriesList.length, 'categories');
+
+      // ✅ PERBAIKAN 2: Load general discounts dengan override info
+      const overrideResponse = await branchDiscountAPI.getGeneralWithOverride();
+      console.log('📦 Override response:', overrideResponse);
       
-      const foundDiscount = generalDiscounts.find((d: any) => String(d.discount_rule_id) === String(discountId));
+      let generalDiscounts = [];
+      if (Array.isArray(overrideResponse)) {
+        generalDiscounts = overrideResponse;
+      } else if (overrideResponse?.data && Array.isArray(overrideResponse.data)) {
+        generalDiscounts = overrideResponse.data;
+      }
+
+      console.log('📊 Total general discounts with override info:', generalDiscounts.length);
+
+      // ✅ PERBAIKAN 3: Cari discount yang sesuai
+      const foundDiscount = generalDiscounts.find((d: any) => 
+        String(d.discount_rule_id) === String(discountId)
+      );
 
       if (!foundDiscount) {
-        setError('Data diskon general tidak ditemukan.');
+        setError('Data diskon general tidak ditemukan atau sudah dihapus.');
         return;
       }
 
+      console.log('✅ Found discount:', foundDiscount.discount_name);
       setMasterDiscount(foundDiscount);
 
-      // Cek apakah sudah ada override sebelumnya
-      const currentSetting = foundDiscount.branch_setting || {};
+      // ✅ PERBAIKAN 4: Ambil override setting dari applied_in_branches
+      let currentSetting: any = {};
       
+      if (foundDiscount.applied_in_branches && Array.isArray(foundDiscount.applied_in_branches) && foundDiscount.applied_in_branches.length > 0) {
+        currentSetting = foundDiscount.applied_in_branches[0];
+        console.log('✅ Found existing override setting:', currentSetting);
+      } else {
+        console.log('ℹ️ No existing override setting, using master values as defaults');
+      }
+
       // Helper untuk mengambil nilai string atau fallback ke string kosong
-      const getVal = (val: any, fallback: any) => {
-          if (val !== null && val !== undefined) return String(val);
-          if (fallback !== null && fallback !== undefined) return String(fallback);
-          return '';
+      const getVal = (overrideVal: any, masterVal: any) => {
+        if (overrideVal !== null && overrideVal !== undefined) return String(overrideVal);
+        if (masterVal !== null && masterVal !== undefined) return String(masterVal);
+        return '';
       };
 
+      // ✅ PERBAIKAN 5: Set form data dengan nilai override atau master
       setFormData({
         is_active_at_branch: currentSetting.is_active_at_branch !== undefined 
           ? String(currentSetting.is_active_at_branch) 
           : 'true',
-        value: getVal(currentSetting.value, foundDiscount.master_value),
+        value: getVal(currentSetting.value, foundDiscount.value),
         min_transaction_amount: getVal(currentSetting.min_transaction_amount, foundDiscount.min_transaction_amount),
         max_transaction_amount: getVal(currentSetting.max_transaction_amount, foundDiscount.max_transaction_amount),
         min_item_quantity: getVal(currentSetting.min_item_quantity, foundDiscount.min_item_quantity),
@@ -142,8 +159,10 @@ export default function OverrideDiscountPage() {
         max_discount_amount: getVal(currentSetting.max_discount_amount, foundDiscount.max_discount_amount),
       });
 
+      console.log('✅ Form data initialized:', formData);
+
     } catch (err: any) {
-      console.error(err);
+      console.error('❌ Error loading override data:', err);
       setError(err.message || 'Gagal memuat data');
     } finally {
       setIsLoading(false);
@@ -167,8 +186,14 @@ export default function OverrideDiscountPage() {
     setError('');
 
     try {
+      console.log('📤 Submitting override data...');
+      
       // Helper konversi: String kosong ('') menjadi null agar backend mereset nilai
-      const toNullableNumber = (val: string) => (val && val.trim() !== '') ? Number(val) : null;
+      const toNullableNumber = (val: string) => {
+        if (!val || val.trim() === '') return null;
+        const num = Number(val);
+        return isNaN(num) ? null : num;
+      };
 
       const payload = {
         is_active_at_branch: formData.is_active_at_branch === 'true',
@@ -181,10 +206,14 @@ export default function OverrideDiscountPage() {
         max_discount_amount: toNullableNumber(formData.max_discount_amount),
       };
 
+      console.log('📦 Payload:', payload);
+
       await branchDiscountAPI.setOverride(discountId, payload);
+      
+      console.log('✅ Override saved successfully');
       router.push('/branch/discounts');
     } catch (err: any) {
-      console.error('Error submitting override:', err);
+      console.error('❌ Error submitting override:', err);
       setError(err.response?.data?.message || err.message || 'Gagal menyimpan pengaturan override');
     } finally {
       setIsSubmitting(false);
@@ -219,8 +248,8 @@ export default function OverrideDiscountPage() {
   const endDate = masterDiscount?.end_date ? new Date(masterDiscount.end_date).toISOString().split('T')[0] : '';
   const endTime = masterDiscount?.end_date ? new Date(masterDiscount.end_date).toTimeString().slice(0, 5) : '';
   
-  const masterProductIds = parseArrayField(masterDiscount?.product_ids);
-  const masterCategoryIds = parseArrayField(masterDiscount?.category_ids);
+  const masterProductIds = parseArrayField(masterDiscount?.product_ids, masterDiscount?.products);
+  const masterCategoryIds = parseArrayField(masterDiscount?.category_ids, masterDiscount?.categories);
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
@@ -334,6 +363,7 @@ export default function OverrideDiscountPage() {
                     type="number"
                     min="0"
                     max="100"
+                    step="0.01"
                     value={formData.value}
                     onChange={(e) => setFormData({ ...formData, value: e.target.value })}
                     placeholder="Masukkan persentase"
@@ -343,7 +373,7 @@ export default function OverrideDiscountPage() {
                 ) : (
                   <Input
                     id="value"
-                    value={formData.value ? `Rp. ${Number(formData.value).toLocaleString('id-ID')}` : ''}
+                    value={formData.value ? `Rp ${Number(formData.value).toLocaleString('id-ID')}` : ''}
                     onChange={(e) => handleNumberInput(e, 'value')}
                     placeholder="Masukkan nominal"
                     required
@@ -352,7 +382,7 @@ export default function OverrideDiscountPage() {
                 )}
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <Info className="h-3 w-3" />
-                  Nilai Master: <strong>{masterDiscount?.discount_type === 'PERCENTAGE' ? `${masterDiscount?.master_value}%` : formatRupiah(masterDiscount?.master_value || 0)}</strong>
+                  Nilai Master: <strong>{masterDiscount?.discount_type === 'PERCENTAGE' ? `${masterDiscount?.value}%` : formatRupiah(masterDiscount?.value || 0)}</strong>
                 </p>
               </div>
             </div>
@@ -463,7 +493,7 @@ export default function OverrideDiscountPage() {
               <div className="space-y-2">
                 <Label className="text-sm">Minimal Transaksi (Rp)</Label>
                 <Input
-                  value={displayFormatted(formData.min_transaction_amount)}
+                  value={formData.min_transaction_amount ? `Rp ${Number(formData.min_transaction_amount).toLocaleString('id-ID')}` : ''}
                   onChange={(e) => handleNumberInput(e, 'min_transaction_amount')}
                   placeholder={masterDiscount?.min_transaction_amount ? `Master: ${formatRupiah(masterDiscount.min_transaction_amount)}` : 'Tidak ada limit'}
                 />
@@ -472,7 +502,7 @@ export default function OverrideDiscountPage() {
               <div className="space-y-2">
                 <Label className="text-sm">Maksimal Transaksi (Rp)</Label>
                 <Input
-                  value={displayFormatted(formData.max_transaction_amount)}
+                  value={formData.max_transaction_amount ? `Rp ${Number(formData.max_transaction_amount).toLocaleString('id-ID')}` : ''}
                   onChange={(e) => handleNumberInput(e, 'max_transaction_amount')}
                   placeholder={masterDiscount?.max_transaction_amount ? `Master: ${formatRupiah(masterDiscount.max_transaction_amount)}` : 'Tidak ada limit'}
                 />
@@ -481,8 +511,10 @@ export default function OverrideDiscountPage() {
               <div className="space-y-2">
                 <Label className="text-sm">Minimal Item (Qty)</Label>
                 <Input
-                  value={displayFormatted(formData.min_item_quantity)}
-                  onChange={(e) => handleNumberInput(e, 'min_item_quantity')}
+                  type="number"
+                  min="0"
+                  value={formData.min_item_quantity}
+                  onChange={(e) => setFormData({ ...formData, min_item_quantity: e.target.value })}
                   placeholder={masterDiscount?.min_item_quantity ? `Master: ${masterDiscount.min_item_quantity}` : 'Tidak ada limit'}
                 />
               </div>
@@ -490,8 +522,10 @@ export default function OverrideDiscountPage() {
               <div className="space-y-2">
                 <Label className="text-sm">Maksimal Item (Qty)</Label>
                 <Input
-                  value={displayFormatted(formData.max_item_quantity)}
-                  onChange={(e) => handleNumberInput(e, 'max_item_quantity')}
+                  type="number"
+                  min="0"
+                  value={formData.max_item_quantity}
+                  onChange={(e) => setFormData({ ...formData, max_item_quantity: e.target.value })}
                   placeholder={masterDiscount?.max_item_quantity ? `Master: ${masterDiscount.max_item_quantity}` : 'Tidak ada limit'}
                 />
               </div>
@@ -499,7 +533,7 @@ export default function OverrideDiscountPage() {
               <div className="space-y-2">
                 <Label className="text-sm">Minimal Potongan (Rp)</Label>
                 <Input
-                  value={displayFormatted(formData.min_discount_amount)}
+                  value={formData.min_discount_amount ? `Rp ${Number(formData.min_discount_amount).toLocaleString('id-ID')}` : ''}
                   onChange={(e) => handleNumberInput(e, 'min_discount_amount')}
                   placeholder={masterDiscount?.min_discount_amount ? `Master: ${formatRupiah(masterDiscount.min_discount_amount)}` : 'Tidak ada limit'}
                 />
@@ -508,7 +542,7 @@ export default function OverrideDiscountPage() {
               <div className="space-y-2">
                 <Label className="text-sm">Maksimal Potongan (Rp)</Label>
                 <Input
-                  value={displayFormatted(formData.max_discount_amount)}
+                  value={formData.max_discount_amount ? `Rp ${Number(formData.max_discount_amount).toLocaleString('id-ID')}` : ''}
                   onChange={(e) => handleNumberInput(e, 'max_discount_amount')}
                   placeholder={masterDiscount?.max_discount_amount ? `Master: ${formatRupiah(masterDiscount.max_discount_amount)}` : 'Tidak ada limit'}
                 />

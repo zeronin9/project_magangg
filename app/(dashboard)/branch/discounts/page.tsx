@@ -61,9 +61,9 @@ import {
   Eye,
   CheckCircle2,
   XCircle,
+  Search,
 } from 'lucide-react';
 import { formatRupiah, formatDate } from '@/lib/utils';
-import { MetaPagination } from '@/lib/services/fetchData';
 
 interface BranchDiscountSetting {
   discount_rule_id: string;
@@ -122,7 +122,6 @@ interface Discount {
 export default function BranchDiscountsPage() {
   const router = useRouter();
   const [allDiscounts, setAllDiscounts] = useState<Discount[]>([]);
-  const [meta, setMeta] = useState<MetaPagination | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -130,7 +129,9 @@ export default function BranchDiscountsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local' | 'override'>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
+  
+  // ✅ PERBAIKAN 1: Hanya gunakan 1 state untuk search (tanpa debounce)
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
@@ -139,14 +140,16 @@ export default function BranchDiscountsPage() {
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ PERBAIKAN 2: Load data hanya saat mount dan saat filter berubah (TIDAK saat search)
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, scopeFilter, showArchived]);
+  }, [scopeFilter, showArchived]);
 
+  // ✅ PERBAIKAN 3: Reset page hanya saat filter atau archived berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, scopeFilter, showArchived]);
+  }, [scopeFilter, showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -172,7 +175,6 @@ export default function BranchDiscountsPage() {
       let localItems: Discount[] = [];
       let generalItems: Discount[] = [];
       let overrideInfo: Map<string, BranchDiscountSetting> = new Map();
-      let newMeta: MetaPagination | null = null;
 
       // Fetch OVERRIDE INFO
       if (scopeFilter === 'all' || scopeFilter === 'general' || scopeFilter === 'override') {
@@ -202,21 +204,14 @@ export default function BranchDiscountsPage() {
         try {
           console.log('🔍 Step 2: Fetching LOCAL discounts (/discount-rule?type=local)...');
           
-          const localParams: any = scopeFilter === 'local' 
-            ? { 
-                page: currentPage, 
-                limit: 10, 
-                search: searchQuery, 
-                type: 'local',
-                archived: showArchived
-              }
-            : { 
-                page: 1, 
-                limit: 100, 
-                search: searchQuery, 
-                type: 'local',
-                archived: showArchived
-              };
+          // ✅ PERBAIKAN 4: Load SEMUA data local tanpa search (filter di client)
+          const localParams: any = { 
+            page: 1, 
+            limit: 1000, // Load semua
+            search: '', // Kosongkan search, filter di client
+            type: 'local',
+            status: showArchived ? 'archived' : 'active'
+          };
           
           console.log('📤 LOCAL PARAMS:', localParams);
           const localResponse = await branchDiscountAPI.getAll(localParams);
@@ -245,12 +240,6 @@ export default function BranchDiscountsPage() {
               }));
             
             console.log(`✅ Processed ${localItems.length} LOCAL items`);
-            console.log(`   - Active: ${localItems.filter(d => d.is_active).length}`);
-            console.log(`   - Inactive: ${localItems.filter(d => !d.is_active).length}`);
-          }
-          
-          if (scopeFilter === 'local') {
-            newMeta = localResponse?.meta || null;
           }
         } catch (err) {
           console.error("❌ ERROR fetching local discounts:", err);
@@ -264,12 +253,15 @@ export default function BranchDiscountsPage() {
         try {
           console.log('🔍 Step 3: Fetching GENERAL discounts (/discount-rule?type=general)...');
           
-          const generalResponse = await branchDiscountAPI.getGeneral({ 
+          // ✅ PERBAIKAN 5: Load SEMUA data general tanpa search (filter di client)
+          const generalParams = {
             page: 1, 
-            limit: 100, 
-            search: searchQuery,
-            archived: showArchived
-          });
+            limit: 1000, // Load semua
+            search: '', // Kosongkan search, filter di client
+            status: showArchived ? 'archived' : 'active'
+          };
+          
+          const generalResponse = await branchDiscountAPI.getGeneral(generalParams);
           
           console.log('📦 GENERAL RESPONSE:', generalResponse);
           
@@ -317,9 +309,7 @@ export default function BranchDiscountsPage() {
         }
       }
 
-      // ========================================
-      // ✅ PERBAIKAN: COMBINE DATA
-      // ========================================
+      // COMBINE DATA
       let finalDiscounts: Discount[] = [];
 
       console.log('---');
@@ -330,14 +320,13 @@ export default function BranchDiscountsPage() {
 
       switch (scopeFilter) {
         case 'all':
-          // ✅ PERBAIKAN: Tampilkan SEMUA general discount (termasuk yang punya override) + semua local
           finalDiscounts = [...generalItems, ...localItems];
-          console.log(`📋 Filter ALL: ${generalItems.length} general (ALL) + ${localItems.length} local = ${finalDiscounts.length} total`);
+          console.log(`📋 Filter ALL: ${finalDiscounts.length} total`);
           break;
           
         case 'general':
           finalDiscounts = [...generalItems];
-          console.log(`🌍 Filter GENERAL: ${finalDiscounts.length} items (including ${generalItems.filter(d => d.is_overridden).length} with override)`);
+          console.log(`🌍 Filter GENERAL: ${finalDiscounts.length} items`);
           break;
           
         case 'local':
@@ -356,21 +345,32 @@ export default function BranchDiscountsPage() {
       finalDiscounts.forEach(discount => {
         if (!discountMap.has(discount.discount_rule_id)) {
           discountMap.set(discount.discount_rule_id, discount);
-        } else {
-          console.warn('⚠️ DUPLICATE REMOVED:', discount.discount_name);
         }
       });
 
       finalDiscounts = Array.from(discountMap.values());
 
-      console.log('---');
-      console.log('📊 FINAL RESULT:', finalDiscounts.length, 'items');
-      console.log('   - Active:', finalDiscounts.filter(d => d.is_active).length);
-      console.log('   - Inactive:', finalDiscounts.filter(d => !d.is_active).length);
+      // SORTING
+      finalDiscounts.sort((a, b) => {
+        if (a.scope === 'general' && b.scope === 'local') return -1;
+        if (a.scope === 'local' && b.scope === 'general') return 1;
+        
+        const isTimeActiveA = isDiscountActive(a.end_date);
+        const isTimeActiveB = isDiscountActive(b.end_date);
+        
+        const isFullyActiveA = a.is_active && isTimeActiveA;
+        const isFullyActiveB = b.is_active && isTimeActiveB;
+        
+        if (isFullyActiveA && !isFullyActiveB) return -1;
+        if (!isFullyActiveA && isFullyActiveB) return 1;
+        
+        return a.discount_name.localeCompare(b.discount_name);
+      });
+
+      console.log('✅ FINAL RESULT:', finalDiscounts.length, 'items');
       console.log('='.repeat(80));
 
       setAllDiscounts(finalDiscounts);
-      setMeta(newMeta);
 
     } catch (err) {
       const error = err as Error;
@@ -440,46 +440,35 @@ export default function BranchDiscountsPage() {
     }
   };
 
+  // ✅ PERBAIKAN 6: Filter client-side (seperti di halaman Mitra)
   const filteredDiscounts = useMemo(() => {
-    console.log('🔍 Total items after load:', allDiscounts.length);
-    return allDiscounts;
-  }, [allDiscounts]);
-
-  const paginationData = useMemo(() => {
-    let itemsToShow: Discount[];
-    let totalPagesClient: number;
-    let currentTotalPages: number;
-    let hasPrevPage: boolean;
-    let hasNextPage: boolean;
-
-    if (meta) {
-      itemsToShow = filteredDiscounts;
-      currentTotalPages = meta.total_pages;
-      hasPrevPage = meta.has_prev_page;
-      hasNextPage = meta.has_next_page;
-      console.log('📄 Using SERVER pagination - Page', currentPage, 'of', currentTotalPages);
-      console.log('   - Total items:', filteredDiscounts.length);
-      console.log('   - Items on this page:', itemsToShow.length);
-    } else {
-      totalPagesClient = Math.ceil(filteredDiscounts.length / 10);
-      itemsToShow = filteredDiscounts.slice((currentPage - 1) * 10, currentPage * 10);
-      currentTotalPages = totalPagesClient;
-      hasPrevPage = currentPage > 1;
-      hasNextPage = currentPage < totalPagesClient;
-      console.log('📄 Using CLIENT pagination - Page', currentPage, 'of', currentTotalPages);
-      console.log('   - Total items:', filteredDiscounts.length);
-      console.log('   - Items on this page:', itemsToShow.length);
+    if (!searchTerm || searchTerm.trim() === '') {
+      return allDiscounts;
     }
 
-    console.log('📄 Items to show on page', currentPage, ':', itemsToShow.length);
+    const query = searchTerm.toLowerCase().trim();
+    return allDiscounts.filter(discount => {
+      const nameMatch = discount.discount_name.toLowerCase().includes(query);
+      const codeMatch = discount.discount_code?.toLowerCase().includes(query);
+      
+      return nameMatch || codeMatch;
+    });
+  }, [allDiscounts, searchTerm]);
 
+  // ✅ PERBAIKAN 7: Client-side pagination
+  const paginationData = useMemo(() => {
+    const totalPages = Math.ceil(filteredDiscounts.length / 10);
+    const startIndex = (currentPage - 1) * 10;
+    const endIndex = startIndex + 10;
+    const itemsToShow = filteredDiscounts.slice(startIndex, endIndex);
+    
     return {
       itemsToShow,
-      currentTotalPages,
-      hasPrevPage,
-      hasNextPage
+      currentTotalPages: totalPages || 1,
+      hasPrevPage: currentPage > 1,
+      hasNextPage: currentPage < totalPages
     };
-  }, [filteredDiscounts, currentPage, meta]);
+  }, [filteredDiscounts, currentPage]);
 
   const { itemsToShow, currentTotalPages, hasPrevPage, hasNextPage } = paginationData;
 
@@ -564,11 +553,15 @@ export default function BranchDiscountsPage() {
           </div>
           
           <div className="flex-1 max-w-sm ml-auto">
-            <Input 
-              placeholder="Cari diskon..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Cari nama atau kode diskon..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </div>
         </div>
       </Card>
@@ -595,8 +588,8 @@ export default function BranchDiscountsPage() {
                   <TableCell colSpan={9} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
-                      {searchQuery 
-                        ? 'Tidak ada hasil pencarian' 
+                      {searchTerm 
+                        ? `Tidak ada hasil untuk "${searchTerm}"` 
                         : showArchived 
                           ? 'Belum ada diskon yang diarsipkan' 
                           : 'Belum ada diskon'}
@@ -721,49 +714,51 @@ export default function BranchDiscountsPage() {
           </Table>
         </div>
 
-        <div className="py-4 flex justify-center">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious 
-                  href="#" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    if (hasPrevPage) {
-                      handlePageChange(currentPage - 1); 
+        {currentTotalPages > 1 && (
+          <div className="py-4 flex justify-center">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious 
+                    href="#" 
+                    onClick={(e) => { 
+                      e.preventDefault(); 
+                      if (hasPrevPage) {
+                        handlePageChange(currentPage - 1); 
+                      }
+                    }}
+                    className={
+                      !hasPrevPage
+                        ? 'pointer-events-none opacity-50' 
+                        : 'cursor-pointer'
                     }
-                  }}
-                  className={
-                    !hasPrevPage
-                      ? 'pointer-events-none opacity-50' 
-                      : 'cursor-pointer'
-                  }
-                />
-              </PaginationItem>
-              <PaginationItem>
-                <span className="flex items-center px-4 text-sm font-medium">
-                  Halaman {currentPage} dari {currentTotalPages}
-                </span>
-              </PaginationItem>
-              <PaginationItem>
-                <PaginationNext 
-                  href="#" 
-                  onClick={(e) => { 
-                    e.preventDefault(); 
-                    if (hasNextPage) {
-                      handlePageChange(currentPage + 1); 
+                  />
+                </PaginationItem>
+                <PaginationItem>
+                  <span className="flex items-center px-4 text-sm font-medium">
+                    Halaman {currentPage} dari {currentTotalPages}
+                  </span>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext 
+                    href="#" 
+                    onClick={(e) => { 
+                      e.preventDefault(); 
+                      if (hasNextPage) {
+                        handlePageChange(currentPage + 1); 
+                      }
+                    }}
+                    className={
+                      !hasNextPage
+                        ? 'pointer-events-none opacity-50' 
+                        : 'cursor-pointer'
                     }
-                  }}
-                  className={
-                    !hasNextPage
-                      ? 'pointer-events-none opacity-50' 
-                      : 'cursor-pointer'
-                  }
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
-        </div>
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </Card>
 
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
