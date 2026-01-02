@@ -204,8 +204,8 @@ export default function SubscriptionsPage() {
                         <TableCell>{order.plan_name}</TableCell>
                         <TableCell>{formatRupiah(Number(order.amount))}</TableCell>
                         <TableCell className="text-right space-x-2">
-                          <Button size="sm" variant="outline" className="text-red-600 hover:bg-red-50" onClick={() => handleReject(order.order_id)}>Tolak</Button>
-                          <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => handleApprove(order.order_id)}>Terima</Button>
+                          <Button size="sm" variant="outline" className="text-black hover:bg-red-50" onClick={() => handleReject(order.order_id)}>Tolak</Button>
+                          <Button size="sm" className="bg-black" onClick={() => handleApprove(order.order_id)}>Terima</Button>
                         </TableCell>
                       </TableRow>
                     ))}

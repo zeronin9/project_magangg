@@ -257,7 +257,7 @@ export default function BranchSettingsPage() {
                     <Input 
                       value={receiptData?.receipt_header || ''} 
                       onChange={e => setReceiptData(prev => prev ? {...prev, receipt_header: e.target.value} : null)} 
-                      placeholder="Contoh: Selamat Datang" 
+                      placeholder="Masukkan pesan pembuka" 
                       disabled={isSubmitting}
                     />
                   </div>
@@ -266,7 +266,7 @@ export default function BranchSettingsPage() {
                     <Input 
                       value={receiptData?.receipt_footer || ''} 
                       onChange={e => setReceiptData(prev => prev ? {...prev, receipt_footer: e.target.value} : null)} 
-                      placeholder="Contoh: Terima Kasih" 
+                      placeholder="Masukkan pesan penutup" 
                       disabled={isSubmitting}
                     />
                   </div>
@@ -371,7 +371,7 @@ export default function BranchSettingsPage() {
                   <Label htmlFor="tax_name">Nama Pajak</Label>
                   <Input 
                     id="tax_name" 
-                    placeholder="Contoh: PB1 atau PPN" 
+                    placeholder="Masukkan nama pajak" 
                     value={taxSettings.tax_name}
                     onChange={(e) => setTaxSettings({...taxSettings, tax_name: e.target.value})}
                     required
@@ -383,7 +383,7 @@ export default function BranchSettingsPage() {
                   <Input 
                     id="tax_percentage" 
                     type="number" 
-                    placeholder="10" 
+                    placeholder="Masukkan persentase pajak" 
                     min="0"
                     max="100"
                     value={taxSettings.tax_percentage}

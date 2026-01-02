@@ -55,7 +55,9 @@ import {
   Filter,
   AlertTriangle,
   Archive,
-  RotateCcw
+  RotateCcw,
+  Info,
+  XCircle
 } from 'lucide-react';
 
 // Konstanta Pagination
@@ -115,6 +117,7 @@ export default function CategoriesPage() {
     }
   };
 
+  // ✅ PERBAIKAN: Fungsi loadCategories dengan sorting General dulu, kemudian Lokal
   const loadCategories = async () => {
     try {
       setIsLoading(true);
@@ -124,7 +127,6 @@ export default function CategoriesPage() {
       const params: any = {
         page: currentPage,
         limit: ITEMS_PER_PAGE,
-        // Kirim status active/inactive ke backend agar pagination valid
         is_active: showArchived ? 'false' : 'true' 
       };
 
@@ -138,7 +140,7 @@ export default function CategoriesPage() {
       // Extract data dan meta dari response
       const categoriesList = Array.isArray(response.data) ? response.data : [];
       
-      // Mapping relasi branch (jika backend mengirim branch_id tapi object branch null)
+      // Mapping relasi branch
       const categoriesWithBranch = categoriesList.map(category => {
         const branch = category.branch_id 
           ? branches.find(b => b.branch_id === category.branch_id)
@@ -149,7 +151,20 @@ export default function CategoriesPage() {
         };
       });
       
-      setCategories(categoriesWithBranch);
+      // ✅ SORTING: General dulu, kemudian Lokal
+      const sortedCategories = categoriesWithBranch.sort((a, b) => {
+        // Kategori tanpa branch_id (General) diutamakan
+        const aIsGeneral = !a.branch_id;
+        const bIsGeneral = !b.branch_id;
+        
+        if (aIsGeneral && !bIsGeneral) return -1; // a (General) sebelum b (Lokal)
+        if (!aIsGeneral && bIsGeneral) return 1;  // b (General) sebelum a (Lokal)
+        
+        // Jika sama-sama General atau sama-sama Lokal, urutkan berdasarkan nama
+        return a.category_name.localeCompare(b.category_name, 'id-ID');
+      });
+      
+      setCategories(sortedCategories);
       setMeta(response.meta);
       
     } catch (err: any) {
@@ -160,42 +175,57 @@ export default function CategoriesPage() {
     }
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat buka modal (kecuali untuk edit)
   const handleOpenModal = (category?: Category) => {
     if (category) {
+      // Mode Edit: Isi dengan data kategori yang dipilih
       setSelectedCategory(category);
       setFormData({
         category_name: category.category_name,
       });
     } else {
+      // Mode Create: JANGAN reset formData, biarkan data sebelumnya tetap ada
       setSelectedCategory(null);
-      setFormData({
-        category_name: '',
-      });
+      // ❌ JANGAN reset formData di sini
     }
     setIsModalOpen(true);
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat dialog tertutup
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedCategory(null);
+    // ❌ JANGAN reset formData di sini
+  };
+
+  // ✅ TAMBAHAN: Handler baru untuk clear form manual
+  const handleClearForm = () => {
     setFormData({
       category_name: '',
     });
   };
 
+  // ✅ PERBAIKAN: Reset formData hanya setelah berhasil submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      await delay(1000); // Optional delay untuk UX loading state
+      await delay(1000);
 
       if (selectedCategory?.category_id) {
         await categoryAPI.update(selectedCategory.category_id, formData);
       } else {
         await categoryAPI.create(formData);
       }
+      
       await loadCategories();
+      
+      // ✅ Reset formData hanya setelah berhasil submit
+      setFormData({
+        category_name: '',
+      });
+      
       handleCloseModal();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Gagal menyimpan kategori');
@@ -227,7 +257,6 @@ export default function CategoriesPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
-      // Asumsi backend support update is_active lewat endpoint update biasa
       await categoryAPI.update(selectedCategory.category_id, { 
         category_name: selectedCategory.category_name,
         is_active: true
@@ -260,17 +289,15 @@ export default function CategoriesPage() {
     }
   };
 
-  // Hitung total untuk badge (berdasarkan meta dari server jika ada, fallback ke 0)
-  // Catatan: generalCount/localCount di sini hanya referensi UI, 
-  // angka pastinya tergantung support backend untuk memberikan summary count.
-  // Jika tidak ada, kita gunakan total_items dari meta saat filter 'all' aktif.
-  
   const handlePageChange = (page: number, e: React.MouseEvent) => {
     e.preventDefault();
     if (page > 0 && page <= (meta?.total_pages || 1)) {
       setCurrentPage(page);
     }
   };
+
+  // ✅ Helper untuk cek apakah ada data yang diisi
+  const hasUnsavedData = formData.category_name.trim() !== '';
 
   if (isLoading) {
     return (
@@ -496,7 +523,6 @@ export default function CategoriesPage() {
                   />
                 </PaginationItem>
                 
-                {/* Logic Pagination Sederhana (Tampilkan current page) */}
                 <PaginationItem>
                    <span className="text-sm font-medium px-4">
                      Halaman {meta.current_page} dari {meta.total_pages}
@@ -531,31 +557,69 @@ export default function CategoriesPage() {
             <DialogDescription>
               {selectedCategory 
                 ? 'Perbarui nama kategori'
-                : 'Kategori akan dibuat sebagai General (berlaku untuk semua cabang)'
+                : 'Data akan tetap tersimpan meskipun dialog tertutup'
               }
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="category_name">Nama Kategori *</Label>
+                <Label htmlFor="category_name">
+                  Nama Kategori <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="category_name"
                   value={formData.category_name}
                   onChange={(e) => setFormData({ ...formData, category_name: e.target.value })}
                   placeholder="Masukkan nama kategori"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
+
+              {/* ✅ TAMBAHAN: Info jika ada data yang tersimpan */}
+              {!selectedCategory && hasUnsavedData && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Data sebelumnya masih tersimpan. Klik "Hapus Isian" jika ingin memulai dari awal.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedCategory ? 'Update' : 'Simpan'}
-              </Button>
+
+            <DialogFooter className="flex-row gap-2 sm:justify-between">
+              {/* ✅ TAMBAHAN: Tombol Clear Form */}
+              <div className="flex-1">
+                {!selectedCategory && hasUnsavedData && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleClearForm} 
+                    disabled={isSubmitting}
+                    size="sm"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hapus Isian
+                  </Button>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCloseModal} 
+                  disabled={isSubmitting}
+                >
+                  Batal
+                </Button>
+                
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {selectedCategory ? 'Update' : 'Simpan'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>

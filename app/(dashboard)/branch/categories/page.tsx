@@ -55,6 +55,8 @@ import {
   Globe,
   Building2,
   Filter,
+  Info,
+  XCircle,
 } from 'lucide-react';
 import { MetaPagination } from '@/lib/services/fetchData';
 
@@ -75,7 +77,6 @@ export default function BranchCategoriesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
@@ -93,12 +94,12 @@ export default function BranchCategoriesPage() {
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, scopeFilter, showArchived]); 
+  }, [currentPage, scopeFilter, showArchived]); 
 
   // Reset pagination saat filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, scopeFilter, showArchived]);
+  }, [scopeFilter, showArchived]);
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -111,26 +112,31 @@ export default function BranchCategoriesPage() {
       if (scopeFilter === 'local') typeParam = 'local';
       if (scopeFilter === 'general') typeParam = 'general';
 
-      // ✅ FIX FINAL: Kirim KEDUA parameter untuk memastikan Backend menangkapnya
-      // Backend Logic: if (status === 'archived' || is_active === 'false')
       const queryParams = {
         page: currentPage,
         limit: 10,
-        search: searchQuery,
         type: typeParam,
-        // Kirim 'status' (Style Baru)
         status: showArchived ? 'archived' : 'active',
-        // Kirim 'is_active' (Style Lama) sebagai String agar aman
         is_active: showArchived ? 'false' : 'true'
       };
 
       const response = await branchCategoryAPI.getAll(queryParams as any);
 
-      // Handle response structure { data: [...], meta: ... }
       const responseData = response as any;
       const categoryList = responseData.data || responseData.items || [];
       
-      setCategories(categoryList);
+      // ✅ SORTING: General dulu, kemudian Lokal
+      const sortedCategories = categoryList.sort((a: Category, b: Category) => {
+        const aIsGeneral = !a.branch_id;
+        const bIsGeneral = !b.branch_id;
+        
+        if (aIsGeneral && !bIsGeneral) return -1;
+        if (!aIsGeneral && bIsGeneral) return 1;
+        
+        return a.category_name.localeCompare(b.category_name);
+      });
+      
+      setCategories(sortedCategories);
       setMeta(response.meta);
 
     } catch (err: any) {
@@ -141,29 +147,38 @@ export default function BranchCategoriesPage() {
     }
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat buka modal (kecuali untuk edit)
   const handleOpenModal = (category?: Category) => {
     if (category) {
+      // Mode Edit: Isi dengan data kategori yang dipilih
       setSelectedCategory(category);
       setFormData({
         category_name: category.category_name,
       });
     } else {
+      // Mode Create: JANGAN reset formData, biarkan data sebelumnya tetap ada
       setSelectedCategory(null);
-      setFormData({
-        category_name: '',
-      });
+      // ❌ JANGAN reset formData di sini
     }
     setIsModalOpen(true);
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat dialog tertutup
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedCategory(null);
+    // ❌ JANGAN reset formData di sini
+    // Biarkan data tetap ada untuk mencegah kehilangan data tidak sengaja
+  };
+
+  // ✅ TAMBAHAN: Handler baru untuk clear form manual
+  const handleClearForm = () => {
     setFormData({
       category_name: '',
     });
   };
 
+  // ✅ PERBAIKAN: Reset formData hanya setelah berhasil submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -178,6 +193,12 @@ export default function BranchCategoriesPage() {
       }
 
       await loadData();
+      
+      // ✅ Reset formData hanya setelah berhasil submit
+      setFormData({
+        category_name: '',
+      });
+      
       handleCloseModal();
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan kategori';
@@ -196,7 +217,6 @@ export default function BranchCategoriesPage() {
       
       await branchCategoryAPI.softDelete(selectedCategory.category_id);
       
-      // Reload akan memicu filter ulang (item hilang dari list Aktif)
       await loadData();
       setIsSoftDeleteOpen(false);
       setSelectedCategory(null);
@@ -219,7 +239,6 @@ export default function BranchCategoriesPage() {
         is_active: true,
       });
 
-      // Reload akan memicu filter ulang (item hilang dari list Arsip)
       await loadData();
       setIsRestoreOpen(false);
       setSelectedCategory(null);
@@ -256,6 +275,9 @@ export default function BranchCategoriesPage() {
       setCurrentPage(page);
     }
   };
+
+  // Helper untuk cek apakah ada data yang diisi
+  const hasUnsavedData = formData.category_name.trim() !== '';
 
   if (isLoading) {
     return (
@@ -317,16 +339,6 @@ export default function BranchCategoriesPage() {
       {/* Filter Scope */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          
-          {/* Input Search */}
-          <div className="flex-1 max-w-sm">
-             <Input 
-                placeholder="Cari kategori..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-             />
-          </div>
-
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
@@ -372,9 +384,7 @@ export default function BranchCategoriesPage() {
             <div className="text-center py-12">
               <Layers className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {searchQuery
-                  ? 'Tidak ada hasil pencarian'
-                  : showArchived ? 'Tidak ada kategori di arsip' : 'Belum ada kategori aktif'}
+                {showArchived ? 'Tidak ada kategori di arsip' : 'Belum ada kategori aktif'}
               </p>
             </div>
           ) : (
@@ -428,7 +438,6 @@ export default function BranchCategoriesPage() {
 
                             {category.branch_id ? (
                               <>
-                                {/* Logika Aksi: Jika Aktif -> Edit/Archive/Hapus. Jika Arsip -> Restore. */}
                                 {category.is_active !== false ? (
                                   <>
                                     <DropdownMenuItem onClick={() => handleOpenModal(category)}>
@@ -526,30 +535,68 @@ export default function BranchCategoriesPage() {
             <DialogDescription>
               {selectedCategory
                 ? 'Perbarui informasi kategori lokal'
-                : 'Kategori hanya berlaku untuk cabang Anda'}
+                : 'Data akan tetap tersimpan meskipun dialog tertutup'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="category_name">Nama Kategori *</Label>
+                <Label htmlFor="category_name">
+                  Nama Kategori <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="category_name"
                   value={formData.category_name}
                   onChange={(e) => setFormData({ ...formData, category_name: e.target.value })}
                   placeholder="Masukkan nama kategori"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
+
+              {/* ✅ TAMBAHAN: Info jika ada data yang tersimpan */}
+              {!selectedCategory && hasUnsavedData && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Data sebelumnya masih tersimpan. Klik "Hapus Isian" jika ingin memulai dari awal.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedCategory ? 'Update' : 'Simpan'}
-              </Button>
+
+            <DialogFooter className="flex-row gap-2 sm:justify-between">
+              {/* ✅ TAMBAHAN: Tombol Clear Form */}
+              <div className="flex-1">
+                {!selectedCategory && hasUnsavedData && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleClearForm} 
+                    disabled={isSubmitting}
+                    size="sm"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hapus Isian
+                  </Button>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCloseModal} 
+                  disabled={isSubmitting}
+                >
+                  Batal
+                </Button>
+                
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {selectedCategory ? 'Update' : 'Simpan'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>

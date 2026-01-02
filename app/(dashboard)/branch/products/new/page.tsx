@@ -216,7 +216,7 @@ export default function NewProductPage() {
                 id="product_name"
                 value={formData.product_name}
                 onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                placeholder="Contoh: Nasi Goreng Special"
+                placeholder="Masukkan nama produk"
                 required
               />
             </div>
@@ -231,7 +231,7 @@ export default function NewProductPage() {
                 type="text"
                 value={formData.base_price ? `Rp ${Number(formData.base_price).toLocaleString('id-ID')}` : ''}
                 onChange={handlePriceChange}
-                placeholder="Contoh: Rp 25,000"
+                placeholder="Masukkan harga produk"
                 required
               />
             </div>

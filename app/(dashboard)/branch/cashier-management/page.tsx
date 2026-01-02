@@ -58,6 +58,8 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
+  Info,
+  XCircle,
 } from 'lucide-react';
 
 // Interfaces
@@ -155,11 +157,9 @@ function CashierAccountsTab() {
       setIsLoading(true);
       setError('');
       
-      // GET /cashier/login-account?show_all=true
       const response = await cashierAccountAPI.getAll(true);
       const accountsData = Array.isArray(response.data) ? response.data : [];
 
-      // Filter berdasarkan is_active
       const filteredList = showArchived
         ? accountsData.filter((a: any) => a.is_active === false)
         : accountsData.filter((a: any) => a.is_active !== false);
@@ -172,8 +172,10 @@ function CashierAccountsTab() {
     }
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat buka modal (kecuali untuk edit)
   const handleOpenModal = (account?: CashierAccount) => {
     if (account) {
+      // Mode Edit: Isi dengan data akun yang dipilih
       setSelectedAccount(account);
       setFormData({
         full_name: account.full_name,
@@ -181,20 +183,24 @@ function CashierAccountsTab() {
         password: '',
       });
     } else {
+      // Mode Create: JANGAN reset formData, biarkan data sebelumnya tetap ada
       setSelectedAccount(null);
-      setFormData({
-        full_name: '',
-        username: '',
-        password: '',
-      });
+      // ❌ JANGAN reset formData di sini
     }
     setShowPassword(false);
     setIsModalOpen(true);
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat dialog tertutup
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedAccount(null);
+    // ❌ JANGAN reset formData di sini
+    setShowPassword(false);
+  };
+
+  // ✅ TAMBAHAN: Handler baru untuk clear form manual
+  const handleClearForm = () => {
     setFormData({
       full_name: '',
       username: '',
@@ -203,18 +209,17 @@ function CashierAccountsTab() {
     setShowPassword(false);
   };
 
+  // ✅ PERBAIKAN: Reset formData hanya setelah berhasil submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
       if (selectedAccount) {
-        // PUT /cashier/login-account/:id
         const payload: any = { 
           full_name: formData.full_name,
         };
         
-        // Password opsional saat edit
         if (formData.password && formData.password.trim() !== '') {
           payload.password = formData.password;
         }
@@ -222,7 +227,6 @@ function CashierAccountsTab() {
         console.log('📤 UPDATE Payload:', payload);
         await cashierAccountAPI.update(selectedAccount.user_id, payload);
       } else {
-        // POST /cashier/login-account
         if (!formData.password || formData.password.trim() === '') {
           alert('Password wajib diisi untuk akun baru');
           setIsSubmitting(false);
@@ -240,6 +244,15 @@ function CashierAccountsTab() {
       }
 
       await loadData();
+      
+      // ✅ Reset formData hanya setelah berhasil submit
+      setFormData({
+        full_name: '',
+        username: '',
+        password: '',
+      });
+      setShowPassword(false);
+      
       handleCloseModal();
     } catch (err: any) {
       console.error('❌ Error:', err);
@@ -257,7 +270,6 @@ function CashierAccountsTab() {
     try {
       await delay(1000);
       
-      // DELETE /cashier/login-account/:id (Soft Delete)
       console.log('🗑️ Soft Delete:', selectedAccount.user_id);
       await cashierAccountAPI.softDelete(selectedAccount.user_id);
       
@@ -279,11 +291,9 @@ function CashierAccountsTab() {
     try {
       await delay(1000);
       
-      // Karena tidak ada endpoint restore khusus, gunakan UPDATE
-      // PUT /cashier/login-account/:id dengan is_active=true
       const payload = {
         full_name: selectedAccount.full_name,
-        is_active: true, // Kirim flag ini ke backend
+        is_active: true,
       };
       
       console.log('🔄 RESTORE Payload:', payload);
@@ -307,7 +317,6 @@ function CashierAccountsTab() {
     try {
       await delay(1000);
       
-      // DELETE /cashier/login-account/permanent/:id
       console.log('💀 Hard Delete:', selectedAccount.user_id);
       await cashierAccountAPI.hardDelete(selectedAccount.user_id);
       
@@ -336,6 +345,9 @@ function CashierAccountsTab() {
       setCurrentPage(page);
     }
   };
+
+  // Helper untuk cek apakah ada data yang diisi
+  const hasUnsavedData = formData.full_name || formData.username || formData.password;
 
   if (isLoading) {
     return (
@@ -386,9 +398,7 @@ function CashierAccountsTab() {
       {/* Table */}
       <Card>
         <CardHeader>
-          <div className="flex gap-2">
           <CardTitle>Daftar Akun Kasir</CardTitle>
-          </div>
           <CardDescription>
             Total {accounts.length} akun {showArchived ? 'diarsipkan' : 'aktif'}
           </CardDescription>
@@ -533,31 +543,36 @@ function CashierAccountsTab() {
             <DialogDescription>
               {selectedAccount
                 ? 'Perbarui informasi akun kasir. Password boleh dikosongkan jika tidak ingin diubah.'
-                : 'Buat akun login baru untuk tablet kasir'}
+                : 'Data akan tetap tersimpan meskipun dialog tertutup'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="full_name">Nama Lengkap *</Label>
+                <Label htmlFor="full_name">
+                  Nama Lengkap <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="full_name"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  placeholder="Contoh: Tablet Kasir Depan"
+                  placeholder="Masukkan nama lengkap kasir"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="username">Username *</Label>
+                <Label htmlFor="username">
+                  Username <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="username"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="Contoh: kasir_melawai_1"
+                  placeholder="Masukkan username"
                   required={!selectedAccount}
-                  disabled={!!selectedAccount}
+                  disabled={!!selectedAccount || isSubmitting}
                   className="font-mono"
                 />
                 {selectedAccount && (
@@ -569,7 +584,7 @@ function CashierAccountsTab() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">
-                  Password {selectedAccount ? '(Kosongkan jika tidak ingin diubah)' : '*'}
+                  Password {selectedAccount ? '(Kosongkan jika tidak ingin diubah)' : ''}<span className="text-destructive">{!selectedAccount && ' *'}</span>
                 </Label>
                 <div className="relative">
                   <Input
@@ -579,6 +594,7 @@ function CashierAccountsTab() {
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     placeholder={selectedAccount ? 'Masukkan password baru (opsional)' : 'Masukkan password'}
                     required={!selectedAccount}
+                    disabled={isSubmitting}
                   />
                   <Button
                     type="button"
@@ -586,20 +602,56 @@ function CashierAccountsTab() {
                     size="icon"
                     className="absolute right-0 top-0 h-full px-3"
                     onClick={() => setShowPassword(!showPassword)}
+                    disabled={isSubmitting}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
+
+              {/* ✅ TAMBAHAN: Info jika ada data yang tersimpan */}
+              {!selectedAccount && hasUnsavedData && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Data sebelumnya masih tersimpan. Klik "Hapus Isian" jika ingin memulai dari awal.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedAccount ? 'Update' : 'Simpan'}
-              </Button>
+
+            <DialogFooter className="flex-row gap-2 sm:justify-between">
+              {/* ✅ TAMBAHAN: Tombol Clear Form */}
+              <div className="flex-1">
+                {!selectedAccount && hasUnsavedData && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleClearForm} 
+                    disabled={isSubmitting}
+                    size="sm"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hapus Isian
+                  </Button>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCloseModal} 
+                  disabled={isSubmitting}
+                >
+                  Batal
+                </Button>
+                
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {selectedAccount ? 'Update' : 'Simpan'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -716,52 +768,55 @@ function PinOperatorsTab() {
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Di PinOperatorsTab
-const loadData = async () => {
-  try {
-    setIsLoading(true);
-    setError('');
-    
-    // GET /cashier/pin-operator
-    // UPDATE: Menambahkan parameter true untuk mengambil semua data (termasuk arsip)
-    const response = await pinOperatorAPI.getAll(true);
-    const operatorsData = Array.isArray(response.data) ? response.data : [];
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      
+      const response = await pinOperatorAPI.getAll(true);
+      const operatorsData = Array.isArray(response.data) ? response.data : [];
 
-    // Filter berdasarkan is_active
-    const filteredList = showArchived
-      ? operatorsData.filter((o: any) => o.is_active === false)
-      : operatorsData.filter((o: any) => o.is_active !== false);
+      const filteredList = showArchived
+        ? operatorsData.filter((o: any) => o.is_active === false)
+        : operatorsData.filter((o: any) => o.is_active !== false);
 
-    setOperators(filteredList);
-  } catch (err: any) {
-    console.error('❌ Error loading operators:', err);
-    setError(err.message || 'Gagal memuat data operator PIN');
-  } finally {
-    setIsLoading(false);
-  }
-};
+      setOperators(filteredList);
+    } catch (err: any) {
+      console.error('❌ Error loading operators:', err);
+      setError(err.message || 'Gagal memuat data operator PIN');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat buka modal (kecuali untuk edit)
   const handleOpenModal = (operator?: PinOperator) => {
     if (operator) {
+      // Mode Edit: Isi dengan data operator yang dipilih
       setSelectedOperator(operator);
       setFormData({
         full_name: operator.full_name,
         pin: '',
       });
     } else {
+      // Mode Create: JANGAN reset formData, biarkan data sebelumnya tetap ada
       setSelectedOperator(null);
-      setFormData({
-        full_name: '',
-        pin: '',
-      });
+      // ❌ JANGAN reset formData di sini
     }
     setShowPin(false);
     setIsModalOpen(true);
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat dialog tertutup
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedOperator(null);
+    // ❌ JANGAN reset formData di sini
+    setShowPin(false);
+  };
+
+  // ✅ TAMBAHAN: Handler baru untuk clear form manual
+  const handleClearForm = () => {
     setFormData({
       full_name: '',
       pin: '',
@@ -774,6 +829,7 @@ const loadData = async () => {
     setFormData({ ...formData, pin: value });
   };
 
+  // ✅ PERBAIKAN: Reset formData hanya setelah berhasil submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -786,14 +842,12 @@ const loadData = async () => {
 
     try {
       if (selectedOperator) {
-        // PUT /cashier/pin-operator/:id
         const payload: any = { full_name: formData.full_name };
         if (formData.pin) {
           payload.pin = formData.pin;
         }
         await pinOperatorAPI.update(selectedOperator.cashier_id, payload);
       } else {
-        // POST /cashier/pin-operator
         if (!formData.pin) {
           alert('PIN wajib diisi untuk operator baru');
           setIsSubmitting(false);
@@ -809,6 +863,14 @@ const loadData = async () => {
       }
 
       await loadData();
+      
+      // ✅ Reset formData hanya setelah berhasil submit
+      setFormData({
+        full_name: '',
+        pin: '',
+      });
+      setShowPin(false);
+      
       handleCloseModal();
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan operator PIN';
@@ -825,7 +887,6 @@ const loadData = async () => {
     try {
       await delay(1000);
       
-      // DELETE /cashier/pin-operator/:id
       await pinOperatorAPI.softDelete(selectedOperator.cashier_id);
       
       await loadData();
@@ -845,7 +906,6 @@ const loadData = async () => {
     try {
       await delay(1000);
       
-      // PUT /cashier/pin-operator/:id dengan is_active=true
       const payload = {
         full_name: selectedOperator.full_name,
         is_active: true,
@@ -870,7 +930,6 @@ const loadData = async () => {
     try {
       await delay(1000);
       
-      // DELETE /cashier/pin-operator/permanent/:id
       await pinOperatorAPI.hardDelete(selectedOperator.cashier_id);
       
       await loadData();
@@ -897,6 +956,9 @@ const loadData = async () => {
       setCurrentPage(page);
     }
   };
+
+  // Helper untuk cek apakah ada data yang diisi
+  const hasUnsavedData = formData.full_name || formData.pin;
 
   if (isLoading) {
     return (
@@ -1090,25 +1152,28 @@ const loadData = async () => {
             <DialogDescription>
               {selectedOperator
                 ? 'Perbarui informasi operator. PIN boleh dikosongkan jika tidak ingin diubah.'
-                : 'Buat operator PIN baru untuk staf kasir'}
+                : 'Data akan tetap tersimpan meskipun dialog tertutup'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="operator_full_name">Nama Lengkap *</Label>
+                <Label htmlFor="operator_full_name">
+                  Nama Lengkap <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="operator_full_name"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  placeholder="Contoh: Siti Kasir"
+                  placeholder="Masukkan nama lengkap operator"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="pin">
-                  PIN (4-6 Digit) {selectedOperator ? '(Kosongkan jika tidak ingin diubah)' : '*'}
+                  PIN (4-6 Digit) {selectedOperator ? '(Kosongkan jika tidak ingin diubah)' : ''}<span className="text-destructive">{!selectedOperator && ' *'}</span>
                 </Label>
                 <div className="relative">
                   <Input
@@ -1120,6 +1185,7 @@ const loadData = async () => {
                     maxLength={6}
                     required={!selectedOperator}
                     className="font-mono"
+                    disabled={isSubmitting}
                   />
                   <Button
                     type="button"
@@ -1127,21 +1193,57 @@ const loadData = async () => {
                     size="icon"
                     className="absolute right-0 top-0 h-full px-3"
                     onClick={() => setShowPin(!showPin)}
+                    disabled={isSubmitting}
                   >
                     {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">PIN harus berisi 4-6 digit angka</p>
               </div>
+
+              {/* ✅ TAMBAHAN: Info jika ada data yang tersimpan */}
+              {!selectedOperator && hasUnsavedData && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Data sebelumnya masih tersimpan. Klik "Hapus Isian" jika ingin memulai dari awal.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedOperator ? 'Update' : 'Simpan'}
-              </Button>
+
+            <DialogFooter className="flex-row gap-2 sm:justify-between">
+              {/* ✅ TAMBAHAN: Tombol Clear Form */}
+              <div className="flex-1">
+                {!selectedOperator && hasUnsavedData && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleClearForm} 
+                    disabled={isSubmitting}
+                    size="sm"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hapus Isian
+                  </Button>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCloseModal} 
+                  disabled={isSubmitting}
+                >
+                  Batal
+                </Button>
+                
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {selectedOperator ? 'Update' : 'Simpan'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1201,12 +1303,11 @@ const loadData = async () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-black flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 " />
+              <AlertTriangle className="h-5 w-5" />
               Hapus Permanen?
             </DialogTitle>
             <DialogDescription>
               Apakah Anda yakin ingin menghapus <strong>{selectedOperator?.full_name}</strong> secara permanen?
-              <br />
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

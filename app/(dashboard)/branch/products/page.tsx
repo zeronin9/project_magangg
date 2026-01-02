@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { branchProductAPI, branchCategoryAPI, cashierMenuAPI } from '@/lib/api/branch';
+import { branchProductAPI, cashierMenuAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -18,13 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,7 +43,6 @@ import {
   AlertCircle,
   Loader2,
   Filter,
-  Upload,
   Archive,
   RotateCcw,
   Image as ImageIcon,
@@ -110,12 +101,6 @@ interface Product {
   is_available?: boolean;
 }
 
-interface Category {
-  category_id: string;
-  category_name: string;
-  branch_id?: string | null;
-}
-
 const getImageUrl = (path: string | null | undefined) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
@@ -130,7 +115,6 @@ export default function BranchProductsPage() {
   
   // State Data
   const [allProducts, setAllProducts] = useState<(Product | MenuProduct)[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   
   // State UI
   const [isLoading, setIsLoading] = useState(true);
@@ -143,23 +127,11 @@ export default function BranchProductsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showArchived, setShowArchived] = useState(false);
 
-  // Modal States (hanya untuk Create/Edit produk lokal dan Delete/Restore)
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // Modal States (hanya untuk Delete/Restore)
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
   const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
   const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | MenuProduct | null>(null);
-
-  // Form States (untuk Create/Edit produk lokal)
-  const [imageError, setImageError] = useState('');
-  const [imagePreview, setImagePreview] = useState<string>('');
-
-  const [formData, setFormData] = useState({
-    product_name: '',
-    base_price: '',
-    category_id: '',
-    image_url: null as File | null,
-  });
 
   // --- Helpers ---
   
@@ -198,18 +170,6 @@ export default function BranchProductsPage() {
   };
 
   // --- Effects ---
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const res = await branchCategoryAPI.getAll({ limit: 100 });
-        setCategories(res.items);
-      } catch (err) {
-        console.error("Gagal load kategori", err);
-      }
-    };
-    fetchCategories();
-  }, []);
-
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -266,38 +226,6 @@ export default function BranchProductsPage() {
     }
   };
 
-  // --- Modal Handlers ---
-  const handleOpenModal = (product?: Product | MenuProduct) => {
-    setImageError('');
-    if (product && !isMenuProduct(product)) {
-      setSelectedProduct(product);
-      setFormData({
-        product_name: product.product_name || '',
-        base_price: product.base_price?.toString() || '',
-        category_id: product.category_id || '',
-        image_url: null,
-      });
-      setImagePreview(getImageUrl(product.image_url) || '');
-    } else {
-      setSelectedProduct(null);
-      setFormData({
-        product_name: '',
-        base_price: '',
-        category_id: '',
-        image_url: null,
-      });
-      setImagePreview('');
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setSelectedProduct(null);
-    setImagePreview('');
-    setImageError('');
-  };
-
   // --- Navigation Handlers ---
   const handleDetailClick = (product: Product | MenuProduct) => {
     router.push(`/branch/products/${product.product_id}`);
@@ -305,56 +233,13 @@ export default function BranchProductsPage() {
 
   const handleEditClick = (product: Product | MenuProduct) => {
     if (!isMenuProduct(product) && product.branch_id) {
-      handleOpenModal(product);
+      // ✅ Navigasi ke halaman edit terpisah
+      router.push(`/branch/products/${product.product_id}/edit`);
     }
   };
 
   const handleOverrideClick = (product: Product | MenuProduct) => {
     router.push(`/branch/products/${product.product_id}/override`);
-  };
-
-  // --- Form Handlers ---
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 1024 * 1024) {
-        setImageError('Ukuran gambar terlalu besar! Maksimal 1MB.');
-        return;
-      }
-      setImageError('');
-      setFormData({ ...formData, image_url: file });
-      const reader = new FileReader();
-      reader.onloadend = () => setImagePreview(reader.result as string);
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // --- Submit Handlers ---
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (imageError || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await delay(2000);
-      const formDataToSend = new FormData();
-      formDataToSend.append('product_name', formData.product_name);
-      formDataToSend.append('base_price', formData.base_price.replace(/[^0-9]/g, ''));
-      formDataToSend.append('category_id', formData.category_id);
-      if (formData.image_url) formDataToSend.append('product_image', formData.image_url);
-
-      if (selectedProduct && !isMenuProduct(selectedProduct)) {
-        await branchProductAPI.update(selectedProduct.product_id, formDataToSend);
-      } else {
-        await branchProductAPI.create(formDataToSend);
-      }
-      await loadData();
-      handleCloseModal();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Gagal menyimpan produk');
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   // --- Delete/Restore Handlers ---
@@ -490,7 +375,8 @@ export default function BranchProductsPage() {
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : `Tampilkan Arsip`}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          {/* ✅ Navigasi ke halaman create terpisah */}
+          <Button onClick={() => router.push('/branch/products/new')}>
             <Plus className="mr-2 h-4 w-4" />
             Tambah Produk Lokal
           </Button>
@@ -697,13 +583,13 @@ export default function BranchProductsPage() {
                       {!showArchived ? (
                         <>
                           {!isMenuProduct(product) && product.branch_id ? (
-                            // Produk Lokal - Edit
+                            // ✅ Produk Lokal - Edit (Navigasi ke halaman edit)
                             <DropdownMenuItem onClick={() => handleEditClick(product)}>
                               <Pencil className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
                           ) : (
-                            // Produk General - Override (Navigasi ke halaman terpisah)
+                            // ✅ Produk General - Override (Navigasi ke halaman override)
                             <DropdownMenuItem onClick={() => handleOverrideClick(product)}>
                               <Settings className="mr-2 h-4 w-4" />
                               {isOverridden(product) ? 'Edit Override' : 'Override Setting'}
@@ -814,112 +700,7 @@ export default function BranchProductsPage() {
 
       {/* --- MODALS --- */}
       
-      {/* Create/Edit Product Modal (Hanya untuk produk lokal) */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{selectedProduct ? 'Edit Produk Lokal' : 'Tambah Produk Lokal Baru'}</DialogTitle>
-            <DialogDescription>
-              {selectedProduct ? 'Perbarui informasi produk lokal' : 'Produk hanya berlaku untuk cabang Anda'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Gambar Produk</Label>
-                {imageError && (
-                  <Alert variant="destructive" className="mb-2 py-2">
-                    <AlertDescription className="text-xs font-medium">{imageError}</AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex flex-col gap-4">
-                  {imagePreview && (
-                    <div className="relative aspect-video w-full rounded-lg overflow-hidden border">
-                      <Image src={imagePreview} alt="Preview" fill className="object-cover" unoptimized={true} />
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/gif"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      id="image_url"
-                    />
-                    <Label htmlFor="image_url" className="flex-1 cursor-pointer">
-                      <div className="flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 hover:bg-muted/50">
-                        <Upload className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {imagePreview ? 'Ganti Gambar' : 'Upload Gambar (Max 1MB)'}
-                        </span>
-                      </div>
-                    </Label>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="product_name">Nama Produk *</Label>
-                <Input
-                  id="product_name"
-                  value={formData.product_name}
-                  onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-                  placeholder="Masukkan nama produk"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="base_price">Harga *</Label>
-                <Input
-                  id="base_price"
-                  type="text"
-                  value={formData.base_price ? `Rp. ${Number(formData.base_price).toLocaleString('id-ID')}` : ''}
-                  onChange={(e) => setFormData({ ...formData, base_price: e.target.value.replace(/[^0-9]/g, '') })}
-                  placeholder="Masukkan harga"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="category_id">Kategori *</Label>
-                <Select
-                  value={formData.category_id}
-                  onValueChange={(value) => setFormData({ ...formData, category_id: value })}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih Kategori" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.filter(cat => cat.branch_id).length > 0 ? (
-                      categories.filter(cat => cat.branch_id).map((category) => (
-                        <SelectItem key={category.category_id} value={category.category_id}>
-                          {category.category_name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                        Belum ada kategori lokal.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Hanya kategori lokal yang dapat dipilih</p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>Batal</Button>
-              <Button type="submit" disabled={isSubmitting || !!imageError}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedProduct ? 'Update' : 'Simpan'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete/Restore Modals */}
+      {/* Soft Delete Modal */}
       <Dialog open={isSoftDeleteOpen} onOpenChange={setIsSoftDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -940,6 +721,7 @@ export default function BranchProductsPage() {
         </DialogContent>
       </Dialog>
       
+      {/* Restore Modal */}
       <Dialog open={isRestoreOpen} onOpenChange={setIsRestoreOpen}>
         <DialogContent>
           <DialogHeader>
@@ -960,6 +742,7 @@ export default function BranchProductsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Hard Delete Modal */}
       <Dialog open={isHardDeleteOpen} onOpenChange={setIsHardDeleteOpen}>
         <DialogContent>
           <DialogHeader>

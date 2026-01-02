@@ -5,12 +5,20 @@ import Link from 'next/link';
 import { fetchWithAuth } from '@/lib/api';
 import { Partner } from '@/types';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
-import { CustomAlertDialog } from '@/components/ui/custom-alert-dialog';
-import { Users, Plus, Search, Mail, Phone, MoreHorizontal, Ban, CheckCircle, Eye } from 'lucide-react';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+// ✅ GANTI: Import AlertDialog standar
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Plus, Search, MoreHorizontal, Ban, CheckCircle, Eye } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -21,18 +29,9 @@ export default function PartnerListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSuspendOpen, setIsSuspendOpen] = useState(false);
   const [isActivateOpen, setIsActivateOpen] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
-
-  const [formData, setFormData] = useState({
-    business_name: '',
-    business_email: '',
-    business_phone: '',
-    username: '', 
-    password: ''  
-  });
 
   useEffect(() => {
     fetchPartners();
@@ -50,26 +49,9 @@ export default function PartnerListPage() {
     }
   };
 
-  const handleAddPartner = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await fetchWithAuth('/partner', {
-        method: 'POST',
-        body: JSON.stringify(formData),
-      });
-      alert('Mitra berhasil ditambahkan!');
-      setIsAddOpen(false);
-      fetchPartners();
-      setFormData({ business_name: '', business_email: '', business_phone: '', username: '', password: '' });
-    } catch (error: any) {
-      alert(error.message || 'Gagal menambahkan mitra');
-    }
-  };
-
   const handleSuspend = async () => {
     if (!selectedPartner) return;
     try {
-      // Doc 2.4 Soft Delete
       await fetchWithAuth(`/partner/${selectedPartner.partner_id}`, { method: 'DELETE' });
       alert('Mitra berhasil dinonaktifkan (Suspend)!');
       setIsSuspendOpen(false);
@@ -82,7 +64,6 @@ export default function PartnerListPage() {
   const handleActivate = async () => {
     if (!selectedPartner) return;
     try {
-      // Doc 2.3 Edit untuk mengaktifkan
       await fetchWithAuth(`/partner/${selectedPartner.partner_id}`, {
         method: 'PUT',
         body: JSON.stringify({ 
@@ -108,16 +89,20 @@ export default function PartnerListPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+      {/* Header */}
       <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Manajemen Mitra</h2>
           <p className="text-sm text-muted-foreground">Kelola data mitra dan akses sistem</p>
         </div>
-        <Button onClick={() => setIsAddOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Tambah Mitra
+        <Button asChild>
+          <Link href="/platform/partners/new">
+            <Plus className="mr-2 h-4 w-4" /> Tambah Mitra
+          </Link>
         </Button>
       </div>
 
+      {/* Table Card */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
@@ -146,70 +131,111 @@ export default function PartnerListPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPartners.map((partner) => (
-                  <TableRow key={partner.partner_id}>
-                    <TableCell className="font-medium">{partner.business_name}</TableCell>
-                    <TableCell>{partner.business_email}</TableCell>
-                    <TableCell>{partner.business_phone}</TableCell>
-                    <TableCell>
-                      <Badge variant={partner.status === 'Active' ? 'default' : 'destructive'}>
-                        {partner.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                          <DropdownMenuItem asChild>
-                            <Link href={`/platform/partners/${partner.partner_id}`}>
-                              <Eye className="mr-2 h-4 w-4" /> Lihat Detail
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {partner.status === 'Active' ? (
-                            <DropdownMenuItem onClick={() => { setSelectedPartner(partner); setIsSuspendOpen(true); }} className="text-destructive">
-                              <Ban className="mr-2 h-4 w-4" /> Suspend Mitra
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => { setSelectedPartner(partner); setIsActivateOpen(true); }} className="text-green-600">
-                              <CheckCircle className="mr-2 h-4 w-4" /> Aktifkan Kembali
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                {filteredPartners.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                      {searchTerm ? 'Tidak ada mitra yang ditemukan' : 'Belum ada mitra'}
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredPartners.map((partner) => (
+                    <TableRow key={partner.partner_id}>
+                      <TableCell className="font-medium">{partner.business_name}</TableCell>
+                      <TableCell>{partner.business_email}</TableCell>
+                      <TableCell>{partner.business_phone}</TableCell>
+                      <TableCell>
+                        <Badge variant={partner.status === 'Active' ? 'default' : 'secondary'}>
+                          {partner.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/platform/partners/${partner.partner_id}`}>
+                                <Eye className="mr-2 h-4 w-4" /> Lihat Detail
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {partner.status === 'Active' ? (
+                              <DropdownMenuItem 
+                                onClick={() => { 
+                                  setSelectedPartner(partner); 
+                                  setIsSuspendOpen(true); 
+                                }} 
+                                className="text-destructive"
+                              >
+                                <Ban className="mr-2 h-4 w-4" /> Suspend Mitra
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem 
+                                onClick={() => { 
+                                  setSelectedPartner(partner); 
+                                  setIsActivateOpen(true); 
+                                }} 
+                                className="text-green-600"
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" /> Aktifkan Kembali
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
 
-      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <form onSubmit={handleAddPartner}>
-            <DialogHeader><DialogTitle>Tambah Mitra Baru</DialogTitle></DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2"><Label>Nama Bisnis</Label><Input required value={formData.business_name} onChange={e => setFormData({...formData, business_name: e.target.value})} /></div>
-              <div className="grid gap-2"><Label>Email</Label><Input type="email" required value={formData.business_email} onChange={e => setFormData({...formData, business_email: e.target.value})} /></div>
-              <div className="grid gap-2"><Label>Telepon</Label><Input required value={formData.business_phone} onChange={e => setFormData({...formData, business_phone: e.target.value})} /></div>
-              <div className="bg-muted p-3 rounded space-y-3">
-                <p className="text-sm font-semibold">Akun Super Admin</p>
-                <div className="grid gap-2"><Label>Username</Label><Input required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} /></div>
-                <div className="grid gap-2"><Label>Password</Label><Input type="password" required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} /></div>
-              </div>
-            </div>
-            <DialogFooter><Button type="submit">Simpan</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* ✅ DIALOG SUSPEND - Gunakan AlertDialog standar */}
+      <AlertDialog open={isSuspendOpen} onOpenChange={setIsSuspendOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Suspend Mitra?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menonaktifkan <strong>{selectedPartner?.business_name}</strong>? 
+              Mitra tidak akan dapat login. Data tetap aman.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleSuspend}
+              className="bg-black text-white hover:bg-gray-800" // ✅ Tombol hitam
+            >
+              Suspend
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      <CustomAlertDialog open={isSuspendOpen} onOpenChange={setIsSuspendOpen} title="Suspend Mitra?" description="Mitra tidak akan dapat login. Data aman." onConfirm={handleSuspend} confirmText="Suspend" variant="destructive" />
-      <CustomAlertDialog open={isActivateOpen} onOpenChange={setIsActivateOpen} title="Aktifkan Mitra?" description="Mitra dapat mengakses layanan kembali." onConfirm={handleActivate} confirmText="Aktifkan" variant="default" />
+      {/* ✅ DIALOG AKTIVASI - Gunakan AlertDialog standar */}
+      <AlertDialog open={isActivateOpen} onOpenChange={setIsActivateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aktifkan Mitra?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin mengaktifkan kembali <strong>{selectedPartner?.business_name}</strong>? 
+              Mitra dapat mengakses layanan kembali.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleActivate}>
+              Aktifkan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

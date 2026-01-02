@@ -76,18 +76,52 @@ export default function NewBranchDiscountPage() {
     loadData();
   }, []);
 
+  // ✅ PERBAIKAN: Load data dengan error handling yang lebih baik
   const loadData = async () => {
     try {
       setIsLoading(true);
-      // Fetch Products & Categories
-      const [productsData, categoriesData] = await Promise.all([
-        branchProductAPI.getAll().catch(() => ({ data: [] })),
-        branchCategoryAPI.getAll().catch(() => ({ data: [] }))
-      ]);
+      
+      // ✅ Fetch Products dengan error handling
+      let productsData: Product[] = [];
+      try {
+        const productsResponse = await branchProductAPI.getAll();
+        // Handle berbagai struktur response
+        if (productsResponse && typeof productsResponse === 'object') {
+          if ('data' in productsResponse && Array.isArray(productsResponse.data)) {
+            productsData = productsResponse.data;
+          } else if ('items' in productsResponse && Array.isArray(productsResponse.items)) {
+            productsData = productsResponse.items;
+          } else if (Array.isArray(productsResponse)) {
+            productsData = productsResponse;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load products:', err);
+      }
 
-      setProducts(Array.isArray(productsData.data) ? productsData.data : []);
-      setCategories(Array.isArray(categoriesData.data) ? categoriesData.data : []);
+      // ✅ Fetch Categories dengan error handling
+      let categoriesData: Category[] = [];
+      try {
+        const categoriesResponse = await branchCategoryAPI.getAll();
+        // Handle berbagai struktur response
+        if (categoriesResponse && typeof categoriesResponse === 'object') {
+          if ('data' in categoriesResponse && Array.isArray(categoriesResponse.data)) {
+            categoriesData = categoriesResponse.data;
+          } else if ('items' in categoriesResponse && Array.isArray(categoriesResponse.items)) {
+            categoriesData = categoriesResponse.items;
+          } else if (Array.isArray(categoriesResponse)) {
+            categoriesData = categoriesResponse;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load categories:', err);
+      }
+
+      setProducts(productsData);
+      setCategories(categoriesData);
+      
     } catch (err: any) {
+      console.error('Error loading data:', err);
       setError(err.message || 'Gagal memuat data');
     } finally {
       setIsLoading(false);
@@ -134,6 +168,7 @@ export default function NewBranchDiscountPage() {
 
       const startDateTime = `${formData.start_date}T${formData.start_time}:00`;
       const endDateTime = `${formData.end_date}T${formData.end_time}:00`;
+      
       // Mapping tipe diskon jika backend mengharapkan NOMINAL tapi UI menampilkan FIXED_AMOUNT
       const discountType = formData.discount_type === 'FIXED_AMOUNT' ? 'NOMINAL' : formData.discount_type;
 
@@ -162,10 +197,11 @@ export default function NewBranchDiscountPage() {
       if (formData.min_discount_amount) dataToSend.min_discount_amount = toNumber(formData.min_discount_amount);
       if (formData.max_discount_amount) dataToSend.max_discount_amount = toNumber(formData.max_discount_amount);
 
+      console.log('📤 Data to send:', dataToSend);
       await branchDiscountAPI.create(dataToSend);
       router.push('/branch/discounts');
     } catch (err: any) {
-      console.error('Error submitting form:', err);
+      console.error('❌ Error submitting form:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan diskon';
       setError(errorMessage);
     } finally {
@@ -225,13 +261,16 @@ export default function NewBranchDiscountPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="discount_name">Nama Promo *</Label>
+              <Label htmlFor="discount_name">
+                Nama Promo <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="discount_name"
                 value={formData.discount_name}
                 onChange={(e) => setFormData({ ...formData, discount_name: e.target.value })}
-                placeholder="Contoh: Diskon Warga Lokal"
+                placeholder="Masukkan nama promo"
                 required
+                disabled={isSubmitting}
               />
             </div>
 
@@ -244,8 +283,9 @@ export default function NewBranchDiscountPage() {
                 id="discount_code"
                 value={formData.discount_code}
                 onChange={(e) => setFormData({ ...formData, discount_code: e.target.value.toUpperCase() })}
-                placeholder="Masukkan kode Promo"
+                placeholder="Masukkan kode promo"
                 className="font-mono uppercase"
+                disabled={isSubmitting}
               />
               <p className="text-xs text-muted-foreground">
                 Kosongkan jika ingin Promo diterapkan otomatis
@@ -268,11 +308,14 @@ export default function NewBranchDiscountPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="discount_type">Tipe Promo *</Label>
+                <Label htmlFor="discount_type">
+                  Tipe Promo <span className="text-destructive">*</span>
+                </Label>
                 <Select
                   value={formData.discount_type}
                   onValueChange={(value: any) => setFormData({ ...formData, discount_type: value, value: '' })}
                   required
+                  disabled={isSubmitting}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -286,7 +329,7 @@ export default function NewBranchDiscountPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="value">
-                  Nilai Promo * {formData.discount_type === 'PERCENTAGE' ? '(%)' : '(Rp)'}
+                  Nilai Promo <span className="text-destructive">*</span> {formData.discount_type === 'PERCENTAGE' ? '(%)' : '(Rp)'}
                 </Label>
                 {formData.discount_type === 'PERCENTAGE' ? (
                   <Input
@@ -296,16 +339,18 @@ export default function NewBranchDiscountPage() {
                     max="100"
                     value={formData.value}
                     onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                    placeholder="Masukkan persentase potongan"
+                    placeholder="Masukkan persentase"
                     required
+                    disabled={isSubmitting}
                   />
                 ) : (
                   <Input
                     id="value"
-                    value={formData.value ? `Rp. ${Number(formData.value).toLocaleString('id-ID')}` : ''}
+                    value={formData.value ? `Rp ${Number(formData.value).toLocaleString('id-ID')}` : ''}
                     onChange={(e) => handleNumberInput(e, 'value')}
-                    placeholder="Masukkan nominal potongan"
+                    placeholder="Masukkan nominal"
                     required
+                    disabled={isSubmitting}
                   />
                 )}
               </div>
@@ -329,7 +374,7 @@ export default function NewBranchDiscountPage() {
               <div className="space-y-2">
                 <Label htmlFor="start_date" className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
-                  Tanggal Mulai *
+                  Tanggal Mulai <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="start_date"
@@ -337,13 +382,14 @@ export default function NewBranchDiscountPage() {
                   value={formData.start_date}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="start_time" className="flex items-center gap-2">
                   <Clock className="h-4 w-4" />
-                  Waktu Mulai *
+                  Waktu Mulai <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="start_time"
@@ -351,13 +397,14 @@ export default function NewBranchDiscountPage() {
                   value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="end_date" className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
-                  Tanggal Selesai *
+                  Tanggal Selesai <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="end_date"
@@ -365,13 +412,14 @@ export default function NewBranchDiscountPage() {
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="end_time" className="flex items-center gap-2">
                   <Clock className="h-4 w-4" />
-                  Waktu Selesai *
+                  Waktu Selesai <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="end_time"
@@ -379,6 +427,7 @@ export default function NewBranchDiscountPage() {
                   value={formData.end_time}
                   onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
@@ -410,11 +459,14 @@ export default function NewBranchDiscountPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="applies_to">Berlaku Untuk *</Label>
+              <Label htmlFor="applies_to">
+                Berlaku Untuk <span className="text-destructive">*</span>
+              </Label>
               <Select
                 value={formData.applies_to}
                 onValueChange={(value: any) => setFormData({ ...formData, applies_to: value, product_ids: [], category_ids: [] })}
                 required
+                disabled={isSubmitting}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -430,7 +482,10 @@ export default function NewBranchDiscountPage() {
             {/* Pilihan Kategori */}
             {formData.applies_to === 'SPECIFIC_CATEGORIES' && (
               <div className="space-y-2">
-                <Label>Pilih Kategori * ({formData.category_ids.length} dipilih)</Label>
+                <Label>
+                  Pilih Kategori <span className="text-destructive">*</span> 
+                  <span className="text-muted-foreground ml-2">({formData.category_ids.length} dipilih)</span>
+                </Label>
                 <Card className="p-4 max-h-64 overflow-y-auto">
                   {categories.length > 0 ? (
                     <div className="space-y-3">
@@ -440,6 +495,7 @@ export default function NewBranchDiscountPage() {
                             id={cat.category_id}
                             checked={formData.category_ids.includes(cat.category_id)}
                             onCheckedChange={(checked) => handleCategoryToggle(cat.category_id, checked as boolean)}
+                            disabled={isSubmitting}
                           />
                           <label
                             htmlFor={cat.category_id}
@@ -462,7 +518,10 @@ export default function NewBranchDiscountPage() {
             {/* Pilihan Produk */}
             {formData.applies_to === 'SPECIFIC_PRODUCTS' && (
               <div className="space-y-2">
-                <Label>Pilih Produk * ({formData.product_ids.length} dipilih)</Label>
+                <Label>
+                  Pilih Produk <span className="text-destructive">*</span> 
+                  <span className="text-muted-foreground ml-2">({formData.product_ids.length} dipilih)</span>
+                </Label>
                 <Card className="p-4 max-h-64 overflow-y-auto">
                   {products.length > 0 ? (
                     <div className="space-y-3">
@@ -472,6 +531,7 @@ export default function NewBranchDiscountPage() {
                             id={prod.product_id}
                             checked={formData.product_ids.includes(prod.product_id)}
                             onCheckedChange={(checked) => handleProductToggle(prod.product_id, checked as boolean)}
+                            disabled={isSubmitting}
                           />
                           <label
                             htmlFor={prod.product_id}
@@ -508,7 +568,8 @@ export default function NewBranchDiscountPage() {
                 <Input
                   value={displayFormatted(formData.min_transaction_amount)}
                   onChange={(e) => handleNumberInput(e, 'min_transaction_amount')}
-                  placeholder="Contoh: 50.000"
+                  placeholder="Masukkan minimal transaksi"
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -517,7 +578,8 @@ export default function NewBranchDiscountPage() {
                 <Input
                   value={displayFormatted(formData.max_transaction_amount)}
                   onChange={(e) => handleNumberInput(e, 'max_transaction_amount')}
-                  placeholder="Contoh: 1.000.000"
+                  placeholder="Masukkan maksimal transaksi"
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -526,7 +588,8 @@ export default function NewBranchDiscountPage() {
                 <Input
                   value={displayFormatted(formData.min_item_quantity)}
                   onChange={(e) => handleNumberInput(e, 'min_item_quantity')}
-                  placeholder="Contoh: 2"
+                  placeholder="Masukkan minimal item"
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -535,7 +598,8 @@ export default function NewBranchDiscountPage() {
                 <Input
                   value={displayFormatted(formData.max_item_quantity)}
                   onChange={(e) => handleNumberInput(e, 'max_item_quantity')}
-                  placeholder="Contoh: 100"
+                  placeholder="Masukkan maksimal item"
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -544,7 +608,8 @@ export default function NewBranchDiscountPage() {
                 <Input
                   value={displayFormatted(formData.min_discount_amount)}
                   onChange={(e) => handleNumberInput(e, 'min_discount_amount')}
-                  placeholder="Contoh: 1.000"
+                  placeholder="Masukkan minimal potongan"
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -553,7 +618,8 @@ export default function NewBranchDiscountPage() {
                 <Input
                   value={displayFormatted(formData.max_discount_amount)}
                   onChange={(e) => handleNumberInput(e, 'max_discount_amount')}
-                  placeholder="Contoh: 50.000"
+                  placeholder="Masukkan maksimal potongan"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>

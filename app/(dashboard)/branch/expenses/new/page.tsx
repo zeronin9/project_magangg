@@ -174,7 +174,7 @@ export default function NewExpensePage() {
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Contoh: Beli Token Listrik, Bayar Air, dll"
+                placeholder="Masukkan deskripsi pengeluaran"
                 required
                 disabled={isSubmitting}
               />

@@ -50,10 +50,12 @@ import {
   Clock,
   AlertCircle,
   Loader2,
-  Archive, // Icon Arsip
-  RotateCcw, // Icon Restore
-  Trash2, // Icon Hapus Permanen
+  Archive,
+  RotateCcw,
+  Trash2,
   AlertTriangle,
+  Info,
+  XCircle,
 } from 'lucide-react';
 
 interface ShiftSchedule {
@@ -78,9 +80,9 @@ export default function ShiftSchedulesPage() {
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false); // Modal Arsip
-  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false); // Modal Hard Delete
-  const [isRestoreOpen, setIsRestoreOpen] = useState(false); // Modal Restore
+  const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
+  const [isHardDeleteOpen, setIsHardDeleteOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [selectedShift, setSelectedShift] = useState<ShiftSchedule | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,7 +101,6 @@ export default function ShiftSchedulesPage() {
     setCurrentPage(1);
   }, [searchQuery, showInactive]);
 
-  // ✅ DELAY 3 DETIK (3000ms)
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const loadData = async () => {
@@ -116,8 +117,10 @@ export default function ShiftSchedulesPage() {
     }
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat buka modal (kecuali untuk edit)
   const handleOpenModal = (shift?: ShiftSchedule) => {
     if (shift) {
+      // Mode Edit: Isi dengan data shift yang dipilih
       setSelectedShift(shift);
       setFormData({
         shift_name: shift.shift_name,
@@ -125,19 +128,23 @@ export default function ShiftSchedulesPage() {
         end_time: shift.end_time,
       });
     } else {
+      // Mode Create: JANGAN reset formData, biarkan data sebelumnya tetap ada
       setSelectedShift(null);
-      setFormData({
-        shift_name: '',
-        start_time: '',
-        end_time: '',
-      });
+      // ❌ JANGAN reset formData di sini
     }
     setIsModalOpen(true);
   };
 
+  // ✅ PERBAIKAN: Jangan reset formData saat dialog tertutup
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedShift(null);
+    // ❌ JANGAN reset formData di sini
+    // Biarkan data tetap ada untuk mencegah kehilangan data tidak sengaja
+  };
+
+  // ✅ TAMBAHAN: Handler baru untuk clear form manual
+  const handleClearForm = () => {
     setFormData({
       shift_name: '',
       start_time: '',
@@ -145,12 +152,12 @@ export default function ShiftSchedulesPage() {
     });
   };
 
+  // ✅ PERBAIKAN: Reset formData hanya setelah berhasil submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // ✅ Delay 3 detik sebelum eksekusi
       await delay(3000);
 
       if (selectedShift) {
@@ -160,6 +167,14 @@ export default function ShiftSchedulesPage() {
       }
 
       await loadData();
+      
+      // ✅ Reset formData hanya setelah berhasil submit
+      setFormData({
+        shift_name: '',
+        start_time: '',
+        end_time: '',
+      });
+      
       handleCloseModal();
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.message || 'Gagal menyimpan jadwal shift';
@@ -169,16 +184,14 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  // ✅ IMPLEMENTASI SOFT DELETE (Sesuai Doc 4.4)
   const handleSoftDelete = async () => {
     if (!selectedShift) return;
     setIsSubmitting(true);
 
     try {
-      await delay(3000); // Delay 3 detik
+      await delay(3000);
       console.log('🗑️ Soft Delete:', selectedShift.shift_schedule_id);
       
-      // Panggil endpoint DELETE /:id
       await shiftScheduleAPI.softDelete(selectedShift.shift_schedule_id);
 
       await loadData();
@@ -191,15 +204,13 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  // ✅ IMPLEMENTASI RESTORE / UPDATE ACTIVE (Sesuai Doc 4.3)
   const handleRestore = async () => {
     if (!selectedShift) return;
     setIsSubmitting(true);
 
     try {
-      await delay(3000); // Delay 3 detik
+      await delay(3000);
       
-      // Gunakan endpoint UPDATE untuk set is_active: true
       await shiftScheduleAPI.update(selectedShift.shift_schedule_id, {
         is_active: true
       });
@@ -214,16 +225,14 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  // ✅ IMPLEMENTASI HARD DELETE (Sesuai Doc 4.5)
   const handleHardDelete = async () => {
     if (!selectedShift) return;
     setIsSubmitting(true);
 
     try {
-      await delay(3000); // Delay 3 detik
+      await delay(3000);
       console.log('💀 Hard Delete:', selectedShift.shift_schedule_id);
 
-      // Panggil endpoint DELETE /permanent/:id
       await shiftScheduleAPI.hardDelete(selectedShift.shift_schedule_id);
 
       await loadData();
@@ -231,7 +240,6 @@ export default function ShiftSchedulesPage() {
       setSelectedShift(null);
     } catch (err: any) {
       console.error('❌ Hard Delete Error:', err);
-      // Menangani error jika data sudah pernah dipakai (Foreign Key constraint)
       const errorMessage = err.response?.data?.message || 'Gagal menghapus shift secara permanen';
       alert(errorMessage);
     } finally {
@@ -259,6 +267,9 @@ export default function ShiftSchedulesPage() {
       setCurrentPage(page);
     }
   };
+
+  // Helper untuk cek apakah ada data yang diisi
+  const hasUnsavedData = formData.shift_name || formData.start_time || formData.end_time;
 
   if (isLoading) {
     return (
@@ -470,52 +481,98 @@ export default function ShiftSchedulesPage() {
           <DialogHeader>
             <DialogTitle>{selectedShift ? 'Edit Jadwal Shift' : 'Tambah Jadwal Shift Baru'}</DialogTitle>
             <DialogDescription>
-              {selectedShift ? 'Perbarui informasi jadwal shift' : 'Buat jadwal shift baru untuk operasional kasir'}
+              {selectedShift
+                ? 'Perbarui informasi jadwal shift'
+                : 'Data akan tetap tersimpan meskipun dialog tertutup'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="shift_name">Nama Shift *</Label>
+                <Label htmlFor="shift_name">
+                  Nama Shift <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="shift_name"
                   value={formData.shift_name}
                   onChange={(e) => setFormData({ ...formData, shift_name: e.target.value })}
                   placeholder="Masukkan nama shift"
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="start_time">Jam Mulai *</Label>
+                <Label htmlFor="start_time">
+                  Jam Mulai <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="start_time"
                   type="time"
                   value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="end_time">Jam Selesai *</Label>
+                <Label htmlFor="end_time">
+                  Jam Selesai <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="end_time"
                   type="time"
                   value={formData.end_time}
                   onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
                   required
+                  disabled={isSubmitting}
                 />
               </div>
+
+              {/* ✅ TAMBAHAN: Info jika ada data yang tersimpan */}
+              {!selectedShift && hasUnsavedData && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Data sebelumnya masih tersimpan. Klik "Hapus Isian" jika ingin memulai dari awal.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                Batal
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {selectedShift ? 'Update' : 'Simpan'}
-              </Button>
+
+            <DialogFooter className="flex-row gap-2 sm:justify-between">
+              {/* ✅ TAMBAHAN: Tombol Clear Form */}
+              <div className="flex-1">
+                {!selectedShift && hasUnsavedData && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleClearForm} 
+                    disabled={isSubmitting}
+                    size="sm"
+                  >
+                    <XCircle className="mr-2 h-4 w-4" />
+                    Hapus Isian
+                  </Button>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCloseModal} 
+                  disabled={isSubmitting}
+                >
+                  Batal
+                </Button>
+                
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {selectedShift ? 'Update' : 'Simpan'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
