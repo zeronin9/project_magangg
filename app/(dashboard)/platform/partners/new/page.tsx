@@ -26,19 +26,53 @@ export default function NewPartnerPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // Validasi tambahan di frontend
+    if (!formData.business_name.trim()) {
+      setError('Nama bisnis wajib diisi');
+      return;
+    }
+    if (!formData.business_email.trim()) {
+      setError('Email bisnis wajib diisi');
+      return;
+    }
+    if (!formData.username.trim()) {
+      setError('Username wajib diisi');
+      return;
+    }
+    if (!formData.password || formData.password.length < 6) {
+      setError('Password minimal 6 karakter');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await fetchWithAuth('/partner', {
+      console.log('Sending data to backend:', formData);
+      
+      const response = await fetchWithAuth('/partner', {
         method: 'POST',
         body: JSON.stringify(formData),
       });
       
+      console.log('Response from backend:', response);
       alert('Mitra berhasil ditambahkan!');
       router.push('/platform/partners');
     } catch (error: any) {
       console.error('Error adding partner:', error);
-      setError(error.message || 'Gagal menambahkan mitra. Silakan coba lagi.');
+      
+      // Tangani berbagai jenis error
+      if (error.message.includes('Username already registered')) {
+        setError('Username sudah terdaftar. Silakan gunakan username lain.');
+      } else if (error.message.includes('Email already registered')) {
+        setError('Email sudah terdaftar. Silakan gunakan email lain.');
+      } else if (error.message.includes('All fields are required')) {
+        setError('Semua field wajib diisi.');
+      } else if (error.message.includes('Unauthorized')) {
+        setError('Sesi Anda telah berakhir. Silakan login kembali.');
+      } else {
+        setError(error.message || 'Gagal menambahkan mitra. Silakan coba lagi.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -74,7 +108,7 @@ export default function NewPartnerPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ✅ PERBAIKAN: Grid 2 kolom untuk card */}
+        {/* Grid 2 kolom untuk card */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Informasi Bisnis */}
           <Card>
