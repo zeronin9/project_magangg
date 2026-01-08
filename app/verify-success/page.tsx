@@ -8,30 +8,38 @@ import Image from 'next/image';
 
 export default function VerifySuccessPage() {
   const router = useRouter();
-  const [countdown, setCountdown] = useState(5);
+  const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
-    // Check if user actually verified
-    const registeredUser = localStorage.getItem('registeredUser');
-    if (!registeredUser) {
+    // Check if verification was successful
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (!token) {
+      // Jika tidak ada token, redirect ke register
       router.push('/register');
       return;
     }
 
-    // Countdown and auto redirect
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          router.push('/login');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
+    // Parse user data untuk mendapatkan email
+    if (user) {
+      try {
+        const userData = JSON.parse(user);
+        setUserEmail(userData.email || '');
+      } catch (err) {
+        console.error('Error parsing user data:', err);
+      }
+    }
   }, [router]);
+
+  const handleGoToLogin = () => {
+    // Clear token dan user data karena harus login ulang
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    
+    // Redirect ke halaman login
+    router.push('/login');
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans">
@@ -59,10 +67,15 @@ export default function VerifySuccessPage() {
             <span className="text-xl font-bold text-black tracking-wide">Horeka POS+</span>
           </div>
 
-          {/* Success Icon */}
+          {/* Success Icon with Pulsing Animation */}
           <div className="flex justify-center mb-6">
-            <div className="bg-green-100 p-6 rounded-full animate-bounce">
-              <CheckCircle className="w-16 h-16 text-green-600" />
+            <div className="relative">
+              {/* Pulsing Background */}
+              <div className="absolute inset-0 bg-green-100 rounded-full animate-ping opacity-75"></div>
+              {/* Static Background */}
+              <div className="relative bg-green-100 p-6 rounded-full">
+                <CheckCircle className="w-16 h-16 text-green-600" />
+              </div>
             </div>
           </div>
 
@@ -76,7 +89,7 @@ export default function VerifySuccessPage() {
           </p>
 
           {/* Success Info Box */}
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-8">
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
               <div className="text-left">
@@ -90,18 +103,13 @@ export default function VerifySuccessPage() {
             </div>
           </div>
 
-          {/* Auto Redirect Info */}
-          <p className="text-sm text-gray-500 mb-6">
-            Anda akan diarahkan ke halaman login dalam <span className="font-bold text-[#1a3b8f]">{countdown}</span> detik
-          </p>
-
           {/* Login Button */}
-          <Link 
-            href="/login"
+          <button
+            onClick={handleGoToLogin}
             className="inline-flex items-center justify-center gap-2 w-full bg-[#1a3b8f] hover:bg-[#153075] text-white font-bold py-3 px-6 rounded-xl shadow-md shadow-blue-900/20 transition-transform active:scale-[0.98] uppercase tracking-wider text-sm"
           >
             Masuk Sekarang <ArrowRight size={18} />
-          </Link>
+          </button>
 
           {/* Helper Text */}
           <div className="mt-6">

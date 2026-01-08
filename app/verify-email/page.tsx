@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Mail, Loader2, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
+import { apiClient } from '@/lib/api'; // Import apiClient
 
 export default function VerifyEmailPage() {
   const router = useRouter();
@@ -65,59 +66,49 @@ export default function VerifyEmailPage() {
   };
 
   const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  e.preventDefault();
+  setError('');
 
-    const code = verificationCode.join('');
-    if (code.length !== 6) {
-      setError('Kode verifikasi harus 6 digit');
-      return;
-    }
+  const code = verificationCode.join('');
+  if (code.length !== 6) {
+    setError('Kode verifikasi harus 6 digit');
+    return;
+  }
 
-    setIsLoading(true);
+  setIsLoading(true);
 
-    try {
-      // Call API backend untuk verifikasi
-      const response = await fetch('http://localhost:5000/api/auth/verify-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email,
-          code: code,
-        }),
-      });
+  try {
+    // Call API backend untuk verifikasi menggunakan apiClient
+    const response: any = await apiClient.post('/auth/verify-email', {
+      email: email,
+      code: code,
+    });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Verifikasi gagal');
-      }
-
-      // Simpan token dari response
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-      }
+    // Simpan token dari response
+    if (response.data && response.data.token) {
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
       
       // Clear pending data
       localStorage.removeItem('pendingVerificationEmail');
       localStorage.removeItem('pendingBusinessName');
       
-      // Redirect ke success page
+      // ✅ Redirect ke success page
       router.push('/verify-success');
-    } catch (err) {
-      console.error('Verification error:', err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Verifikasi gagal. Silakan coba lagi.');
-      }
-    } finally {
-      setIsLoading(false);
+    } else {
+      throw new Error('Respon server tidak valid');
     }
-  };
+  } catch (err: any) {
+    console.error('Verification error:', err);
+    if (err instanceof Error) {
+      setError(err.message);
+    } else {
+      setError('Verifikasi gagal. Silakan coba lagi.');
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans">

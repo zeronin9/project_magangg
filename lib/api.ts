@@ -61,6 +61,22 @@ export async function fetchWithAuth(endpoint: string, options: FetchOptions = {}
   }
 }
 
+// Tambahkan helper khusus untuk Auth agar lebih bersih dipakai di page
+export const authClient = {
+  register: async (data: any) => {
+    return fetchWithAuth('/auth/register', { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    });
+  },
+  verifyEmail: async (data: { email: string; code: string }) => {
+    return fetchWithAuth('/auth/verify-email', { 
+      method: 'POST', 
+      body: JSON.stringify(data) 
+    });
+  }
+};
+
 // ✅ DEFINISI APICLIENT (Tambahkan ini agar tidak merah di branch.ts)
 export const apiClient = {
   get: async (endpoint: string) => {
