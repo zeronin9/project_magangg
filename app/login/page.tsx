@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { User, Lock, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import Image from 'next/image';
@@ -8,9 +9,9 @@ import Image from 'next/image';
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const { login, isLoading: authLoading } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,14 +51,10 @@ export default function LoginPage() {
                 className="object-contain"
                 priority
                 onError={(e) => {
-                  // Fallback to letter H if image not found
                   const target = e.target as HTMLImageElement;
                   target.style.display = 'none';
                 }}
               />
-              {/* <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
-                <span className="text-white text-xl font-bold">H</span>
-              </div> */}
             </div>
             <span className="text-xl font-bold text-black tracking-wide">Horeka POS+</span>
           </div>
@@ -93,7 +90,7 @@ export default function LoginPage() {
 
             {/* Password Input */}
             <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 ">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
                 <Lock size={20} />
               </div>
               <input 
@@ -101,7 +98,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-700 placeholder-gray-400 font-medium border border-gray-300 "
+                className="w-full pl-12 pr-4 py-4 bg-gray-50 rounded-xl focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-700 placeholder-gray-400 font-medium border border-gray-300"
                 placeholder="Password"
               />
             </div>
@@ -126,7 +123,15 @@ export default function LoginPage() {
           {/* Helper Text */}
           <div className="mt-8 text-center">
             <p className="text-sm text-gray-500">
-              
+              Belum punya akun?{' '}
+              <Link href="/register" className="text-[#1a3b8f] hover:underline font-semibold">
+                Daftar sekarang
+              </Link>
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              <Link href="/" className="text-[#1a3b8f] hover:underline font-semibold">
+                Kembali ke Home
+              </Link>
             </p>
           </div>
         </div>
