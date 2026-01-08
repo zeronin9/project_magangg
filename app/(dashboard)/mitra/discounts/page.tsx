@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input'; // Pastikan Input diimport
 import {
   Dialog,
   DialogContent,
@@ -58,7 +59,9 @@ import {
   Archive,
   RotateCcw,
   Ticket,
-  Clock
+  Clock,
+  Search, // Import icon Search
+  X // Import icon X untuk clear search
 } from 'lucide-react';
 import { formatRupiah } from '@/lib/utils';
 
@@ -102,10 +105,12 @@ export default function DiscountsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Filter & Pagination States
+  // Filter & Pagination & Search States
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState(''); // State input user
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // State actual search (delayed)
 
   // Modal States
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
@@ -118,7 +123,7 @@ export default function DiscountsPage() {
   // Helper Delay
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Initial Load
+  // Initial Load Dependencies
   useEffect(() => {
     const loadDependencies = async () => {
       try {
@@ -138,25 +143,34 @@ export default function DiscountsPage() {
     loadDependencies();
   }, []);
 
-  // Load Discounts
+  // Debounce Logic untuk Search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500); // Tunggu 500ms setelah user berhenti mengetik
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Load Discounts (Triggered by changes)
   useEffect(() => {
     loadDiscounts();
-  }, [currentPage, showArchived, scopeFilter]);
+  }, [currentPage, showArchived, scopeFilter, debouncedSearch]);
 
-  // Reset page when filter changes
+  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [scopeFilter, showArchived]);
+  }, [scopeFilter, showArchived, debouncedSearch]);
 
   const loadDiscounts = async () => {
     try {
       setIsLoading(true);
       
-      // ✅ PERBAIKAN: Menggunakan parameter 'status' sesuai backend baru
       const params: any = {
         page: currentPage,
         limit: ITEMS_PER_PAGE,
-        status: showArchived ? 'archived' : 'active' // Ubah dari is_active ke status
+        status: showArchived ? 'archived' : 'active',
+        search: debouncedSearch // Menambahkan parameter pencarian ke API
       };
 
       if (scopeFilter === 'local') params.type = 'local';
@@ -195,10 +209,7 @@ export default function DiscountsPage() {
     try {
       await delay(1000);
       await discountAPI.softDelete(selectedDiscount.discount_rule_id);
-      
-      // Refresh list (item akan hilang dari view Active)
       await loadDiscounts();
-      
       setIsSoftDeleteOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -213,12 +224,10 @@ export default function DiscountsPage() {
     setIsSubmitting(true);
     try {
       await delay(1000);
-      // Kirim is_active: true agar backend melakukan restore (sesuai logika updateDiscountRule)
       const restoreData = {
         is_active: true,
         discount_name: selectedDiscount.discount_name,
         discount_type: selectedDiscount.discount_type,
-        // Pastikan format nilai sesuai
         value: selectedDiscount.value.toString(),
         start_date: selectedDiscount.start_date,
         end_date: selectedDiscount.end_date,
@@ -226,10 +235,7 @@ export default function DiscountsPage() {
       };
       
       await discountAPI.update(selectedDiscount.discount_rule_id, restoreData);
-      
-      // Refresh list (item akan hilang dari view Archive)
       await loadDiscounts();
-      
       setIsRestoreOpen(false);
       setSelectedDiscount(null);
     } catch (err: any) {
@@ -287,7 +293,7 @@ export default function DiscountsPage() {
     return <Badge className="bg-green-600 text-white">Aktif</Badge>;
   };
 
-  if (isLoading) {
+  if (isLoading && !discounts.length && !searchTerm) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <Skeleton className="h-8 w-48 mb-2" />
@@ -313,7 +319,7 @@ export default function DiscountsPage() {
             Kelola aturan Promo (General & Lokal)
           </p>
         </div>
-        <div className="flex flex-col gap-2 @md:flex-row">
+        <div className="grid grid-cols-2 gap-2 @md:flex">
           <Button
             variant={showArchived ? "default" : "outline"}
             onClick={() => setShowArchived(!showArchived)}
@@ -338,7 +344,7 @@ export default function DiscountsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-
+      
       <Alert>
         <Globe className="h-4 w-4" />
         <AlertDescription>
@@ -348,38 +354,62 @@ export default function DiscountsPage() {
         </AlertDescription>
       </Alert>
 
-      {/* Filter */}
+      {/* Filter Bar */}
       <Card className="p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
+        <div className="flex flex-col md:flex-row gap-4 justify-between">
+          
+          {/* Kiri: Filter Scope */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={scopeFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScopeFilter('all')}
+              >
+                Semua
+              </Button>
+              <Button
+                variant={scopeFilter === 'general' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScopeFilter('general')}
+              >
+                <Globe className="mr-2 h-3 w-3" />
+                General
+              </Button>
+              <Button
+                variant={scopeFilter === 'local' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScopeFilter('local')}
+              >
+                <Building2 className="mr-2 h-3 w-3" />
+                Lokal
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={scopeFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('all')}
-            >
-              Semua
-            </Button>
-            <Button
-              variant={scopeFilter === 'general' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('general')}
-            >
-              <Globe className="mr-2 h-3 w-3" />
-              General
-            </Button>
-            <Button
-              variant={scopeFilter === 'local' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('local')}
-            >
-              <Building2 className="mr-2 h-3 w-3" />
-              Lokal
-            </Button>
+
+          {/* Kanan: Search Input */}
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari promo / kode..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 pr-8"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-2.5 text-muted-foreground hover:text-black"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
+
         </div>
       </Card>
 
@@ -401,12 +431,24 @@ export default function DiscountsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {discounts.length === 0 ? (
+              {isLoading && discounts.length === 0 ? (
+                 <TableRow>
+                   <TableCell colSpan={9} className="text-center py-8">
+                     <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                     <p className="text-sm text-muted-foreground mt-2">Mencari data...</p>
+                   </TableCell>
+                 </TableRow>
+              ) : discounts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-12">
                     <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
                     <p className="text-muted-foreground">
-                      {showArchived ? 'Tidak ada Promo di arsip' : 'Tidak ada Promo'}
+                      {searchTerm 
+                        ? `Tidak ada promo ditemukan dengan kata kunci "${searchTerm}"`
+                        : showArchived 
+                          ? 'Tidak ada Promo di arsip' 
+                          : 'Tidak ada Promo'
+                      }
                     </p>
                   </TableCell>
                 </TableRow>

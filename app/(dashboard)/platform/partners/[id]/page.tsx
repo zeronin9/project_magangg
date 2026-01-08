@@ -223,28 +223,16 @@ export default function PartnerDetailPage() {
           <div className="space-y-1">
             <h2 className="text-2xl font-bold tracking-tight">{partner.business_name}</h2>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant={partner.status === 'Active' ? 'default' : 'destructive'}>
-                {partner.status}
-              </Badge>
+              <Badge 
+  variant={partner.status === 'Active' ? 'default' : 'secondary'}
+  className={partner.status !== 'Active' ? 'bg-gray-100 hover:bg-gray-100 text-black' : ''}
+>
+  {partner.status}
+</Badge>
               <span>•</span>
               <span>Bergabung sejak {new Date(partner.joined_date).toLocaleDateString('id-ID')}</span>
             </div>
           </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          {partner.status === 'Active' ? (
-            <Button variant="destructive" onClick={() => setIsSuspendOpen(true)}>
-              <Ban className="mr-2 h-4 w-4" />
-              Suspend Mitra
-            </Button>
-          ) : (
-            <Button className="bg-green-600 hover:bg-green-700" onClick={() => setIsActivateOpen(true)}>
-              <CheckCircle className="mr-2 h-4 w-4" />
-              Aktifkan Kembali
-            </Button>
-          )}
         </div>
       </div>
 
@@ -311,7 +299,7 @@ export default function PartnerDetailPage() {
 
       {/* Tabs Data */}
       <Tabs defaultValue="subscriptions" className="space-y-4">
-        <TabsList>
+        <TabsList className='w-full'>
           <TabsTrigger value="subscriptions">Riwayat Langganan</TabsTrigger>
           <TabsTrigger value="licenses">Daftar Lisensi</TabsTrigger>
         </TabsList>
@@ -415,27 +403,6 @@ export default function PartnerDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      {/* Confirmation Dialogs */}
-      <CustomAlertDialog
-        open={isSuspendOpen}
-        onOpenChange={setIsSuspendOpen}
-        title="Suspend Mitra?"
-        description={`Apakah Anda yakin ingin menonaktifkan ${partner.business_name}? Semua akses login dan layanan akan dihentikan sementara.`}
-        onConfirm={handleSuspend}
-        confirmText="Suspend"
-        variant="destructive"
-      />
-
-      <CustomAlertDialog
-        open={isActivateOpen}
-        onOpenChange={setIsActivateOpen}
-        title="Aktifkan Mitra?"
-        description={`Apakah Anda yakin ingin mengaktifkan kembali ${partner.business_name}? Mitra akan dapat mengakses kembali dashboard dan layanan mereka.`}
-        onConfirm={handleActivate}
-        confirmText="Aktifkan"
-        variant="default"
-      />
     </div>
   );
 }

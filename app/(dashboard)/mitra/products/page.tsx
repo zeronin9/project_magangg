@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input'; // Pastikan import Input
 import {
   Dialog,
   DialogContent,
@@ -46,7 +47,9 @@ import {
   Archive,
   AlertTriangle,
   RotateCcw,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Search, // Import Icon Search
+  X // Import Icon X
 } from 'lucide-react';
 import Image from 'next/image';
 import { formatRupiah } from '@/lib/utils';
@@ -77,10 +80,12 @@ export default function ProductsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Filter & Pagination States
+  // Filter & Pagination & Search States
   const [showArchived, setShowArchived] = useState(false);
   const [scopeFilter, setScopeFilter] = useState<'all' | 'general' | 'local'>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState(''); // State Input User
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // State untuk API call
 
   // Modal States
   const [isSoftDeleteOpen, setIsSoftDeleteOpen] = useState(false);
@@ -107,15 +112,24 @@ export default function ProductsPage() {
     loadDependencies();
   }, []);
 
-  // Load Products on Filter/Page Change
+  // Debounce Logic: Tunggu user selesai mengetik 500ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Load Products on Filter/Page/Search Change
   useEffect(() => {
     loadProducts();
-  }, [currentPage, showArchived, scopeFilter]);
+  }, [currentPage, showArchived, scopeFilter, debouncedSearch]);
 
-  // Reset pagination saat filter berubah
+  // Reset pagination saat filter/search berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [scopeFilter, showArchived]);
+  }, [scopeFilter, showArchived, debouncedSearch]);
 
   // Helper Delay for UX
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -125,11 +139,11 @@ export default function ProductsPage() {
       setIsLoading(true);
       setError('');
 
-      // ✅ UPDATE: Menggunakan parameter 'status' sesuai backend baru
       const params: any = {
         page: currentPage,
         limit: ITEMS_PER_PAGE,
-        status: showArchived ? 'archived' : 'active' // 'archived' = non-aktif, 'active' = aktif
+        status: showArchived ? 'archived' : 'active',
+        search: debouncedSearch // Kirim parameter search ke API
       };
 
       if (scopeFilter === 'local') params.type = 'local';
@@ -137,8 +151,6 @@ export default function ProductsPage() {
 
       const response = await productAPI.getAll(params);
       
-      // ✅ UPDATE: Langsung ambil data dari response (Backend sudah memfilter)
-      // Tidak perlu lagi .filter() client-side untuk is_active
       let productsList = Array.isArray(response.data) ? response.data : [];
       
       // Map relations (Category & Branch)
@@ -176,10 +188,7 @@ export default function ProductsPage() {
     try {
       await delay(1000); 
       await productAPI.softDelete(selectedProduct.product_id);
-      
-      // Reload akan mengambil data terbaru (produk akan hilang dari list Active)
       await loadProducts(); 
-      
       setIsSoftDeleteOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -194,15 +203,13 @@ export default function ProductsPage() {
     setIsSubmitting(true);
     try {
       await delay(1000); 
-      // Update status menjadi aktif
       const payload = {
         is_active: true,
         product_name: selectedProduct.product_name,
         category_id: selectedProduct.category_id
       };
-      
       await productAPI.update(selectedProduct.product_id, payload);
-      await loadProducts(); // Produk akan hilang dari list Archived
+      await loadProducts();
       setIsRestoreOpen(false);
       setSelectedProduct(null);
     } catch (err: any) {
@@ -236,7 +243,8 @@ export default function ProductsPage() {
     }
   };
 
-  if (isLoading) {
+  // Loading Skeleton
+  if (isLoading && !products.length && !searchTerm) {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
         <div className="flex justify-between items-center">
@@ -285,7 +293,6 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -303,38 +310,62 @@ export default function ProductsPage() {
         </AlertDescription>
       </Alert>
 
-      {/* Filter */}
+      {/* Filter & Search Bar */}
       <Card className="p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
+        <div className="flex flex-col md:flex-row gap-4 justify-between">
+          
+          {/* Kiri: Filter Scope */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium whitespace-nowrap">Filter Scope:</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={scopeFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScopeFilter('all')}
+              >
+                Semua
+              </Button>
+              <Button
+                variant={scopeFilter === 'general' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScopeFilter('general')}
+              >
+                <Globe className="mr-2 h-3 w-3" />
+                General
+              </Button>
+              <Button
+                variant={scopeFilter === 'local' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setScopeFilter('local')}
+              >
+                <Building2 className="mr-2 h-3 w-3" />
+                Lokal
+              </Button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={scopeFilter === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('all')}
-            >
-              Semua
-            </Button>
-            <Button
-              variant={scopeFilter === 'general' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('general')}
-            >
-              <Globe className="mr-2 h-3 w-3" />
-              General
-            </Button>
-            <Button
-              variant={scopeFilter === 'local' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setScopeFilter('local')}
-            >
-              <Building2 className="mr-2 h-3 w-3" />
-              Lokal
-            </Button>
+
+          {/* Kanan: Search Input */}
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Cari produk..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 pr-8"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-2.5 text-muted-foreground hover:text-black"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
+
         </div>
       </Card>
 
@@ -345,7 +376,11 @@ export default function ProductsPage() {
             <div className="text-center">
               <Package className="mx-auto h-12 w-12 text-muted-foreground mb-3" />
               <p className="text-muted-foreground">
-                {showArchived ? 'Tidak ada produk di arsip' : 'Tidak ada produk ditemukan'}
+                {searchTerm 
+                  ? `Tidak ada produk ditemukan dengan kata kunci "${searchTerm}"`
+                  : showArchived 
+                    ? 'Tidak ada produk di arsip' 
+                    : 'Tidak ada produk ditemukan'}
               </p>
             </div>
           </Card>
@@ -483,9 +518,9 @@ export default function ProductsPage() {
               </PaginationItem>
               
               <PaginationItem>
-                 <span className="text-sm px-4">
-                   Halaman {meta.current_page} dari {meta.total_pages}
-                 </span>
+                  <span className="text-sm px-4">
+                    Halaman {meta.current_page} dari {meta.total_pages}
+                  </span>
               </PaginationItem>
 
               <PaginationItem>

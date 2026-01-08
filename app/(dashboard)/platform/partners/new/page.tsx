@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Save, Loader2, Building2, Mail, Phone, User, Lock, AlertCircle } from 'lucide-react';
+import { toast } from "sonner"; // Opsional: Jika Anda menggunakan toast untuk notifikasi
 
 export default function NewPartnerPage() {
   const router = useRouter();
@@ -26,24 +27,39 @@ export default function NewPartnerPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // Validasi Frontend Sederhana
+    if (!formData.business_name || !formData.business_email || !formData.business_phone || !formData.username || !formData.password) {
+      setError('Semua field wajib diisi');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await fetchWithAuth('/partner', {
-        method: 'POST',
-        body: JSON.stringify(formData),
-      });
+      // PERBAIKAN: Hapus headers manual, biarkan fetchWithAuth yang mengurusnya
+      // Gunakan apiClient.post() yang sudah Anda buat di lib/api.ts agar lebih konsisten
+      // ATAU gunakan fetchWithAuth tanpa mendefinisikan headers content-type manual
       
-      alert('Mitra berhasil ditambahkan!');
+      const response = await fetchWithAuth('/partner', {
+        method: 'POST',
+        body: formData, // fetchWithAuth di lib/api.ts Anda otomatis men-stringify jika bukan FormData
+      });
+
+      console.log('Success Response:', response);
+      // Gunakan alert bawaan browser dulu untuk memastikan
+      alert('Mitra berhasil ditambahkan!'); 
       router.push('/platform/partners');
-    } catch (error: any) {
-      console.error('Error adding partner:', error);
-      setError(error.message || 'Gagal menambahkan mitra. Silakan coba lagi.');
+
+    } catch (err: any) {
+      console.error('Error adding partner:', err);
+      // Karena backend belum diperbaiki urutannya, kita menebak errornya
+      setError(err.message || 'Gagal menambahkan mitra. Cek kembali data inputan (Username/Email mungkin sudah terpakai).');
     } finally {
       setIsSubmitting(false);
     }
   };
-
+  
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
       {/* Header */}
@@ -74,7 +90,6 @@ export default function NewPartnerPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ✅ PERBAIKAN: Grid 2 kolom untuk card */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Informasi Bisnis */}
           <Card>
@@ -96,7 +111,7 @@ export default function NewPartnerPage() {
                   id="business_name"
                   value={formData.business_name}
                   onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
-                  placeholder="Masukkan nama bisnis"
+                  placeholder="PT. Contoh Sukses"
                   required
                   disabled={isSubmitting}
                 />
@@ -112,7 +127,7 @@ export default function NewPartnerPage() {
                   type="email"
                   value={formData.business_email}
                   onChange={(e) => setFormData({ ...formData, business_email: e.target.value })}
-                  placeholder="Masukkan email bisnis"
+                  placeholder="bisnis@contoh.com"
                   required
                   disabled={isSubmitting}
                 />
@@ -128,7 +143,7 @@ export default function NewPartnerPage() {
                   type="tel"
                   value={formData.business_phone}
                   onChange={(e) => setFormData({ ...formData, business_phone: e.target.value })}
-                  placeholder="Masukkan nomor telepon"
+                  placeholder="08123456789"
                   required
                   disabled={isSubmitting}
                 />
@@ -144,34 +159,31 @@ export default function NewPartnerPage() {
                 Akun Super Admin
               </CardTitle>
               <CardDescription>
-                Kredensial login untuk Super Admin mitra ini
+                Akun ini akan menjadi admin utama untuk mitra tersebut
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
+              <Alert className="bg-blue-50/50 border-blue-200 text-blue-800">
+                <AlertCircle className="h-4 w-4 text-blue-800" />
                 <AlertDescription className="text-xs">
-                  Akun ini akan memiliki akses penuh ke sistem mitra. Pastikan username dan password aman.
+                  Sistem akan otomatis membuat akun User dengan role <b>Super Admin</b> yang terhubung ke Mitra ini.
                 </AlertDescription>
               </Alert>
 
               <div className="space-y-2">
                 <Label htmlFor="username">
                   <User className="inline h-4 w-4 mr-1" />
-                  Username <span className="text-destructive">*</span>
+                  Username Admin <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="username"
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="Masukkan username"
+                  placeholder="admin.contoh"
                   required
                   disabled={isSubmitting}
                   className="font-mono"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Username digunakan untuk login ke sistem
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -184,14 +196,11 @@ export default function NewPartnerPage() {
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Masukkan password"
+                  placeholder="******"
                   required
                   disabled={isSubmitting}
                   minLength={6}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Minimal 6 karakter
-                </p>
               </div>
             </CardContent>
           </Card>

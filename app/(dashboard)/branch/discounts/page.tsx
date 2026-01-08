@@ -505,7 +505,7 @@ export default function BranchDiscountsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Promo & Diskon</h1>
           <p className="text-muted-foreground">Kelola diskon lokal & atur override diskon general</p>
         </div>
-        <div className="flex flex-col gap-2 @md:flex-row">
+        <div className="grid grid-cols-2 gap-2 @md:flex">
           <Button
             variant={showArchived ? 'default' : 'outline'}
             onClick={() => setShowArchived(!showArchived)}
@@ -528,17 +528,6 @@ export default function BranchDiscountsPage() {
         </Alert>
       )}
 
-      <Alert>
-        <Filter className="h-4 w-4" />
-        <AlertDescription>
-          <strong>Filter Scope:</strong> 
-          <br/>• <strong>Semua</strong> = Semua Diskon General (termasuk yang override) + Lokal
-          <br/>• <strong>General</strong> = Semua diskon General (termasuk yang ada override)
-          <br/>• <strong>Lokal</strong> = Hanya diskon khusus cabang ini
-          <br/>• <strong>Override</strong> = Diskon general yang sudah diubah di cabang ini
-        </AlertDescription>
-      </Alert>
-
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-center gap-2">
@@ -552,9 +541,9 @@ export default function BranchDiscountsPage() {
             <Button variant={scopeFilter === 'override' ? 'default' : 'outline'} size="sm" onClick={() => setScopeFilter('override')}><Settings className="mr-2 h-3 w-3" /> Override</Button>
           </div>
           
-          <div className="flex-1 max-w-sm ml-auto">
+          <div className="relative w-full md:w-72">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input 
                 placeholder="Cari nama atau kode diskon..." 
                 value={searchTerm}

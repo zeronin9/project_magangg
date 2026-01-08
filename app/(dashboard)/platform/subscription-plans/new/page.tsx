@@ -16,35 +16,76 @@ export default function NewSubscriptionPlanPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // State form
   const [formData, setFormData] = useState({
     plan_name: '',
-    price: '',
+    price: '', // Disimpan sebagai string terformat (Rp 10.000) agar input terkontrol
     branch_limit: '',
     device_limit: '',
     duration_months: '',
     description: ''
   });
 
+  // Helper: Format Angka ke Rupiah
+  const formatRupiah = (value: string) => {
+    // 1. Hapus semua karakter selain angka
+    const numberString = value.replace(/[^0-9]/g, '');
+    if (!numberString) return '';
+
+    // 2. Format menggunakan Intl.NumberFormat
+    const numberValue = parseInt(numberString, 10);
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(numberValue); // Hasil: "Rp 10.000"
+  };
+
+  // Helper: Handle Perubahan Input Harga
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+    // Format value menjadi Rupiah
+    const formattedValue = formatRupiah(rawValue);
+    setFormData({ ...formData, price: formattedValue });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // Validasi sederhana
+    if (!formData.plan_name || !formData.price || !formData.branch_limit || !formData.device_limit || !formData.duration_months) {
+        setError('Mohon lengkapi semua field yang bertanda bintang (*)');
+        return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await fetchWithAuth('/subscription-plan', {
-        method: 'POST',
-        body: JSON.stringify({
-          plan_name: formData.plan_name,
-          price: Number(formData.price),
-          branch_limit: Number(formData.branch_limit),
-          device_limit: Number(formData.device_limit),
-          duration_months: Number(formData.duration_months),
-          description: formData.description
+      // 1. Bersihkan Harga dari format Rupiah (ambil angkanya saja)
+      const cleanPrice = formData.price.replace(/[^0-9]/g, '');
+
+      // 2. Kirim ke Backend + Delay 3 Detik
+      await Promise.all([
+        fetchWithAuth('/subscription-plan', {
+          method: 'POST',
+          body: {
+            plan_name: formData.plan_name,
+            price: Number(cleanPrice), // Konversi ke Number
+            branch_limit: Number(formData.branch_limit),
+            device_limit: Number(formData.device_limit),
+            duration_months: Number(formData.duration_months),
+            description: formData.description
+          },
         }),
-      });
+        new Promise(resolve => setTimeout(resolve, 3000)) // Delay minimal 3 detik
+      ]);
       
-      alert('Paket langganan berhasil dibuat!');
+      // Alert dihapus sesuai permintaan
+      // Redirect ke halaman list
       router.push('/platform/subscription-plans');
+
     } catch (error: any) {
       console.error('Error creating plan:', error);
       setError(error.message || 'Gagal membuat paket. Silakan coba lagi.');
@@ -83,7 +124,6 @@ export default function NewSubscriptionPlanPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Grid 2 kolom */}
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Informasi Paket */}
           <Card>
@@ -120,13 +160,10 @@ export default function NewSubscriptionPlanPage() {
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Masukkan deskripsi paket"
+                  placeholder="Masukkan deskripsi detail paket..."
                   disabled={isSubmitting}
                   rows={4}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Opsional - akan ditampilkan kepada mitra
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -149,16 +186,16 @@ export default function NewSubscriptionPlanPage() {
                 </Label>
                 <Input
                   id="price"
-                  type="number"
-                  min="0"
+                  type="text" 
                   value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  onChange={handlePriceChange}
                   placeholder="Masukkan harga paket"
                   required
                   disabled={isSubmitting}
+                  className="font-mono"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Harga tanpa titik atau koma (contoh: 1000000 untuk Rp 1.000.000)
+                  Masukkan angka saja, format Rupiah akan otomatis muncul.
                 </p>
               </div>
 
@@ -178,7 +215,7 @@ export default function NewSubscriptionPlanPage() {
                   disabled={isSubmitting}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Berapa bulan paket ini berlaku (contoh: 1, 6, 12)
+                  Masa aktif paket dalam bulan (1 Tahun = 12 Bulan)
                 </p>
               </div>
             </CardContent>
@@ -210,9 +247,6 @@ export default function NewSubscriptionPlanPage() {
                   required
                   disabled={isSubmitting}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Jumlah maksimal cabang yang dapat dibuat
-                </p>
               </div>
 
               <div className="space-y-2">
@@ -230,9 +264,6 @@ export default function NewSubscriptionPlanPage() {
                   required
                   disabled={isSubmitting}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Jumlah maksimal perangkat yang dapat diaktifkan
-                </p>
               </div>
             </div>
           </CardContent>
@@ -254,9 +285,17 @@ export default function NewSubscriptionPlanPage() {
             disabled={isSubmitting}
             className="w-full sm:w-auto"
           >
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <Save className="mr-2 h-4 w-4" />
-            Simpan Paket
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Menyimpan...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Simpan Paket
+              </>
+            )}
           </Button>
         </div>
       </form>

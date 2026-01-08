@@ -1,5 +1,3 @@
-// app/(dashboard)/branch/shift-schedules/page.tsx
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -117,10 +115,8 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  // ✅ PERBAIKAN: Jangan reset formData saat buka modal (kecuali untuk edit)
   const handleOpenModal = (shift?: ShiftSchedule) => {
     if (shift) {
-      // Mode Edit: Isi dengan data shift yang dipilih
       setSelectedShift(shift);
       setFormData({
         shift_name: shift.shift_name,
@@ -128,22 +124,16 @@ export default function ShiftSchedulesPage() {
         end_time: shift.end_time,
       });
     } else {
-      // Mode Create: JANGAN reset formData, biarkan data sebelumnya tetap ada
       setSelectedShift(null);
-      // ❌ JANGAN reset formData di sini
     }
     setIsModalOpen(true);
   };
 
-  // ✅ PERBAIKAN: Jangan reset formData saat dialog tertutup
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedShift(null);
-    // ❌ JANGAN reset formData di sini
-    // Biarkan data tetap ada untuk mencegah kehilangan data tidak sengaja
   };
 
-  // ✅ TAMBAHAN: Handler baru untuk clear form manual
   const handleClearForm = () => {
     setFormData({
       shift_name: '',
@@ -152,7 +142,6 @@ export default function ShiftSchedulesPage() {
     });
   };
 
-  // ✅ PERBAIKAN: Reset formData hanya setelah berhasil submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -168,7 +157,6 @@ export default function ShiftSchedulesPage() {
 
       await loadData();
       
-      // ✅ Reset formData hanya setelah berhasil submit
       setFormData({
         shift_name: '',
         start_time: '',
@@ -190,7 +178,6 @@ export default function ShiftSchedulesPage() {
 
     try {
       await delay(3000);
-      console.log('🗑️ Soft Delete:', selectedShift.shift_schedule_id);
       
       await shiftScheduleAPI.softDelete(selectedShift.shift_schedule_id);
 
@@ -231,7 +218,6 @@ export default function ShiftSchedulesPage() {
 
     try {
       await delay(3000);
-      console.log('💀 Hard Delete:', selectedShift.shift_schedule_id);
 
       await shiftScheduleAPI.hardDelete(selectedShift.shift_schedule_id);
 
@@ -247,14 +233,12 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  // Filter
   const filteredShifts = shifts.filter((shift) => {
     const matchesSearch = shift.shift_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesActive = showInactive ? shift.is_active === false : shift.is_active !== false;
     return matchesSearch && matchesActive;
   });
 
-  // Pagination
   const totalItems = filteredShifts.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -268,7 +252,6 @@ export default function ShiftSchedulesPage() {
     }
   };
 
-  // Helper untuk cek apakah ada data yang diisi
   const hasUnsavedData = formData.shift_name || formData.start_time || formData.end_time;
 
   if (isLoading) {
@@ -293,18 +276,30 @@ export default function ShiftSchedulesPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-      {/* Header */}
-      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+      {/* HEADER RESPONSIVE 
+        - Mobile: Flex Column (Teks di atas, Tombol di bawah full width)
+        - Desktop (sm): Flex Row (Teks kiri, Tombol kanan)
+      */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Jadwal Shift</h1>
           <p className="text-muted-foreground">Kelola jadwal waktu operasional shift kasir</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 @md:flex">
-          <Button variant={showInactive ? 'default' : 'outline'} onClick={() => setShowInactive(!showInactive)}>
+        
+        {/* Tombol Action */}
+        <div className="grid grid-cols-2 gap-2 sm:flex w-full sm:w-auto">
+          <Button 
+            variant={showInactive ? 'default' : 'outline'} 
+            onClick={() => setShowInactive(!showInactive)}
+            className="w-full sm:w-auto"
+          >
             <Archive className="mr-2 h-4 w-4" />
             {showInactive ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
           </Button>
-          <Button onClick={() => handleOpenModal()}>
+          <Button 
+            onClick={() => handleOpenModal()}
+            className="w-full sm:w-auto"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Tambah Shift
           </Button>
@@ -530,7 +525,6 @@ export default function ShiftSchedulesPage() {
                 />
               </div>
 
-              {/* ✅ TAMBAHAN: Info jika ada data yang tersimpan */}
               {!selectedShift && hasUnsavedData && (
                 <Alert>
                   <Info className="h-4 w-4" />
@@ -542,7 +536,6 @@ export default function ShiftSchedulesPage() {
             </div>
 
             <DialogFooter className="flex-row gap-2 sm:justify-between">
-              {/* ✅ TAMBAHAN: Tombol Clear Form */}
               <div className="flex-1">
                 {!selectedShift && hasUnsavedData && (
                   <Button 

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { fetchWithAuth } from '@/lib/api';
 import { Partner } from '@/types';
 import { TableSkeleton } from '@/components/skeletons/TableSkeleton';
-// ✅ GANTI: Import AlertDialog standar
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,13 +15,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Search, MoreHorizontal, Ban, CheckCircle, Eye } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Ban, CheckCircle, Eye, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+// IMPORT PAGINATION SHADCN
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 export default function PartnerListPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
@@ -32,10 +42,22 @@ export default function PartnerListPage() {
   const [isSuspendOpen, setIsSuspendOpen] = useState(false);
   const [isActivateOpen, setIsActivateOpen] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
+  
+  // State untuk mencegah double click (loading state)
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // --- PAGINATION STATE ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     fetchPartners();
   }, []);
+
+  // Reset halaman ke 1 saat melakukan pencarian
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   const fetchPartners = async () => {
     try {
@@ -49,41 +71,141 @@ export default function PartnerListPage() {
     }
   };
 
-  const handleSuspend = async () => {
-    if (!selectedPartner) return;
+  const handleSuspend = async (e: React.MouseEvent) => {
+    // Mencegah modal tertutup otomatis
+    e.preventDefault();
+    
+    if (!selectedPartner || isProcessing) return;
+    
+    setIsProcessing(true);
+
     try {
-      await fetchWithAuth(`/partner/${selectedPartner.partner_id}`, { method: 'DELETE' });
-      alert('Mitra berhasil dinonaktifkan (Suspend)!');
+      // Jalankan API dan Timer 3 Detik secara bersamaan
+      await Promise.all([
+        fetchWithAuth(`/partner/${selectedPartner.partner_id}`, { method: 'DELETE' }),
+        new Promise(resolve => setTimeout(resolve, 3000)) // Delay 3 detik
+      ]);
+      
+      // Alert dihapus sesuai permintaan
       setIsSuspendOpen(false);
       fetchPartners();
     } catch (error: any) {
-      alert(error.message || 'Gagal suspend mitra');
+      console.error('Gagal suspend mitra:', error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleActivate = async () => {
-    if (!selectedPartner) return;
+  const handleActivate = async (e: React.MouseEvent) => {
+    // Mencegah modal tertutup otomatis
+    e.preventDefault();
+
+    if (!selectedPartner || isProcessing) return;
+
+    setIsProcessing(true);
+
     try {
-      await fetchWithAuth(`/partner/${selectedPartner.partner_id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          business_name: selectedPartner.business_name,
-          business_phone: selectedPartner.business_phone,
-          status: 'Active' 
+      // Jalankan API dan Timer 3 Detik secara bersamaan
+      await Promise.all([
+        fetchWithAuth(`/partner/${selectedPartner.partner_id}`, {
+          method: 'PUT',
+          body: { 
+            business_name: selectedPartner.business_name,
+            business_phone: selectedPartner.business_phone,
+            status: 'Active' 
+          },
         }),
-      });
-      alert('Mitra diaktifkan kembali!');
+        new Promise(resolve => setTimeout(resolve, 3000)) // Delay 3 detik
+      ]);
+      
+      // Alert dihapus sesuai permintaan
       setIsActivateOpen(false);
       fetchPartners();
     } catch (error: any) {
-      alert(error.message || 'Gagal aktivasi');
+      console.error('Error activating partner:', error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
+  // --- LOGIKA FILTER & PAGINATION ---
   const filteredPartners = partners.filter(p =>
     p.business_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.business_email.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentPartners = filteredPartners.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredPartners.length / itemsPerPage);
+
+  // --- COMPONENT PAGINATION UI ---
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    const getPageNumbers = () => {
+      const pages = [];
+      if (totalPages <= 5) {
+        for (let i = 1; i <= totalPages; i++) pages.push(i);
+      } else {
+        if (currentPage <= 3) {
+          pages.push(1, 2, 3, '...', totalPages);
+        } else if (currentPage >= totalPages - 2) {
+          pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages);
+        } else {
+          pages.push(1, '...', currentPage, '...', totalPages);
+        }
+      }
+      return pages;
+    };
+
+    return (
+      <Pagination className="mt-4 justify-center">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious 
+              href="#" 
+              onClick={(e) => { 
+                e.preventDefault(); 
+                if (currentPage > 1) setCurrentPage(currentPage - 1); 
+              }}
+              className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+            />
+          </PaginationItem>
+          
+          {getPageNumbers().map((page, idx) => (
+            <PaginationItem key={idx}>
+              {page === '...' ? (
+                <PaginationEllipsis />
+              ) : (
+                <PaginationLink 
+                  href="#" 
+                  isActive={currentPage === page}
+                  onClick={(e) => { 
+                    e.preventDefault(); 
+                    setCurrentPage(Number(page)); 
+                  }}
+                >
+                  {page}
+                </PaginationLink>
+              )}
+            </PaginationItem>
+          ))}
+
+          <PaginationItem>
+            <PaginationNext 
+              href="#" 
+              onClick={(e) => { 
+                e.preventDefault(); 
+                if (currentPage < totalPages) setCurrentPage(currentPage + 1); 
+              }}
+              className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    );
+  };
 
   if (isLoading) return <TableSkeleton rows={8} showSearch showButton />;
 
@@ -123,6 +245,8 @@ export default function PartnerListPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {/* KOLOM INDEX */}
+                  <TableHead className="w-[50px]">No.</TableHead>
                   <TableHead>Nama Bisnis</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Telepon</TableHead>
@@ -133,13 +257,18 @@ export default function PartnerListPage() {
               <TableBody>
                 {filteredPartners.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       {searchTerm ? 'Tidak ada mitra yang ditemukan' : 'Belum ada mitra'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredPartners.map((partner) => (
+                  currentPartners.map((partner, index) => (
                     <TableRow key={partner.partner_id}>
+                      {/* NOMOR URUT DINAMIS */}
+                      <TableCell className="text-muted-foreground">
+                        {indexOfFirstItem + index + 1}
+                      </TableCell>
+
                       <TableCell className="font-medium">{partner.business_name}</TableCell>
                       <TableCell>{partner.business_email}</TableCell>
                       <TableCell>{partner.business_phone}</TableCell>
@@ -193,10 +322,14 @@ export default function PartnerListPage() {
               </TableBody>
             </Table>
           </div>
+
+          {/* KONTROL PAGINATION */}
+          {renderPagination()}
+
         </CardContent>
       </Card>
 
-      {/* ✅ DIALOG SUSPEND - Gunakan AlertDialog standar */}
+      {/* DIALOG SUSPEND */}
       <AlertDialog open={isSuspendOpen} onOpenChange={setIsSuspendOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -207,18 +340,26 @@ export default function PartnerListPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogCancel disabled={isProcessing}>Batal</AlertDialogCancel>
+            <AlertDialogAction
               onClick={handleSuspend}
-              className="bg-black text-white hover:bg-gray-800" // ✅ Tombol hitam
+              className="bg-black text-white hover:bg-gray-800"
+              disabled={isProcessing}
             >
-              Suspend
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Memproses...
+                </>
+              ) : (
+                'Suspend'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ✅ DIALOG AKTIVASI - Gunakan AlertDialog standar */}
+      {/* DIALOG AKTIVASI */}
       <AlertDialog open={isActivateOpen} onOpenChange={setIsActivateOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -229,9 +370,19 @@ export default function PartnerListPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={handleActivate}>
-              Aktifkan
+            <AlertDialogCancel disabled={isProcessing}>Batal</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleActivate}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Memproses...
+                </>
+              ) : (
+                'Aktifkan'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

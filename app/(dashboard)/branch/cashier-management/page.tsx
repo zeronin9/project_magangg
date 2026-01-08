@@ -382,8 +382,8 @@ function CashierAccountsTab() {
       </Alert>
 
       {/* Actions Bar */}
-      <div className="flex flex-col gap-2 @sm:flex-row @sm:items-center @sm:justify-end">
-        <div className="flex gap-2">
+      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
+        <div className="grid grid-cols-2 gap-2 @md:flex">
           <Button variant={showArchived ? 'default' : 'outline'} onClick={() => setShowArchived(!showArchived)}>
             <Archive className="mr-2 h-4 w-4" />
             {showArchived ? 'Sembunyikan Arsip' : 'Tampilkan Arsip'}
