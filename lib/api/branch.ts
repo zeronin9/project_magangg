@@ -34,6 +34,10 @@ export const cashierAccountAPI = {
   
   restore: (id: string, data: { full_name: string; username?: string }) =>
     apiClient.put(`/cashier/login-account/${id}`, data),
+
+  forceLogout: (userId: string) =>
+    apiClient.post('/auth/force-logout', { user_id: userId }),
+
 };
 
 // ==================== PIN OPERATORS ====================

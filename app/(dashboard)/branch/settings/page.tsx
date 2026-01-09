@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { branchSettingsAPI } from '@/lib/api/branch';
+import { branchSettingsAPI, cashierAccountAPI } from '@/lib/api/branch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/dialog';
 import {
   Loader2, Save, Trash2, AlertCircle, Receipt, Percent, CreditCard,
-  Building2, MapPin, Phone, Power, CheckCircle2, XCircle, User, Clock
+  Building2, MapPin, Phone, Power, CheckCircle2, XCircle, User, Clock,
+  UserCog, LogOut
 } from 'lucide-react';
 
 // Interface Data Struk Sesuai Response Backend
@@ -40,6 +41,13 @@ interface PaymentMethod {
   is_active: boolean;        
 }
 
+interface Cashier {
+  user_id: string;
+  full_name: string;
+  username: string;
+  is_active: boolean;
+}
+
 export default function BranchSettingsPage() {
   const [activeTab, setActiveTab] = useState('receipt');
   const [isLoading, setIsLoading] = useState(true);
@@ -51,25 +59,51 @@ export default function BranchSettingsPage() {
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [taxSettings, setTaxSettings] = useState({ tax_name: '', tax_percentage: '' });
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [cashiers, setCashiers] = useState<Cashier[]>([]);
 
   // Modals
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
   const [isDeleteTaxDialogOpen, setIsDeleteTaxDialogOpen] = useState(false);
+  
+  // Modal Logout
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+  const [selectedCashier, setSelectedCashier] = useState<Cashier | null>(null);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-hide pesan Error setelah 5 detik
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  // Auto-hide pesan Success setelah 5 detik
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
       setError('');
 
-      const [receiptRes, taxRes, paymentRes] = await Promise.all([
+      const [receiptRes, taxRes, paymentRes, cashierRes] = await Promise.all([
         branchSettingsAPI.getReceipt().catch(e => { console.error("Receipt Error:", e); return null; }),
         branchSettingsAPI.getTax().catch(e => { console.error("Tax Error:", e); return null; }),
-        branchSettingsAPI.getPaymentMethods().catch(e => { console.error("Payment Error:", e); return null; })
+        branchSettingsAPI.getPaymentMethods().catch(e => { console.error("Payment Error:", e); return null; }),
+        cashierAccountAPI.getAll(true).catch(e => { console.error("Cashier Error:", e); return null; })
       ]);
 
       if (receiptRes?.data) {
@@ -101,6 +135,11 @@ export default function BranchSettingsPage() {
         setPaymentMethods([]);
       }
 
+      const rawCashierData = cashierRes?.data?.data || cashierRes?.data;
+      if (Array.isArray(rawCashierData)) {
+        setCashiers(rawCashierData);
+      }
+
     } catch (err: any) {
       console.error(err);
       setError('Gagal memuat pengaturan.');
@@ -109,45 +148,32 @@ export default function BranchSettingsPage() {
     }
   };
 
-  // ✅ HANDLER: Simpan Struk (dengan delay 3 detik)
   const handleReceiptSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!receiptData || isSubmitting) return;
-
     setIsSubmitting(true);
-    setError('');
-    setSuccess('');
-
+    setError(''); setSuccess('');
     try {
-      // Delay 3 detik
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
       await branchSettingsAPI.updateReceipt({
         receipt_header: receiptData.receipt_header,
         receipt_footer: receiptData.receipt_footer,
       });
       setSuccess('Tampilan struk berhasil diperbarui.');
     } catch (err: any) {
-      console.error(err);
       setError(err.response?.data?.message || 'Gagal menyimpan profil.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // ✅ HANDLER: Simpan Pengaturan Pajak (dengan delay 3 detik)
   const handleTaxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    
     setIsSubmitting(true);
-    setError('');
-    setSuccess('');
-    
+    setError(''); setSuccess('');
     try {
-      // Delay 3 detik
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
       await branchSettingsAPI.updateTax({
         tax_name: taxSettings.tax_name,
         tax_percentage: Number(taxSettings.tax_percentage),
@@ -162,18 +188,12 @@ export default function BranchSettingsPage() {
     }
   };
 
-  // ✅ HANDLER: Hapus Pajak (dengan delay 3 detik)
   const handleDeleteTax = async () => {
     if (isSubmitting) return;
-    
     setIsSubmitting(true);
-    setError('');
-    setSuccess('');
-    
+    setError(''); setSuccess('');
     try {
-      // Delay 3 detik
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
       await branchSettingsAPI.deleteTax();
       setTaxSettings({ tax_name: '', tax_percentage: '0' });
       setSuccess('Pajak berhasil dihapus.');
@@ -193,17 +213,12 @@ export default function BranchSettingsPage() {
     setIsPaymentDialogOpen(true);
   };
 
-  // ✅ HANDLER: Aktifkan/Matikan Metode Pembayaran (dengan delay 3 detik)
   const handleUpdatePaymentStatus = async () => {
     if (!selectedPayment || isSubmitting) return;
-    
     setIsSubmitting(true);
     const newStatus = !selectedPayment.is_active;
-    
     try {
-      // Delay 3 detik
       await new Promise(resolve => setTimeout(resolve, 3000));
-      
       await branchSettingsAPI.updatePaymentMethod({
         payment_method_id: selectedPayment.payment_method_id,
         is_active: newStatus
@@ -218,6 +233,32 @@ export default function BranchSettingsPage() {
     }
   };
 
+  const handleOpenLogoutDialog = (cashier: Cashier) => {
+    setSelectedCashier(cashier);
+    setIsLogoutDialogOpen(true);
+  };
+
+  // ✅ PERBAIKAN: Menambahkan delay 3 detik agar tombol disable sementara
+  const handleForceLogout = async () => {
+    if (!selectedCashier || isSubmitting) return;
+    setIsSubmitting(true);
+    setError(''); setSuccess('');
+
+    try {
+      // Delay 3 detik
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      await cashierAccountAPI.forceLogout(selectedCashier.user_id);
+      setSuccess(`Sesi untuk ${selectedCashier.username} berhasil di-reset. Kasir harus login ulang.`);
+      setIsLogoutDialogOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.message || 'Gagal melakukan logout paksa.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (isLoading) return <div className="p-8"><Skeleton className="h-64 w-full" /></div>;
 
   return (
@@ -227,16 +268,26 @@ export default function BranchSettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className=' w-full'>
+        <TabsList className='w-full justify-start overflow-x-auto'>
           <TabsTrigger value="receipt" className="gap-2"><Receipt className="h-4 w-4"/> Struk & Profil</TabsTrigger>
           <TabsTrigger value="tax" className="gap-2"><Percent className="h-4 w-4"/> Pajak</TabsTrigger>
           <TabsTrigger value="payment" className="gap-2"><CreditCard className="h-4 w-4"/> Pembayaran</TabsTrigger>
+          <TabsTrigger value="session" className="gap-2"><UserCog className="h-4 w-4"/> Sesi Kasir</TabsTrigger>
         </TabsList>
 
-        {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4"/><AlertDescription>{error}</AlertDescription></Alert>}
-        {success && <Alert className="bg-green-50 text-green-900 border-green-200"><CheckCircle2 className="h-4 w-4"/><AlertDescription>{success}</AlertDescription></Alert>}
+        {error && (
+          <Alert variant="destructive" className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <AlertCircle className="h-4 w-4"/>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {success && (
+          <Alert className="bg-green-50 text-green-900 border-green-200 animate-in fade-in slide-in-from-top-2 duration-300">
+            <CheckCircle2 className="h-4 w-4"/>
+            <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
 
-        {/* TAB STRUK */}
         <TabsContent value="receipt" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
@@ -270,7 +321,6 @@ export default function BranchSettingsPage() {
                       disabled={isSubmitting}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground"></p>
                 </CardContent>
                 <CardFooter className="border-t px-6 py-4">
                   <Button type="submit" disabled={isSubmitting}>
@@ -281,59 +331,33 @@ export default function BranchSettingsPage() {
               </form>
             </Card>
 
-            {/* PREVIEW STRUK */}
             <Card className="bg-slate-50 border-dashed">
               <CardHeader>
                 <CardTitle>Preview</CardTitle>
               </CardHeader>
               <CardContent className="flex justify-center pb-8">
                 <div className="w-[300px] bg-white shadow-xl p-5 text-xs font-mono border border-gray-200 flex flex-col items-center">
-                  
-                  {/* HEADER */}
                   <div className="text-center mb-4 space-y-1 w-full">
                     <div className="font-extrabold text-base uppercase">{receiptData?.partner_name || 'NAMA MITRA'}</div>
                     <div className="font-bold">{receiptData?.branch_name || 'Nama Cabang'}</div>
                     <div className="text-gray-500 px-4">Alamat: {receiptData?.address}</div>
                     <div className="text-gray-500">Telp: {receiptData?.phone_number}</div>
                   </div>
-
-                  {/* PESAN PEMBUKA */}
                   {receiptData?.receipt_header && (
                     <div className="text-center mb-3 pb-3 border-b border-dashed border-gray-300 w-full italic">
                       "{receiptData.receipt_header}"
                     </div>
                   )}
-                  
-                  {/* INFO TRANSAKSI */}
                   <div className="w-full mb-3 pb-3 border-b border-dashed border-gray-300 space-y-1">
-                    <div className="flex justify-between">
-                      <span>Kasir : {receiptData?.current_operator?.name || 'Kasir'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Shift : {receiptData?.current_shift?.shift_name || 'Shift Pagi'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Waktu : {new Date().toLocaleString('id-ID', { 
-                          day: '2-digit', 
-                          month: '2-digit', 
-                          year: 'numeric', 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>No. Trans : TRX-001</span>
-                    </div>
+                    <div className="flex justify-between"><span>Kasir : {receiptData?.current_operator?.name || 'Kasir'}</span></div>
+                    <div className="flex justify-between"><span>Shift : {receiptData?.current_shift?.shift_name || 'Shift Pagi'}</span></div>
+                    <div className="flex justify-between"><span>Waktu : {new Date().toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></div>
+                    <div className="flex justify-between"><span>No. Trans : TRX-001</span></div>
                   </div>
-                  
-                  {/* LIST ITEM */}
                   <div className="w-full space-y-1 mb-4 border-b border-dashed border-gray-300 pb-3">
                     <div className="flex justify-between"><span>Kopi Susu</span><span>18.000</span></div>
                     <div className="flex justify-between"><span>Croissant</span><span>22.000</span></div>
                   </div>
-
-                  {/* TOTAL & PAJAK */}
                   <div className="w-full space-y-1">
                     <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>40.000</span></div>
                     {Number(taxSettings.tax_percentage) > 0 && (
@@ -347,8 +371,6 @@ export default function BranchSettingsPage() {
                       <span>{(40000 + Math.round(40000 * (Number(taxSettings.tax_percentage)/100))).toLocaleString('id-ID')}</span>
                     </div>
                   </div>
-
-                  {/* FOOTER */}
                   <div className="text-center text-gray-500 w-full pt-4 mt-2 border-t border-dashed border-gray-300 whitespace-pre-wrap">
                     {receiptData?.receipt_footer || 'Terima Kasih'}
                   </div>
@@ -358,7 +380,6 @@ export default function BranchSettingsPage() {
           </div>
         </TabsContent>
 
-        {/* TAB PAJAK */}
         <TabsContent value="tax">
             <Card>
             <CardHeader>
@@ -391,9 +412,6 @@ export default function BranchSettingsPage() {
                     required
                     disabled={isSubmitting}
                   />
-                  <p className="text-xs text-muted-foreground"></p>
-                  <p className="text-xs text-muted-foreground"></p>
-                  <p className="text-xs text-muted-foreground"></p>
                 </div>
               </CardContent>
               <CardFooter className="border-t px-6 py-4 flex justify-between items-center">
@@ -419,7 +437,6 @@ export default function BranchSettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB PEMBAYARAN */}
         <TabsContent value="payment">
             <Card>
             <CardHeader>
@@ -483,9 +500,60 @@ export default function BranchSettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="session">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sesi Login Kasir</CardTitle>
+              <CardDescription>Kelola sesi aktif kasir. Gunakan tombol "Logout Paksa" jika kasir mengalami masalah saat login.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {cashiers.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-8">Tidak ada data akun kasir.</p>
+                ) : (
+                  cashiers.map((cashier) => (
+                    <div 
+                      key={cashier.user_id} 
+                      className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-muted/10 transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="p-2.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600">
+                          <User className="h-5 w-5" />
+                        </div>
+                        
+                        <div>
+                          <div className="font-medium text-base">{cashier.full_name}</div>
+                          <div className="text-sm text-muted-foreground flex items-center gap-2">
+                            <span>@{cashier.username}</span>
+                            {cashier.is_active ? (
+                              <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none text-[10px]">Akun Aktif</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px]">Nonaktif</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={() => handleOpenLogoutDialog(cashier)}
+                        disabled={isSubmitting}
+                        className="bg-black hover:bg-gray-800 rounded-full"
+                      >
+                        <LogOut className="mr-2 h-3.5 w-3.5" />
+                        Logout Paksa
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
-      {/* Dialog Hapus Pajak */}
       <Dialog open={isDeleteTaxDialogOpen} onOpenChange={setIsDeleteTaxDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -493,27 +561,14 @@ export default function BranchSettingsPage() {
             <DialogDescription>Pajak akan menjadi 0%.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setIsDeleteTaxDialogOpen(false)}
-              disabled={isSubmitting}
-            >
-              Batal
-            </Button>
-            <Button 
-              className='bg-black hover:bg-gray-800'
-              variant="destructive" 
-              onClick={handleDeleteTax}
-              disabled={isSubmitting}
-            >
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Hapus
+            <Button variant="outline" onClick={() => setIsDeleteTaxDialogOpen(false)} disabled={isSubmitting}>Batal</Button>
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleDeleteTax} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Hapus
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Konfirmasi Pembayaran */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -521,19 +576,33 @@ export default function BranchSettingsPage() {
             <DialogDescription>Ubah status pembayaran {selectedPayment?.method_name}?</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setIsPaymentDialogOpen(false)}
-              disabled={isSubmitting}
-            >
-              Batal
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)} disabled={isSubmitting}>Batal</Button>
+            <Button onClick={handleUpdatePaymentStatus} disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Ubah
             </Button>
-            <Button 
-              onClick={handleUpdatePaymentStatus}
-              disabled={isSubmitting}
-            >
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isLogoutDialogOpen} onOpenChange={setIsLogoutDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-black flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              Force Logout
+            </DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin melakukan logout paksa untuk akun <strong>{selectedCashier?.full_name}</strong>?
+              <br/><br/>
+              Tindakan ini akan menghapus sesi login aktif. Kasir harus melakukan login ulang pada perangkat mereka.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLogoutDialogOpen(false)} disabled={isSubmitting}>Batal</Button>
+            {/* Tombol Logout Paksa dengan state disabled saat loading */}
+            <Button className='bg-black hover:bg-gray-800' variant="destructive" onClick={handleForceLogout} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Ya, Ubah
+              Logout Paksa
             </Button>
           </DialogFooter>
         </DialogContent>
