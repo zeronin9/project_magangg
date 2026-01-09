@@ -2,6 +2,8 @@
 
 export interface User {
   name: string;
+  full_name: string;     // ✅ Tambahkan ini
+  username: string;
   role: 'admin_platform' | 'super_admin' | 'branch_admin';
   partnerId: string | null;
   branchId: string | null;

@@ -1,286 +1,379 @@
-// app/(dashboard)/branch/page.tsx
-
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { fetchWithAuth } from '@/lib/api';
+import { 
   branchProductAPI,
   cashierAccountAPI,
-  pinOperatorAPI,
-  shiftScheduleAPI,
-  branchLicenseAPI,
+  shiftScheduleAPI
 } from '@/lib/api/branch';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  Users,
-  UserCog,
-  Package,
-  Clock,
-  Key,
-  AlertCircle,
-  TrendingUp,
-  Building2,
-  Globe,
+import { formatRupiah } from '@/lib/utils';
+import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
+import { 
+  CreditCard, 
+  DollarSign, 
+  Users, 
+  Clock, 
+  ShoppingBag, 
+  Calendar as CalendarIcon, 
+  Download,
+  ArrowUpRight
 } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
+import Link from 'next/link';
 
+// --- Interfaces ---
 interface DashboardStats {
-  totalCashierAccounts: number;
-  activeCashierAccounts: number;
-  totalOperators: number;
-  activeOperators: number;
-  totalShifts: number;
+  totalRevenue: number;
+  totalTransactions: number;
+  activeCashiers: number;
   activeShifts: number;
-  totalProducts: number;
-  localProducts: number;
-  generalProducts: number;
-  totalLicenses: number;
-  activeLicenses: number;
 }
 
+interface Transaction {
+  transaction_id: string;
+  total_amount: number;
+  payment_method: string;
+  transaction_time: string;
+  cashier_name?: string; // Menampilkan nama kasir untuk admin cabang
+}
+
+// --- Components ---
+
+// 1. Overview Chart
+function Overview({ data }: { data: any[] }) {
+  return (
+    <ResponsiveContainer width="100%" height={350}>
+      <BarChart data={data}>
+        <XAxis
+          dataKey="name"
+          stroke="#888888"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis
+          stroke="#888888"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(value) => `Rp${(value / 1000).toFixed(0)}k`}
+        />
+        <Tooltip 
+            cursor={{fill: 'transparent'}}
+            contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }}
+            formatter={(value: number) => formatRupiah(value)}
+        />
+        <Bar
+          dataKey="total"
+          fill="currentColor"
+          radius={[4, 4, 0, 0]}
+          className="fill-primary"
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// 2. Recent Sales Component
+function RecentSales({ transactions }: { transactions: Transaction[] }) {
+  if (!transactions || transactions.length === 0) {
+    return <div className="text-sm text-muted-foreground">Belum ada transaksi terbaru.</div>;
+  }
+
+  const recent = transactions.slice(0, 5);
+
+  return (
+    <div className="space-y-8">
+      {recent.map((trx, index) => {
+        const amount = Number(trx.total_amount) || 0;
+        const method = trx.payment_method ? trx.payment_method.replace('_', ' ') : 'Tunai';
+        const date = new Date(trx.transaction_time).toLocaleDateString('id-ID', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+        });
+        const cashierName = trx.cashier_name || 'Kasir';
+
+        return (
+          <div key={trx.transaction_id || index} className="flex items-center">
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className="bg-primary/10 text-primary">
+                <ShoppingBag className="h-4 w-4" />
+              </AvatarFallback>
+            </Avatar>
+            <div className="ml-4 space-y-1">
+              <p className="text-sm font-medium leading-none">
+                {cashierName}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {method} • {date}
+              </p>
+            </div>
+            <div className="ml-auto font-medium">
+              +{formatRupiah(amount)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- Main Page Component ---
 export default function BranchDashboard() {
+  const { user } = useAuth();
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
+  
   const [stats, setStats] = useState<DashboardStats>({
-    totalCashierAccounts: 0,
-    activeCashierAccounts: 0,
-    totalOperators: 0,
-    activeOperators: 0,
-    totalShifts: 0,
+    totalRevenue: 0,
+    totalTransactions: 0,
+    activeCashiers: 0,
     activeShifts: 0,
-    totalProducts: 0,
-    localProducts: 0,
-    generalProducts: 0,
-    totalLicenses: 0,
-    activeLicenses: 0,
   });
+  
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+
+  // Generate 5 tahun terakhir
+  const years = Array.from({ length: 5 }, (_, i) => (currentYear - i).toString());
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [selectedYear]);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [accounts, operators, shifts, products, licenses] = await Promise.allSettled([
-        cashierAccountAPI.getAll(true),
-        pinOperatorAPI.getAll(),
+      const startDate = `${selectedYear}-01-01`;
+      const endDate = `${selectedYear}-12-31`;
+
+      // Fetch Data Paralel: Laporan Penjualan, Akun Kasir, Jadwal Shift
+      const [reportData, cashiersData, shiftsData] = await Promise.allSettled([
+        fetchWithAuth(`/report/sales?tanggalMulai=${startDate}&tanggalSelesai=${endDate}&limit=1000`),
+        cashierAccountAPI.getAll(true), // true = force refresh/active check
         shiftScheduleAPI.getAll(),
-        branchProductAPI.getAll(),
-        branchLicenseAPI.getMyBranch(),
       ]);
 
-      const accountsData = accounts.status === 'fulfilled' ? (Array.isArray(accounts.value.data) ? accounts.value.data : []) : [];
-      const operatorsData = operators.status === 'fulfilled' ? (Array.isArray(operators.value.data) ? operators.value.data : []) : [];
-      const shiftsData = shifts.status === 'fulfilled' ? (Array.isArray(shifts.value.data) ? shifts.value.data : []) : [];
-      const productsData = products.status === 'fulfilled' ? (Array.isArray(products.value.data) ? products.value.data : []) : [];
-      const licensesData = licenses.status === 'fulfilled' ? (Array.isArray(licenses.value.data) ? licenses.value.data : []) : [];
+      // 1. Process Operational Stats (Cashiers & Shifts)
+      let activeCashiersCount = 0;
+      let activeShiftsCount = 0;
 
-      const activeCashierAccounts = accountsData.filter((a: any) => a.is_active).length;
-      const activeOperators = operatorsData.filter((o: any) => o.is_active).length;
-      const activeShifts = shiftsData.filter((s: any) => s.is_active !== false).length;
-      const localProducts = productsData.filter((p: any) => p.branch_id).length;
-      const generalProducts = productsData.filter((p: any) => !p.branch_id).length;
-      const activeLicenses = licensesData.filter((l: any) => l.license_status === 'Active').length;
+      if (cashiersData.status === 'fulfilled') {
+        const val = cashiersData.value;
+        const list = Array.isArray(val) ? val : (val.data || []);
+        // Asumsi API mengembalikan field is_active
+        activeCashiersCount = list.filter((c: any) => c.is_active).length;
+      }
+
+      if (shiftsData.status === 'fulfilled') {
+        const val = shiftsData.value;
+        const list = Array.isArray(val) ? val : (val.data || []);
+        // Shift dianggap aktif jika statusnya tidak false/inactive
+        activeShiftsCount = list.filter((s: any) => s.is_active !== false).length;
+      }
+
+      // 2. Process Sales Report
+      let revenue = 0;
+      let txCount = 0;
+      let trxList: Transaction[] = [];
+      let monthlyData: Record<string, number> = {};
+
+      if (reportData.status === 'fulfilled') {
+        const val = reportData.value;
+        const summary = val.summary || {};
+        const rawList = val.data || [];
+
+        revenue = Number(summary.total_sales) || 0;
+        txCount = Number(summary.transaction_count) || 0;
+
+        // Mapping Data Transaksi
+        trxList = rawList.map((t: any) => ({
+            transaction_id: t.transaction_id,
+            total_amount: Number(t.total_amount),
+            payment_method: t.payment_method,
+            transaction_time: t.transaction_time,
+            // Mengambil nama user (kasir) dari relasi user/shift jika ada
+            cashier_name: t.user?.full_name || t.shift?.cashier?.full_name || 'Kasir'
+        }));
+
+        // Grouping Data untuk Chart (Bulanan)
+        trxList.forEach(t => {
+          if (t.transaction_time) {
+            const date = new Date(t.transaction_time);
+            if (date.getFullYear().toString() === selectedYear) {
+                const monthName = date.toLocaleDateString('id-ID', { month: 'short' });
+                monthlyData[monthName] = (monthlyData[monthName] || 0) + t.total_amount;
+            }
+          }
+        });
+      }
+
+      // Format Data Chart
+      const monthsOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+      const chart = monthsOrder.map(m => ({
+          name: m,
+          total: monthlyData[m] || 0
+      }));
 
       setStats({
-        totalCashierAccounts: accountsData.length,
-        activeCashierAccounts,
-        totalOperators: operatorsData.length,
-        activeOperators,
-        totalShifts: shiftsData.length,
-        activeShifts,
-        totalProducts: productsData.length,
-        localProducts,
-        generalProducts,
-        totalLicenses: licensesData.length,
-        activeLicenses,
+        totalRevenue: revenue,
+        totalTransactions: txCount,
+        activeCashiers: activeCashiersCount,
+        activeShifts: activeShiftsCount
       });
-    } catch (err: any) {
-      setError(err.message || 'Gagal memuat data dashboard');
+
+      setTransactions(trxList);
+      setChartData(chart);
+
+    } catch (err) {
+      console.error('Branch Dashboard error:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const chartData = [
-    { name: 'Akun Kasir', value: stats.totalCashierAccounts, fill: '#3b82f6' },
-    { name: 'Operator', value: stats.totalOperators, fill: '#8b5cf6' },
-    { name: 'Shift', value: stats.totalShifts, fill: '#10b981' },
-    { name: 'Produk', value: stats.totalProducts, fill: '#f59e0b' },
-    { name: 'Lisensi', value: stats.totalLicenses, fill: '#ef4444' },
-  ];
-
   if (isLoading) {
-    return (
-      <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
-        <div>
-          <Skeleton className="h-8 w-64 mb-2" />
-          <Skeleton className="h-4 w-96" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-10 w-16" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-48" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-80 w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+    <div className="flex-1 space-y-4 p-8 pt-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard Admin Cabang</h1>
-        <p className="text-muted-foreground">Overview operasional cabang Anda</p>
+      <div className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
+        <div>
+            <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+            <p className="text-muted-foreground">
+                Berikut performa cabang Anda.
+            </p>
+        </div>
+        
       </div>
 
-      {/* Error Alert */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {/* Tabs Navigation */}
+      <Tabs defaultValue="overview" className="space-y-4">
+        
+        <TabsContent value="overview" className="space-y-4">
+          {/* Key Metrics Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Pendapatan</CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatRupiah(stats.totalRevenue)}</div>
+                <p className="text-xs text-muted-foreground">Tahun {selectedYear}</p>
+              </CardContent>
+            </Card>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Akun Kasir</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeCashierAccounts}</div>
-            <p className="text-xs text-muted-foreground mt-1">dari {stats.totalCashierAccounts} total</p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Transaksi</CardTitle>
+                <CreditCard className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">+{stats.totalTransactions}</div>
+                <p className="text-xs text-muted-foreground">Berhasil dibayar</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Operator PIN</CardTitle>
-            <UserCog className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeOperators}</div>
-            <p className="text-xs text-muted-foreground mt-1">dari {stats.totalOperators} total</p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Kasir Aktif</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">+{stats.activeCashiers}</div>
+                <p className="text-xs text-muted-foreground">Akun siap digunakan</p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Jadwal Shift</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeShifts}</div>
-            <p className="text-xs text-muted-foreground mt-1">dari {stats.totalShifts} shift</p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Shift Terjadwal</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">+{stats.activeShifts}</div>
+                <p className="text-xs text-muted-foreground">Jadwal operasional</p>
+              </CardContent>
+            </Card>
+          </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Lisensi Aktif</CardTitle>
-            <Key className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeLicenses}</div>
-            <p className="text-xs text-muted-foreground mt-1">dari {stats.totalLicenses} total</p>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Main Content: Chart & Recent Sales */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            {/* Overview Chart */}
+            <Card className="col-span-4">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Overview Pendapatan</CardTitle>
+                    <CardDescription>
+                        Grafik pendapatan per bulan tahun {selectedYear}.
+                    </CardDescription>
+                  </div>
+                  <div className="w-[120px]">
+                    <Select value={selectedYear} onValueChange={setSelectedYear}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih Tahun" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {years.map((year) => (
+                          <SelectItem key={year} value={year}>
+                            {year}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pl-2">
+                <Overview data={chartData} />
+              </CardContent>
+            </Card>
 
-      {/* Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Statistik Sistem</CardTitle>
-          <CardDescription>Overview data operasional cabang</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={350}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="value" name="Jumlah" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* Info Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Data Produk
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground flex items-center gap-2">
-                <Globe className="h-3 w-3" />
-                Produk General:
-              </span>
-              <span className="font-semibold">{stats.generalProducts}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground flex items-center gap-2">
-                <Building2 className="h-3 w-3" />
-                Produk Lokal:
-              </span>
-              <span className="font-semibold">{stats.localProducts}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Total Produk:</span>
-              <span className="font-semibold">{stats.totalProducts}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Status Operasional
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Kasir Aktif:</span>
-              <span className="font-semibold text-green-600">{stats.activeCashierAccounts}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Operator Aktif:</span>
-              <span className="font-semibold text-green-600">{stats.activeOperators}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Shift Aktif:</span>
-              <span className="font-semibold text-green-600">{stats.activeShifts}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            {/* Recent Sales List */}
+            <Card className="col-span-3">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <CardTitle>Penjualan Terakhir</CardTitle>
+                        <CardDescription>Transaksi terbaru di cabang ini.</CardDescription>
+                    </div>
+                    <Link href="/branch/reports">
+                        <Button variant="ghost" size="icon">
+                            <ArrowUpRight className="h-4 w-4" />
+                        </Button>
+                    </Link>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <RecentSales transactions={transactions} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

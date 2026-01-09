@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { fetchWithAuth } from '@/lib/api';
-import { formatRupiah } from '@/lib/utils'; // ✅ Gunakan global utility
+import { formatRupiah } from '@/lib/utils';
 import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
 import { 
-  Users, Package, CheckCircle, Smartphone, Award, TrendingUp, Activity, ArrowUpRight, Calendar
+  Activity, 
+  CreditCard, 
+  DollarSign, 
+  Download, 
+  Users, 
+  Calendar as CalendarIcon,
+  ArrowUpRight
 } from 'lucide-react';
 import {
   Card,
@@ -14,10 +20,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import Link from 'next/link';
 
+// --- Interfaces (Disesuaikan dengan Backend) ---
 interface DashboardStats {
   totalPartners: number;
   activePartners: number;
@@ -30,6 +39,116 @@ interface DashboardStats {
   activeLicenses: number;
 }
 
+// ✅ FIX: Interface disesuaikan dengan Controller (business_name, dll)
+interface Partner {
+  partner_id: string;
+  business_name: string;
+  business_email: string;
+  business_phone?: string;
+  status: string;
+  created_at?: string; // Field bawaan Prisma biasanya snake_case
+  updated_at?: string;
+}
+
+// --- Components ---
+
+// 1. Overview Chart Component
+function Overview() {
+  // Mock data bulanan
+  const data = [
+    { name: "Jan", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Feb", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Mar", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Apr", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "May", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Jun", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Jul", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Aug", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Sep", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Oct", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Nov", total: Math.floor(Math.random() * 5000000) + 1000000 },
+    { name: "Dec", total: Math.floor(Math.random() * 5000000) + 1000000 },
+  ];
+
+  return (
+    <ResponsiveContainer width="100%" height={350}>
+      <BarChart data={data}>
+        <XAxis
+          dataKey="name"
+          stroke="#888888"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+        />
+        <YAxis
+          stroke="#888888"
+          fontSize={12}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(value) => `Rp${(value / 1000000).toFixed(0)}jt`}
+        />
+        <Tooltip 
+            cursor={{fill: 'transparent'}}
+            contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }}
+            formatter={(value: number) => formatRupiah(value)}
+        />
+        <Bar
+          dataKey="total"
+          fill="currentColor"
+          radius={[4, 4, 0, 0]}
+          className="fill-primary"
+        />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// 2. Recent Partners Component (✅ FIXED MAPPING)
+function RecentPartners({ partners }: { partners: Partner[] }) {
+  if (!partners || partners.length === 0) {
+    return <div className="text-sm text-muted-foreground">Belum ada data mitra.</div>;
+  }
+
+  // Mengambil 5 mitra teratas
+  const recentPartners = partners.slice(0, 5);
+
+  return (
+    <div className="space-y-8">
+      {recentPartners.map((partner, index) => {
+        // ✅ FIX: Gunakan business_name dan business_email
+        const name = partner.business_name || 'Tanpa Nama';
+        const initials = name.substring(0, 2).toUpperCase();
+        const email = partner.business_email || '-';
+        const status = partner.status || 'Unknown';
+
+        return (
+          // Gunakan partner_id sebagai key
+          <div key={partner.partner_id || index} className="flex items-center">
+            <Avatar className="h-9 w-9">
+              <AvatarImage src={`/avatars/${index + 1}.png`} alt="Avatar" />
+              <AvatarFallback>{initials}</AvatarFallback>
+            </Avatar>
+            <div className="ml-4 space-y-1">
+              <p className="text-sm font-medium leading-none">{name}</p>
+              <p className="text-sm text-muted-foreground">
+                {email}
+              </p>
+            </div>
+            <div className="ml-auto font-medium">
+               <span className={`text-xs px-2 py-1 rounded-full ${
+                  status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+               }`}>
+                  {status}
+               </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- Main Page Component ---
 export default function PlatformDashboard() {
   const [stats, setStats] = useState<DashboardStats>({
     totalPartners: 0,
@@ -43,22 +162,10 @@ export default function PlatformDashboard() {
     activeLicenses: 0,
   });
   
+  const [partnersList, setPartnersList] = useState<Partner[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [username, setUsername] = useState('Admin Platform');
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        const userObj = JSON.parse(userStr);
-        if (userObj.name || userObj.username) {
-          setUsername(userObj.name || userObj.username);
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }
-
     fetchDashboardData();
   }, []);
 
@@ -71,31 +178,39 @@ export default function PlatformDashboard() {
         fetchWithAuth('/subscription-plan'),
       ]);
 
-      const partners = partnersData.status === 'fulfilled' 
-        ? (Array.isArray(partnersData.value) ? partnersData.value : [])
-        : [];
+      // Handle Partner Response
+      let partners: Partner[] = [];
+      if (partnersData.status === 'fulfilled') {
+        const val = partnersData.value;
+        // Cek apakah response berupa array atau object { data: [] }
+        if (Array.isArray(val)) {
+            partners = val;
+        } else if (val && Array.isArray(val.data)) {
+            partners = val.data;
+        }
+      }
       
+      // Handle Subscription Response
       const subscriptions = subscriptionsData.status === 'fulfilled' 
         ? subscriptionsData.value
         : { summary: {}, data: [] };
       
+      // Handle Plans Response
       const plans = plansData.status === 'fulfilled'
         ? (Array.isArray(plansData.value) ? plansData.value : [])
         : [];
 
-      const activePartners = partners.filter((p: any) => p.status === 'Active').length;
-      const suspendedPartners = partners.filter((p: any) => p.status === 'Suspended').length;
+      // 1. Hitung statistik
+      const activePartners = partners.filter((p) => p.status === 'Active').length;
+      const suspendedPartners = partners.filter((p) => p.status === 'Suspended').length;
 
-      let allLicenses: any[] = [];
-      try {
-        // Fetch licenses logic (simplified for dashboard)
-        // In real app, maybe a dedicated stats endpoint is better
-      } catch (err) {
-        console.error('Error fetching licenses:', err);
-      }
-
-      // Mock active licenses for dashboard view if endpoint unavailable
-      const activeLicenses = 0; 
+      // 2. Sorting Mitra Terbaru (berdasarkan created_at)
+      // Kita copy array dulu biar aman (mutability)
+      const sortedPartners = [...partners].sort((a, b) => {
+        const dateA = new Date(a.created_at || 0).getTime();
+        const dateB = new Date(b.created_at || 0).getTime();
+        return dateB - dateA; // Descending (Terbaru di atas)
+      });
 
       setStats({
         totalPartners: partners.length,
@@ -105,9 +220,11 @@ export default function PlatformDashboard() {
         activeSubscriptions: subscriptions?.summary?.currently_active_partners || 0,
         totalRevenue: parseInt(subscriptions?.summary?.total_revenue || '0'),
         totalPlans: plans.length,
-        totalLicenses: 0, // Update with real data if available
-        activeLicenses: activeLicenses,
+        totalLicenses: 0, 
+        activeLicenses: 0, 
       });
+
+      setPartnersList(sortedPartners);
 
     } catch (err) {
       console.error('Dashboard error:', err);
@@ -121,176 +238,116 @@ export default function PlatformDashboard() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 pt-6 md:p-6 lg:p-8 @container">
+    <div className="flex-1 space-y-4 p-8 pt-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-bold tracking-tight @md:text-3xl">Dashboard</h2>
-          <p className="text-sm text-muted-foreground @md:text-base">
-            Selamat Datang, <span className="font-semibold text-foreground">{username}</span>! Semangat Bekerja.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="w-full @md:w-auto">
-            <Calendar className="mr-2 h-4 w-4" />
-            <span className="hidden @sm:inline">
-              {new Date().toLocaleDateString('id-ID', { 
-                day: 'numeric', 
-                month: 'short', 
-                year: 'numeric' 
-              })}
-            </span>
-            <span className="@sm:hidden">
-              {new Date().toLocaleDateString('id-ID', { 
-                day: 'numeric', 
-                month: 'short'
-              })}
-            </span>
-          </Button>
+      <div className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <div className="flex items-center space-x-2">
+          
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 grid-cols-1 @sm:grid-cols-2 @xl:grid-cols-4">
-        <Card className="@container/card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Pendapatan</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold @md/card:text-2xl">{formatRupiah(stats.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">
-              Dari {stats.totalSubscriptions} langganan
-            </p>
-          </CardContent>
-        </Card>
+      {/* Tabs Navigation */}
+      <Tabs defaultValue="overview" className="space-y-4">
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Mitra</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold @md:text-2xl">+{stats.totalPartners}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.activePartners} aktif, {stats.suspendedPartners} ditangguhkan
-            </p>
-          </CardContent>
-        </Card>
+        <TabsContent value="overview" className="space-y-4">
+          {/* Key Metrics Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Pendapatan
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatRupiah(stats.totalRevenue)}</div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Mitra
+                </CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">+{stats.totalPartners}</div>
+                <p className="text-xs text-muted-foreground">
+                  {stats.activePartners} aktif saat ini
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Langganan Aktif</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold @md:text-2xl">+{stats.activeSubscriptions}</div>
-            <p className="text-xs text-muted-foreground">
-              Dari {stats.totalPlans} paket tersedia
-            </p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Langganan</CardTitle>
+                <CreditCard className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">+{stats.totalSubscriptions}</div>
+                <p className="text-xs text-muted-foreground">
+                  +{stats.activeSubscriptions} langganan aktif
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Lisensi Aktif</CardTitle>
-            <Award className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold @md:text-2xl">+{stats.activeLicenses}</div>
-            <p className="text-xs text-muted-foreground">
-              Perangkat terdaftar
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Status Sistem
+                </CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-black">Aktif</div>
+                <p className="text-xs text-muted-foreground">
+                  Semua layanan beroperasi
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
-      {/* Recent Activity & Status */}
-      <div className="grid gap-4 grid-cols-1 @4xl:grid-cols-7">
-        <Card className="@4xl:col-span-4">
-          <CardHeader>
-            <div className="flex flex-col gap-4 @md:flex-row @md:items-center @md:justify-between">
-              <div>
-                <CardTitle>Status Sistem</CardTitle>
-                <CardDescription>Informasi real-time platform</CardDescription>
-              </div>
-              <Badge variant="outline" className="gap-1 w-fit bg-green-50 text-green-700 border-green-200">
-                <Activity className="h-3 w-3" />
-                All Systems Operational
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 text-blue-600 rounded-full">
-                    <Users className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">Pertumbuhan Mitra</p>
-                    <p className="text-xs text-muted-foreground">Bulan ini</p>
-                  </div>
+          {/* Main Content Grid: Chart & Recent List */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            {/* Overview Chart */}
+            <Card className="col-span-4">
+              <CardHeader>
+                <CardTitle>Overview</CardTitle>
+                <CardDescription>
+                  Estimasi pendapatan bulanan sistem tahun ini.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pl-2">
+                <Overview />
+              </CardContent>
+            </Card>
+
+            {/* Recent Partners List */}
+            <Card className=" col-span-3">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <CardTitle>Mitra Terbaru</CardTitle>
+                        <CardDescription>
+                        Pendaftar mitra baru bulan ini.
+                        </CardDescription>
+                    </div>
+                    <Link href="/platform/partners">
+                        <Button variant="ghost" size="icon">
+                            <ArrowUpRight className="h-4 w-4" />
+                        </Button>
+                    </Link>
                 </div>
-                <span className="font-bold text-lg">+{stats.activePartners}</span>
-              </div>
-              
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 text-purple-600 rounded-full">
-                    <Package className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-sm">Paket Terjual</p>
-                    <p className="text-xs text-muted-foreground">Total akumulasi</p>
-                  </div>
-                </div>
-                <span className="font-bold text-lg">{stats.totalSubscriptions}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="@4xl:col-span-3">
-          <CardHeader>
-            <CardTitle>Aksi Cepat</CardTitle>
-            <CardDescription>Shortcut menu utama</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Link href="/platform/partners">
-                <Button variant="outline" className="w-full justify-between hover:bg-accent">
-                  <div className="flex items-center">
-                    <Users className="mr-2 h-4 w-4" />
-                    Kelola Mitra
-                  </div>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              </Link>
-
-              <Link href="/platform/subscription-plans">
-                <Button variant="outline" className="w-full justify-between hover:bg-accent">
-                  <div className="flex items-center">
-                    <Package className="mr-2 h-4 w-4" />
-                    Paket Langganan
-                  </div>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              </Link>
-
-              <Link href="/platform/licenses">
-                <Button variant="outline" className="w-full justify-between hover:bg-accent">
-                  <div className="flex items-center">
-                    <Smartphone className="mr-2 h-4 w-4" />
-                    Lisensi Perangkat
-                  </div>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground" />
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              </CardHeader>
+              <CardContent>
+                <RecentPartners partners={partnersList} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
